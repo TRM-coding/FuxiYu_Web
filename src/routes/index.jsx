@@ -4,23 +4,25 @@ import MainLayout from '../layouts/MainLayout'
 import LoginLayout from '../layouts/LoginLayout'
 import Home from '../pages/Home'
 import About from '../pages/About'
-import Login from '../pages/Login'
 import NotFound from '../pages/NotFound'
+import LoginBlock from '../pages/Login.jsx'
+import RegisterBlock from '../pages/Register.jsx'
 import Apply from '../pages/Apply'
 
 export default function AppRoutes() {
   return (
     <Routes>
       {/* 带导航栏的页面 */}
-      <Route path="/" element={<MainLayout />}>
+      <Route path="/index" element={<MainLayout />}>
         <Route index element={<Home />} />
         <Route path="about" element={<About />} />
         <Route path="apply" element={<Apply />} />
       </Route>
 
       {/* 不带导航栏的页面 */}
-      <Route path="/login" element={<LoginLayout />}>
-        <Route index element={<Login />} />
+      <Route path="/" element={<LoginLayout />}>
+        <Route index element={<LoginBlock />} />
+        <Route path="register" element={<RegisterBlock />} />
       </Route>
 
       {/* 404 */}
