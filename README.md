@@ -1,16 +1,11 @@
-# React + Vite
+# 文件结构说明
+* /src 下存放所有源代码
+* /api 中统一封装与后端交互的代码
+* /assets 存放静态文件（GLB，图标等）
+* /pages 为每个页面具体的源码
+* /routes 中定义了路由方法，使用这种路由可以不用刷新页面，并且多个页面可以共享同一个导航栏
+* /layouts 文件夹定义了两类页面布局，一类是主页面（需要导航栏的）一类是非主页面（登录注册等不需要导航栏的）
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# 修改注意事项
+* 刘苏和卫煜文你们分别完成pages中安排好的页面，不要动routes（如果必须要动在群里说一声）
+* 剩下的我来维护，components中会提供一些你们会用到的比如表格类的组件
