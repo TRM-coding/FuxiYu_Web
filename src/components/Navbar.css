@@ -1,28 +1,35 @@
+/* 整个导航栏容器 */
 .navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 20px;
-  background-color: #f0f0f0;
+  text-align: center;            /* 让内部 inline-block 居中 */
+  background-color: #f0f0f0;     /* 背景色 */
+  padding: 10px 20px;            /* 内边距 */
+  background: transparent;   /* 去掉背景色 */
+  padding: 0;                /* 去掉内边距 */
 }
 
-.navbar-logo {
-  margin: 0;
-  font-size: 20px;
-  font-weight: bold;
+/* 让 antd 的菜单整体居中 */
+.navbar .ant-menu {
+  display: inline-block;         /* 让菜单在父元素中可被 text-align 控制 */
+  border-bottom: none;           /* 去掉默认下边框 */
 }
 
-.navbar-links {
-  display: flex;
-  gap: 15px;
+/* 菜单项样式微调 */
+.navbar .ant-menu-item {
+  font-size: 16px;               /* 字号 */
+  padding: 0 20px;               /* 左右留白 */
 }
 
-.navbar-link {
-  text-decoration: none;
-  color: #333;
-  transition: color 0.2s ease;
+/* 图标与文字间距 */
+.navbar .ant-menu-item .anticon {
+  margin-right: 6px;
 }
 
-.navbar-link:hover {
+/* 选中项颜色 */
+.navbar .ant-menu-item-selected {
+  color: #007bff;
+}
+
+/* 悬停时变色 */
+.navbar .ant-menu-item:hover {
   color: #007bff;
 }
