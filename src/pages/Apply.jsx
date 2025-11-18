@@ -19,33 +19,31 @@ const options = [
 ];
 
 
+// 后续需要改动来源
 const data = [
   {
     key: '1',
     machine_name: 'Intel Xeon E5-2670',
     machine_ip: '192.168.1.1',
     machine_type: 'CPU',
-    machine_status: 'Active',
+    machine_status: 'online',
     summary: 'CPU machine for compute tasks',
-    tags: ['CPU'],
   },
   {
     key: '2',
     machine_name: 'RTX-3090',
     machine_ip: '192.168.1.2',
     machine_type: 'GPU',
-    machine_status: 'Active',
+    machine_status: 'offline',
     summary: 'GPU machine for ML tasks',
-    tags: ['GPU'],
   },
   {
     key: '3',
     machine_name: 'Intel i5-10400',
     machine_ip: '192.168.1.3',
     machine_type: 'CPU',
-    machine_status: 'Inactive',
+    machine_status: 'maintenance',
     summary: 'Standby CPU machine',
-    tags: ['CPU'],
   },
 ];
 
@@ -104,31 +102,22 @@ const Apply = () => {
             }}
           />
           <Column title="机器状态" dataIndex="machine_status" key="machine_status" />
-          <Column title="详细信息" dataIndex="summary" key="summary" />
           <Column
-            title="标签"
-            dataIndex="tags"
-            key="tags"
-            render={tags => (
-              <>
-                {tags.map(tag => {
-                  let color = tag === 'GPU' ? 'volcano' : tag === 'ml-trainer' ? 'blue' : 'green';
-                  return (
-                    <Tag color={color} key={tag}>
-                      {tag.toUpperCase()}
-                    </Tag>
-                  );
-                })}
-              </>
-            )}
+            title="机器状态"
+            dataIndex="machine_status"
+            key="machine_status"
+            render={status => {
+              let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
+              return <Tag color={color}>{status.toUpperCase()}</Tag>;
+            }}
           />
+          <Column title="详细信息" dataIndex="summary" key="summary" />
           <Column
             title="操作"
             key="action"
             render={(_, record) => (
               <Space size="middle">
                 <a>申请 </a>
-                <a>删除</a>
               </Space>
             )}
           />
