@@ -37,7 +37,7 @@ const data = [
     key: '3',
     container_name: 'api',
     container_image: 'python:3.11',
-    machine_id: '3',
+    machine_id: '4',
     container_status: 'online',
     port: '5012',
     accounts: [['alice', 'ADMIN'], ['bob', 'COLLABORATOR']],
@@ -93,6 +93,7 @@ const Home = () => {
       <Splitter.Panel>
         <Table dataSource={data} style={{ padding: '16px' }}>
           <Column title="容器名称" dataIndex="container_name" key="container_name" render={text => <a>{text}</a>} />
+          <Column title="容器ID" dataIndex="key" key="key" />
           <Column title="容器蓝图" dataIndex="container_image" key="container_image" />
           <Column title="机器ID" dataIndex="machine_id" key="machine_id" />
           <Column
