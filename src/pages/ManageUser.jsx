@@ -76,6 +76,15 @@ const ManageUser = () => {
   const [selectedUserKey, setSelectedUserKey] = useState(null);
   const [position, setPosition] = useState('end');
 
+  // 用户搜索条件
+  const [userSearchUsername, setUserSearchUsername] = useState('');
+  const [userSearchUserId, setUserSearchUserId] = useState('');
+  const [userSearchEmail, setUserSearchEmail] = useState('');
+
+  // 容器搜索条件
+  const [containerSearchName, setContainerSearchName] = useState('');
+  const [containerSearchId, setContainerSearchId] = useState('');
+
   // 容器radio的选中状态：{ [containerKey]: role }
   const [containerRadio, setContainerRadio] = useState({});
 
@@ -100,6 +109,21 @@ const ManageUser = () => {
     return user ? user.username : '';
   }
 
+  // 过滤用户数据
+  const filteredUserData = userData.filter(user => {
+    const matchUsername = user.username.toLowerCase().includes(userSearchUsername.toLowerCase());
+    const matchUserId = user.key.includes(userSearchUserId);
+    const matchEmail = user.email.toLowerCase().includes(userSearchEmail.toLowerCase());
+    return matchUsername && matchUserId && matchEmail;
+  });
+
+  // 过滤容器数据
+  const filteredContainerData = containerData.filter(container => {
+    const matchName = container.container_name.toLowerCase().includes(containerSearchName.toLowerCase());
+    const matchId = container.key.includes(containerSearchId);
+    return matchName && matchId;
+  });
+
   // 用户radio change
   const onUserRadioChange = e => {
     setSelectedUserKey(e.target.value);
@@ -111,110 +135,136 @@ const ManageUser = () => {
   };
 
   return (
-    <Splitter layout="vertical" style={{ height: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
-      <Splitter.Panel  min="300px" max="30%">
-          <div style={{ height: '90%', padding: '15px', overflowY: 'auto', minWidth: 300 }}>
-            <Flex vertical justify="center" align="center" style={{ height: '100%' }}>
-              <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              <Row gutter={[16, 16]} justify="center" align="middle">
-                <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>用户名</Typography.Text>
-                  <Input placeholder="Username" defaultValue="" allowClear style={{ width: '80%', minWidth: 160 }} />
-                </Col>
-
-                <Col xs={24} sm={12} md={6} style={{ minWidth: 200, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>用户ID</Typography.Text>
-                  <Input placeholder="User ID" defaultValue="" allowClear style={{ width: '80%', minWidth: 160 }} />
-                </Col>
-
-                <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>电子邮箱</Typography.Text>
-                  <Input placeholder="Email" defaultValue="" style={{ width: '80%', minWidth: 80 }} />
-                </Col>
-                <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <Button type="primary" icon={<SearchOutlined />} iconPosition={position}>
-                  Search
-                </Button>
-                </Col>
-
-              </Row>
-            </Space>
-          </Flex>
-        </div>
+    <Splitter layout="horizontal" style={{ height: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
+      {/* 左侧：用户管理 */}
+      <Splitter.Panel min="55%" max="60%">
+        <Splitter layout="vertical" style={{ height: '100vh' }}>
+          {/* 搜索框 */}
+          <Splitter.Panel min="300px" max="30%">
+            <div style={{ height: '90%', padding: '15px', overflowY: 'auto', minWidth: 300 }}>
+              <Flex vertical justify="center" align="center" style={{ height: '100%' }}>
+                <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                  <Row gutter={[16, 16]} justify="center" align="middle">
+                    <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>用户名</Typography.Text>
+                      <Input placeholder="Username" value={userSearchUsername} onChange={e => setUserSearchUsername(e.target.value)} allowClear style={{ width: '80%', minWidth: 160 }} />
+                    </Col>
+                    <Col xs={24} sm={12} md={6} style={{ minWidth: 200, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>用户ID</Typography.Text>
+                      <Input placeholder="User ID" value={userSearchUserId} onChange={e => setUserSearchUserId(e.target.value)} allowClear style={{ width: '80%', minWidth: 160 }} />
+                    </Col>
+                    <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>电子邮箱</Typography.Text>
+                      <Input placeholder="Email" value={userSearchEmail} onChange={e => setUserSearchEmail(e.target.value)} allowClear style={{ width: '80%', minWidth: 80 }} />
+                    </Col>
+                    <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Button type="primary" icon={<SearchOutlined />} iconPosition={position}>
+                        Search
+                      </Button>
+                    </Col>
+                  </Row>
+                </Space>
+              </Flex>
+            </div>
+          </Splitter.Panel>
+          {/* 用户表格 */}
+          <Splitter.Panel>
+            <Table dataSource={filteredUserData} rowKey="key" style={{ padding: '16px' }} pagination={false}>
+              <Column
+                title="选择"
+                key="select"
+                render={(_, record) => (
+                  <input
+                    type="radio"
+                    name="userRadio"
+                    value={record.key}
+                    checked={selectedUserKey === record.key}
+                    onChange={onUserRadioChange}
+                  />
+                )}
+              />
+              <Column title="用户名" dataIndex="username" key="username" render={text => <a>{text}</a>} />
+              <Column title="用户ID" dataIndex="key" key="key" />
+              <Column title="电子邮箱" dataIndex="email" key="email" />
+              <Column title="毕业年份" dataIndex="graduation_year" key="graduation_year" />
+              <Column
+                title="操作"
+                key="action"
+                render={(_, record) => (
+                  <Space size="middle">
+                    <a>删除用户 </a>
+                    <a>重置密码 </a>
+                  </Space>
+                )}
+              />
+            </Table>
+          </Splitter.Panel>
+        </Splitter>
       </Splitter.Panel>
-      <Splitter.Panel  min="50%" max="60%">
-            <Splitter layout="horizontal" style={{ height: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
-                <Splitter.Panel min="50%" max="60%">
-                <Table dataSource={userData} rowKey="key" style={{ padding: '16px' }} pagination={false}>
-                  <Column
-                    title="选择"
-                    key="select"
-                    render={(_, record) => (
-                      <input
-                        type="radio"
-                        name="userRadio"
-                        value={record.key}
-                        checked={selectedUserKey === record.key}
-                        onChange={onUserRadioChange}
-                      />
-                    )}
-                  />
-                  <Column title="用户名" dataIndex="username" key="username" render={text => <a>{text}</a>} />
-                  <Column title="用户ID" dataIndex="key" key="key" />
-                  <Column title="电子邮箱" dataIndex="email" key="email" />
-                  <Column title="毕业年份" dataIndex="graduation_year" key="graduation_year" />
-                  <Column
-                    title="操作"
-                    key="action"
-                    render={(_, record) => (
-                      <Space size="middle">
-                        <a>删除用户 </a>
-                        <a>重置密码 </a>
-                      </Space>
-                    )}
-                  />
-                </Table>
-                </Splitter.Panel>
-                <Splitter.Panel min="20%" max="40%">
-                <Table dataSource={containerData} rowKey="key" style={{ padding: '16px' }} pagination={false}>
-                  <Column title="容器名称" dataIndex="container_name" key="container_name" render={text => <a>{text}</a>} />
-                  <Column title="容器ID" dataIndex="key" key="key" />
-                  <Column title="端口" dataIndex="port" key="port" />
-                  <Column
-                    title="操作"
-                    key="action"
-                    render={(_, record) => {
-                      // 当前选中用户
-                      const username = getUsernameByKey(selectedUserKey);
-                      // 该容器下所有用户的角色
-                      const userRoles = (record.accounts || []);
-                      // 当前用户在该容器的角色
-                      let currentRole = undefined;
-                      if (selectedUserKey && username) {
-                        const found = userRoles.find(([u]) => u === username);
-                        if (found) {
-                          // accounts 里的角色是大写，映射到options的value
-                          if (found[1] === 'ADMIN') currentRole = 'Admin';
-                          else if (found[1] === 'COLLABORATOR') currentRole = 'Collaborator';
-                          else currentRole = found[1];
-                        } else {
-                          currentRole = 'Not-Involved';
-                        }
-                      }
-                      return (
-                        <Radio.Group
-                          options={options}
-                          value={selectedUserKey ? currentRole : undefined}
-                          onChange={e => {/* 可扩展：setContainerRadio等 */}}
-                          optionType="button"
-                          disabled={!selectedUserKey}
-                        />
-                      );
-                    }}
-                  />
-                </Table>
-                </Splitter.Panel>
-            </Splitter>
+      {/* 右侧：容器管理 */}
+      <Splitter.Panel min="40%" max="45%">
+        <Splitter layout="vertical" style={{ height: '100vh' }}>
+          {/* 搜索框 */}
+          <Splitter.Panel min="300px" max="30%">
+            <div style={{ height: '90%', padding: '15px', overflowY: 'auto', minWidth: 300 }}>
+              <Flex vertical justify="center" align="center" style={{ height: '100%' }}>
+                <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                  <Row gutter={[16, 16]} justify="center" align="middle">
+                    <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>容器名</Typography.Text>
+                      <Input placeholder="Container" value={containerSearchName} onChange={e => setContainerSearchName(e.target.value)} allowClear style={{ width: '80%', minWidth: 120 }} />
+                    </Col>
+                    <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>容器ID</Typography.Text>
+                      <Input placeholder="Container ID" value={containerSearchId} onChange={e => setContainerSearchId(e.target.value)} allowClear style={{ width: '80%', minWidth: 120 }} />
+                    </Col>
+                    <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Button type="primary" icon={<SearchOutlined />} iconPosition={position}>
+                        Search
+                      </Button>
+                    </Col>
+                  </Row>
+                </Space>
+              </Flex>
+            </div>
+          </Splitter.Panel>
+          {/* 容器表格 */}
+          <Splitter.Panel min="50%" max="60%">
+            <Table dataSource={filteredContainerData} rowKey="key" style={{ padding: '16px' }} pagination={false}>
+              <Column title="容器名称" dataIndex="container_name" key="container_name" render={text => <a>{text}</a>} />
+              <Column title="容器ID" dataIndex="key" key="key" />
+              <Column title="端口" dataIndex="port" key="port" />
+              <Column
+                title="操作"
+                key="action"
+                render={(_, record) => {
+                  const username = getUsernameByKey(selectedUserKey);
+                  const userRoles = (record.accounts || []);
+                  let currentRole = undefined;
+                  if (selectedUserKey && username) {
+                    const found = userRoles.find(([u]) => u === username);
+                    if (found) {
+                      if (found[1] === 'ADMIN') currentRole = 'Admin';
+                      else if (found[1] === 'COLLABORATOR') currentRole = 'Collaborator';
+                      else currentRole = found[1];
+                    } else {
+                      currentRole = 'Not-Involved';
+                    }
+                  }
+                  return (
+                    <Radio.Group
+                      options={options}
+                      value={selectedUserKey ? currentRole : undefined}
+                      onChange={e => {/* 可扩展：setContainerRadio等 */}}
+                      optionType="button"
+                      disabled={!selectedUserKey}
+                    />
+                  );
+                }}
+              />
+            </Table>
+          </Splitter.Panel>
+        </Splitter>
       </Splitter.Panel>
     </Splitter>
   );
