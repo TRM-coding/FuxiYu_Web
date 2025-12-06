@@ -1,5 +1,6 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import './LoginLayout.css'
+import ModelViewer from '../components/ModelViewer';
 
 export default function LoginLayout() {
   const nav = useNavigate()
@@ -36,7 +37,9 @@ export default function LoginLayout() {
 
       {/* 右半部分 LOGO 或空白 */}
       <div className="login-right">
-        <div className="logo-placeholder">LOGO</div>
+        {/* <div className="logo-placeholder">LOGO</div> */}
+        {/* <ModelViewer modelPath="/glb.glb" /> */}
+        <ModelViewer modelPath="/glb.glb" />
       </div>
     </div>
   )
