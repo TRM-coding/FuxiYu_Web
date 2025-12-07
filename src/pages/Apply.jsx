@@ -38,7 +38,7 @@ const data = [
     summary: 'GPU machine for ML tasks',
   },
   {
-    key: '3',
+    key: '4',
     machine_name: 'Intel i5-10400',
     machine_ip: '192.168.1.3',
     machine_type: 'CPU',
@@ -91,6 +91,7 @@ const Apply = () => {
       <Splitter.Panel  min="60%" max="80%">
         <Table dataSource={data} style={{ padding: '16px' }}>
           <Column title="机器名称" dataIndex="machine_name" key="machine_name" render={text => <a>{text}</a>} />
+          <Column title="机器ID" dataIndex="key" key="key" />
           <Column title="IP地址" dataIndex="machine_ip" key="machine_ip" />
           <Column
             title="机器类型"
