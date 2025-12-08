@@ -12,6 +12,7 @@ import User from '../pages/User'
 import ManageMachine from '../pages/ManageMachine.jsx'
 import ManageContainer from '../pages/ManageContainer.jsx'
 import AdminProfile from '../pages/AdminProfile.jsx'
+import AdminLayout from '../layouts/AdminLayout.jsx'
 
 export default function AppRoutes() {
   return (
@@ -25,11 +26,11 @@ export default function AppRoutes() {
       </Route>
 
       {/* 带导航栏的管理页面 */}
-      <Route path="/admin" element={<AdminLayout />}>
-        <Route path="machines" element={<ManageMachine />} />
-        <Route path="containers" element={<ManageContainer />} />
-        <Route path="profile" element={<AdminProfile />} /> {/* 新增 */}
-      </Route>
+      <Route path="/admin" element={<AdminLayout />}>
+        <Route path="machines" element={<ManageMachine />} />
+        <Route path="containers" element={<ManageContainer />} />
+        <Route path="profile" element={<AdminProfile />} /> 
+      </Route>
 
       {/* 不带导航栏的页面 */}
       <Route path="/" element={<LoginLayout />}>
