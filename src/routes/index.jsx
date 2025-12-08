@@ -28,7 +28,6 @@ export default function AppRoutes() {
         <Route path="users" element={<ManageUser />} />
         <Route path="machines" element={<About />} />
         <Route path="containers" element={<About />} />
-        <Route path="profile" element={<AdminProfile />} />
       </Route>
 
       {/* 不带导航栏的页面 */}
