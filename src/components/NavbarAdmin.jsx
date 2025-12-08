@@ -2,32 +2,27 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { HomeOutlined, InfoCircleOutlined, FormOutlined, UserOutlined } from '@ant-design/icons';
 import { Menu } from 'antd';
-import './Navbar.css';
+import './Navbar.css'; // 复用了同样的样式
 
 const items = [
-  {
-    label: '我的容器',
-    key: '/index',
-    icon: <HomeOutlined />,
-  },
-  {
-    label: '容器申请',
-    key: '/index/apply',
-    icon: <FormOutlined />,
-  },
-  {
-    label: '个人中心',
-    key: '/index/user',
+    {
+    label: '用户管理',
+    key: '/admin/users',
     icon: <UserOutlined />,
   },
+    {
+    label: '宿主机管理',
+    key: '/admin/machines',
+    icon: <InfoCircleOutlined />,
+  },
   {
-    label: '关于',
-    key: '/index/about',
+    label: '容器管理',
+    key: '/admin/containers',
     icon: <InfoCircleOutlined />,
   }
 ];
 
-export default function Navbar() {
+export default function NavbarAdmin() {
   const navigate = useNavigate()
   const location = useLocation()
   const [current, setCurrent] = useState(location.pathname)
@@ -38,7 +33,7 @@ export default function Navbar() {
   }
 
   return (
-    <div className="navbar">
+    <div className="navbarAdmin">
       <Menu
         onClick={onClick}
         selectedKeys={[current]}
@@ -49,3 +44,4 @@ export default function Navbar() {
     </div>
   )
 }
+

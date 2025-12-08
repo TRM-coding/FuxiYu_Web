@@ -2,7 +2,7 @@
 import React from 'react';
 import { Card, Form, Input, DatePicker, Button, Row, Col, Space } from 'antd';
 
-const UserInfoFrame = () => {
+const User = () => {
   return (
     <Row 
       justify="center" 
@@ -57,4 +57,4 @@ const UserInfoFrame = () => {
   );
 };
 
-export default UserInfoFrame;
+export default User;

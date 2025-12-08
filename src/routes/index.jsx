@@ -1,15 +1,16 @@
 // routes/index.jsx
 import { Routes, Route } from 'react-router-dom'
 import MainLayout from '../layouts/MainLayout'
+import AdminLayout from '../layouts/AdminLayout'
 import LoginLayout from '../layouts/LoginLayout'
 import Home from '../pages/Home'
 import About from '../pages/About'
 import NotFound from '../pages/NotFound'
 import LoginBlock from '../pages/Login.jsx'
 import RegisterBlock from '../pages/Register.jsx'
-import UserInfoFrame from '../pages/User.jsx'
 import Apply from '../pages/Apply'
 import User from '../pages/User'
+import ManageUser from '../pages/ManageUser'
 
 export default function AppRoutes() {
   return (
@@ -19,7 +20,14 @@ export default function AppRoutes() {
         <Route index element={<Home />} />
         <Route path="about" element={<About />} />
         <Route path="apply" element={<Apply />} />
-        <Route path="user" element={<UserInfoFrame />} />
+        <Route path="user" element={<User />} />
+      </Route>
+
+      {/* 带导航栏的管理页面 */}
+      <Route path="/admin" element={<AdminLayout />}>
+        <Route path="users" element={<ManageUser />} />
+        <Route path="machines" element={<About />} />
+        <Route path="containers" element={<About />} />
       </Route>
 
       {/* 不带导航栏的页面 */}
