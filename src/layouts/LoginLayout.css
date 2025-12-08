@@ -56,14 +56,23 @@
 
 /* 右半边 LOGO 区 */
 .login-right {
-  flex: 1;
+  /* flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #ffffff;
+  background: #ffffff; */
+  flex: 1; /* 右侧占比 1，与左侧平分宽度 */
+  background-color: #f0f0f0; /* 给右侧一个背景色以便区分 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 关键：确保右侧有高度，ModelViewer 才能渲染 */
+  height: 100vh; 
+  min-height: 600px; /* 或者其他你需要的最小高度 */
+  position: relative;
 }
 
-.logo-placeholder {
+/* .logo-placeholder {
   width: 140px;
   height: 140px;
   border-radius: 12px;
@@ -73,4 +82,13 @@
   align-items: center;
   color: #999;
   font-weight: 600;
+} */
+
+/* ModelViewer 容器样式 */
+.model-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
