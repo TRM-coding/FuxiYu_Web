@@ -1,6 +1,7 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Space, Typography, Avatar } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
+import NavbarAdmin from '../components/NavbarAdmin';
 
 export default function AdminLayout() {
   const navigate = useNavigate(); // 新增：路由跳转钩子
@@ -19,6 +20,9 @@ export default function AdminLayout() {
         padding: '0 20px',
         borderBottom: '1px solid #e8e8e8'
       }}>
+        <div style={{ flex: 1 }}>
+          <NavbarAdmin />
+        </div>
         
         {/* 管理员标签添加点击跳转 */}
         <Space 
