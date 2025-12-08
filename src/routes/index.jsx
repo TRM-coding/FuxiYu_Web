@@ -24,6 +24,13 @@ export default function AppRoutes() {
         <Route path="user" element={<User />} />
       </Route>
 
+      {/* 带导航栏的管理页面 */}
+      <Route path="/admin" element={<AdminLayout />}>
+        <Route path="machines" element={<ManageMachine />} />
+        <Route path="containers" element={<ManageContainer />} />
+        <Route path="profile" element={<AdminProfile />} /> {/* 新增 */}
+      </Route>
+
       {/* 不带导航栏的页面 */}
       <Route path="/" element={<LoginLayout />}>
         <Route index element={<LoginBlock />} />
