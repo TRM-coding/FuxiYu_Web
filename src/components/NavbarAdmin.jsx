@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { HomeOutlined, InfoCircleOutlined, FormOutlined, UserOutlined } from '@ant-design/icons';
 import { Menu } from 'antd';
@@ -25,21 +25,27 @@ const items = [
 export default function NavbarAdmin() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [current, setCurrent] = useState(location.pathname)
+
+  // 当路径为 /admin/profile 时，selectedKeys 应为空数组（无选中）
+  const getSelectedKeys = () => {
+    if (location.pathname === '/admin/profile') {
+      return []
+    }
+    return [location.pathname]
+  }
 
   const onClick = (e) => {
-    setCurrent(e.key)
     navigate(e.key)
   }
 
   return (
-    <div className="navbarAdmin">
+    <div className="navbarAdmin" style={{ flex: 1 }}>
       <Menu
         onClick={onClick}
-        selectedKeys={[current]}
+        selectedKeys={getSelectedKeys()}
         mode="horizontal"
         items={items}
-        style={{ display: 'flex', justifyContent: 'center' }}  // 关键
+        style={{ display: 'flex', justifyContent: 'center' }}
       />
     </div>
   )
