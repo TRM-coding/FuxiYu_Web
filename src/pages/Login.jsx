@@ -1,11 +1,20 @@
 import React from 'react';
 import { Button, Checkbox, Form, Input } from 'antd';
-const onFinish = values => {
-  console.log('Success:', values);
+import { loginUser } from '../api/user_api';
+
+const onFinish = async values => {
+  try {
+    await loginUser(values);
+    // handle success (e.g., navigate or show message)
+  } catch (err) {
+    console.log('Login error:', err);
+  }
 };
+
 const onFinishFailed = errorInfo => {
   console.log('Failed:', errorInfo);
 };
+
 const LoginBlock = () => (
   <Form
     name="basic"
@@ -44,4 +53,5 @@ const LoginBlock = () => (
     </Form.Item>
   </Form>
 );
+
 export default LoginBlock;
