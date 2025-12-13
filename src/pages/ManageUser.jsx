@@ -536,10 +536,18 @@ const ManageUser = () => {
         loading={modal.loading}
       />
 
-      <Splitter layout="vertical" style={{ height: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
-        {/* 1. 搜索区域（移到最顶部） */}
-        <Splitter.Panel min="10%" max="10%" style={{ padding: '10px' }}>
-          <Flex justify="center" align="center" style={{ height: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* 1. 搜索区域（固定顶部） */}
+        <div style={{ 
+          padding: '16px', 
+          background: '#fff', 
+          borderBottom: '1px solid #f0f0f0',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+          position: 'sticky',
+          top: 64,
+          zIndex: 10
+        }}>
+          <Flex justify="center" align="center">
             <Space direction="horizontal" size="middle">
               <Row gutter={[16, 0]} align="middle">
                 <Col>
@@ -580,10 +588,9 @@ const ManageUser = () => {
             </Row>
           </Space>
         </Flex>
-      </Splitter.Panel>
+        </div>
 
       {/* 2. 下方区域：用户表格 */}
-      <Splitter.Panel>
         <div style={{ padding: '16px' }}>
           <Table 
             dataSource={filteredUserData} 
@@ -753,8 +760,7 @@ const ManageUser = () => {
             />
           </Table>
         </div>
-      </Splitter.Panel>
-    </Splitter>
+      </div>
     </>
   );
 };
