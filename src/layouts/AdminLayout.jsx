@@ -1,41 +1,36 @@
 import { Outlet, useNavigate } from 'react-router-dom';
-import { Space, Typography, Avatar } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
 import NavbarAdmin from '../components/NavbarAdmin';
+import AdminAvatar from '../components/AdminAvatar';
 
 export default function AdminLayout() {
-  const navigate = useNavigate(); // 新增：路由跳转钩子
+  const navigate = useNavigate();
 
-  // 点击管理员标签跳转到管理员页面
-  const goToAdminProfile = () => {
-    navigate('/admin/profile');
+  // 点击导航菜单或头像时的路由跳转逻辑
+  const handleNavigate = (path) => {
+    navigate(path);
   };
 
   return (
     <div>
-      <div style={{ 
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 999,
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center',
         padding: '0 20px',
-        borderBottom: '1px solid #e8e8e8'
+        borderBottom: '1px solid #e8e8e8',
+        backgroundColor: '#ffffff',
+        height: '64px'
       }}>
-        <div style={{ flex: 1 }}>
-          <NavbarAdmin />
-        </div>
-        
-        {/* 管理员标签添加点击跳转 */}
-        <Space 
-          align="center" 
-          style={{ marginLeft: '20px', cursor: 'pointer' }} // 加鼠标指针提示
-          onClick={goToAdminProfile}
-        >
-          <Avatar icon={<UserOutlined />} />
-          <Typography.Text strong>管理员</Typography.Text>
-        </Space>
+        <NavbarAdmin />
+        <AdminAvatar onNavigate={handleNavigate} />
       </div>
 
-      <main style={{ padding: '20px' }}>
+      <main style={{ padding: '20px', marginTop: '64px' }}>
         <Outlet />
       </main>
     </div>

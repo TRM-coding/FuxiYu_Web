@@ -5,6 +5,13 @@
   padding: 10px 20px;            /* 内边距 */
   background: transparent;   /* 去掉背景色 */
   padding: 0;                /* 去掉内边距 */
+  position: fixed;               /* 固定定位 */
+  top: 0;                        /* 距离顶部 0 */
+  left: 0;                       /* 距离左侧 0 */
+  right: 0;                      /* 距离右侧 0 */
+  z-index: 1000;                 /* 高层级，确保在内容之上 */
+  width: 100%;                   /* 占满整个宽度 */
+  /*box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);  /* 阴影效果 */
 }
 
 /* 让 antd 的菜单整体居中 */
@@ -32,4 +39,19 @@
 /* 悬停时变色 */
 .navbar .ant-menu-item:hover {
   color: #007bff;
+}
+
+/* 管理员导航栏容器 */
+.navbarAdmin {
+  flex: 1;
+}
+
+/* 管理员菜单样式 */
+.navbarAdmin .ant-menu {
+  border-bottom: none;           /* 去掉默认下边框 */
+  background-color: transparent; /* 透明背景 */
+}
+
+.navbarAdmin .ant-menu-item {
+  font-size: 16px;               /* 字号 */
 }

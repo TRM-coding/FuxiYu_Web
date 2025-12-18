@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { SearchOutlined } from '@ant-design/icons';
-import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag } from 'antd';
+import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, message } from 'antd';
 import { Radio } from 'antd';
+import ConfirmModal from '../components/ConfirmModal';
 const { Column, ColumnGroup } = Table;
 
 const Desc = props => (
@@ -50,6 +51,14 @@ const Home = () => {
   // temporary current user for UI behavior
   const currentUser = 'alice';
 
+  // Modal state
+  const [modal, setModal] = useState({
+    visible: false,
+    type: '', // 'delete' | 'leave' | 'removeUser' | 'changeRole' | 'invite'
+    loading: false,
+    data: null,
+  });
+
   // helpers
   const getRoleForUser = (accounts, username) => {
     if (!accounts) return null;
@@ -68,19 +77,58 @@ const Home = () => {
   };
 
   const handleInvite = record => {
-    console.log('invite on', record);
+    setModal({ visible: true, type: 'invite', loading: false, data: { record } });
   };
   const handleDeleteContainer = record => {
-    console.log('delete container', record);
+    setModal({ visible: true, type: 'delete', loading: false, data: { record } });
   };
   const handleLeave = record => {
-    console.log('leave container', record);
+    setModal({ visible: true, type: 'leave', loading: false, data: { record } });
   };
   const handleRemoveUser = (record, username) => {
-    console.log('remove user', username, 'from', record);
+    setModal({ visible: true, type: 'removeUser', loading: false, data: { record, username } });
   };
   const handleChangeRole = (record, username) => {
-    console.log('change role for', username, 'in', record);
+    setModal({ visible: true, type: 'changeRole', loading: false, data: { record, username } });
+  };
+
+  const closeModal = () => {
+    setModal({ visible: false, type: '', loading: false, data: null });
+  };
+
+  const handleModalConfirm = () => {
+    setModal(prev => ({ ...prev, loading: true }));
+    
+    setTimeout(() => {
+      const { type, data } = modal;
+      
+      switch (type) {
+        case 'delete':
+          console.log('删除容器:', data.record);
+          message.success(`容器 ${data.record.container_name} 已删除`);
+          break;
+        case 'leave':
+          console.log('退出容器:', data.record);
+          message.success(`已退出容器 ${data.record.container_name}`);
+          break;
+        case 'removeUser':
+          console.log('移除用户:', data.username, 'from', data.record);
+          message.success(`已将 ${data.username} 移出容器`);
+          break;
+        case 'changeRole':
+          console.log('变更角色:', data.username, 'in', data.record);
+          message.success(`已变更 ${data.username} 的角色`);
+          break;
+        case 'invite':
+          console.log('邀请用户到:', data.record);
+          message.success(`已发送邀请`);
+          break;
+        default:
+          break;
+      }
+      
+      setModal({ visible: false, type: '', loading: false, data: null });
+    }, 500);
   };
 
   const onChange3 = ({ target: { value } }) => {
@@ -88,7 +136,86 @@ const Home = () => {
     setValue3(value);
   };
 
+  const getModalConfig = () => {
+    const { type, data } = modal;
+    
+    const configs = {
+      delete: {
+        title: '确认删除容器',
+        message: `确定要删除容器 ${data?.record?.container_name} 吗？`,
+        content: (
+          <div style={{ background: '#fff2f0', padding: 16, borderRadius: 4, border: '1px solid #ffccc7' }}>
+            <Typography.Text type="danger">此操作不可恢复！容器内所有数据将被永久删除。</Typography.Text>
+          </div>
+        ),
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认删除'
+      },
+      leave: {
+        title: '确认退出容器',
+        message: `确定要退出容器 ${data?.record?.container_name} 吗？`,
+        content: (
+          <div style={{ background: '#fffbe6', padding: 16, borderRadius: 4, border: '1px solid #ffe58f' }}>
+            <Typography.Text>退出后需要管理员重新邀请才能加入。</Typography.Text>
+          </div>
+        ),
+        danger: false,
+        iconColor: '#faad14',
+        confirmText: '确认退出'
+      },
+      removeUser: {
+        title: '确认移除用户',
+        message: `确定要将 ${data?.username} 从容器中移除吗？`,
+        content: (
+          <div style={{ background: '#fff2f0', padding: 16, borderRadius: 4, border: '1px solid #ffccc7' }}>
+            <Typography.Text>该用户将无法访问此容器。</Typography.Text>
+          </div>
+        ),
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认移除'
+      },
+      changeRole: {
+        title: '确认变更角色',
+        message: `确定要变更 ${data?.username} 的角色吗？`,
+        content: (
+          <div style={{ background: '#e6f7ff', padding: 16, borderRadius: 4, border: '1px solid #91d5ff' }}>
+            <Typography.Text>角色变更将影响该用户的权限。</Typography.Text>
+          </div>
+        ),
+        danger: false,
+        iconColor: '#1890ff',
+        confirmText: '确认变更'
+      },
+      invite: {
+        title: '确认邀请用户',
+        message: `确定要邀请用户加入容器 ${data?.record?.container_name} 吗？`,
+        content: null,
+        danger: false,
+        iconColor: '#52c41a',
+        confirmText: '确认邀请'
+      }
+    };
+    
+    return configs[type] || {};
+  };
+
   return (
+    <>
+      <ConfirmModal
+        visible={modal.visible}
+        title={getModalConfig().title}
+        message={getModalConfig().message}
+        content={getModalConfig().content}
+        danger={getModalConfig().danger}
+        iconColor={getModalConfig().iconColor}
+        confirmText={getModalConfig().confirmText}
+        onConfirm={handleModalConfirm}
+        onCancel={closeModal}
+        loading={modal.loading}
+      />
+      
     <Splitter layout="vertical" style={{ height: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
       <Splitter.Panel>
         <Table dataSource={data} style={{ padding: '16px' }}>
@@ -142,12 +269,11 @@ const Home = () => {
                         key={`${username}-${idx}`}
                         closable={isAdmin}
                         onClose={e => {
-                          // Temporarily do not remove tag on close — just log and prevent default behavior
                           if (e && typeof e.preventDefault === 'function') {
                             e.preventDefault();
                             e.stopPropagation && e.stopPropagation();
                           }
-                          console.log('close clicked (no-op):', username, 'on', record);
+                          handleRemoveUser(record, username);
                         }}
                       >
                         {String(username)}
@@ -201,6 +327,7 @@ const Home = () => {
         </Table>
       </Splitter.Panel>
     </Splitter>
+    </>
   );
 };
 
