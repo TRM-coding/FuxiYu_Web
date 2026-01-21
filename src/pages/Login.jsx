@@ -98,6 +98,7 @@ const LoginBlock = () => {
 				onConfirm={() => setConfirmVisible(false)}
 				onCancel={() => setConfirmVisible(false)}
 				confirmText="知道了"
+				showCancel={false}
 				cancelText="取消"
 			/>
 		</>
