@@ -1,51 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine } from '../api/machine_api';
 import { SearchOutlined, DownOutlined, UpOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm } from 'antd';
+import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio } from 'antd';
+import ConfirmModal from '../components/ConfirmModal';
 const { Column } = Table;
 const { Option } = Select;
 
-// 模拟机器数据
-const machineData = [
-  {
-    key: '1',
-    machine_name: '服务器A',
-    machine_ip: '192.168.1.101',
-    machine_type: 'CPU服务器',
-    machine_status: 'online',
-    cpu_core_number: 16,
-    memory_size_gb: 64,
-    gpu_number: 0,
-    gpu_type: '无',
-    disk_size_gb: 2048,
-    machine_description: '前端服务部署机器'
-  },
-  {
-    key: '2',
-    machine_name: 'GPU工作站B',
-    machine_ip: '192.168.1.102',
-    machine_type: 'GPU工作站',
-    machine_status: 'maintenance',
-    cpu_core_number: 32,
-    memory_size_gb: 128,
-    gpu_number: 2,
-    gpu_type: 'NVIDIA RTX 4090',
-    disk_size_gb: 4096,
-    machine_description: 'AI模型训练机器'
-  },
-  {
-    key: '3',
-    machine_name: '存储服务器C',
-    machine_ip: '192.168.1.103',
-    machine_type: '存储服务器',
-    machine_status: 'online',
-    cpu_core_number: 8,
-    memory_size_gb: 32,
-    gpu_number: 0,
-    gpu_type: '无',
-    disk_size_gb: 16384,
-    machine_description: '数据存储节点'
-  }
-];
+// machines loaded from backend
+const defaultPageSize = 100;
 
 // 模拟所有用户数据（用于添加用户时的选择）
 const allUsers = [
@@ -687,6 +649,9 @@ const ManageMachine = () => {
 
   // 展开的行key
   const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+  // machines from backend
+  const [machines, setMachines] = useState([]);
+  const [machinesLoading, setMachinesLoading] = useState(false);
   
   // 容器搜索状态
   const [containerSearch, setContainerSearch] = useState({});
@@ -695,12 +660,80 @@ const ManageMachine = () => {
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState(null);
+  // 添加宿主机弹窗
+  const [addHostVisible, setAddHostVisible] = useState(false);
+  const [addHostLoading, setAddHostLoading] = useState(false);
+  const [addHostForm] = Form.useForm();
+  // 删除机器的确认弹窗
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [deleteTargetMachine, setDeleteTargetMachine] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // load machines from backend on mount
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setMachinesLoading(true);
+      try {
+        const res = await listAllMachineBrefInformation({ page_number: 0, page_size: defaultPageSize });
+        const items = (res && res.machines) || [];
+        // map to existing shape with minimal defaults and keep machine_id
+        const mapped = items.map((m, idx) => ({
+          key: String(m.machine_id || idx + 1),
+          machine_id: m.machine_id,
+          machine_name: m.machine_name || '',
+          machine_ip: m.machine_ip || '',
+          machine_type: m.machine_type || '',
+          machine_status: m.machine_status || '',
+          cpu_core_number: null,
+          memory_size_gb: null,
+          gpu_number: null,
+          gpu_type: null,
+          disk_size_gb: null,
+          machine_description: ''
+        }));
+        // fetch details for each machine (merge fields); tolerate individual failures
+        try {
+          const detailPromises = mapped.map(it =>
+            getDetailInformation(it.machine_id).catch(err => {
+              console.warn('detail fetch failed for', it.machine_id, err && err.message);
+              return null;
+            })
+          );
+          const details = await Promise.all(detailPromises);
+          const merged = mapped.map((it, i) => {
+            const d = details[i];
+            if (!d) return it;
+            return {
+              ...it,
+              cpu_core_number: d.cpu_core_number ?? it.cpu_core_number,
+              memory_size_gb: d.memory_size_gb ?? it.memory_size_gb,
+              gpu_number: d.gpu_number ?? it.gpu_number,
+              gpu_type: d.gpu_type ?? it.gpu_type,
+              disk_size_gb: d.disk_size_gb ?? it.disk_size_gb,
+              machine_description: d.machine_description ?? it.machine_description
+            };
+          });
+          if (mounted) setMachines(merged);
+        } catch (e) {
+          // fallback to mapped if something unexpected fails
+          if (mounted) setMachines(mapped);
+        }
+      } catch (err) {
+        console.error('Failed to load machines', err);
+      } finally {
+        if (mounted) setMachinesLoading(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, []);
 
   // 过滤机器数据
-  const filteredMachineData = machineData.filter(machine => {
-    const matchName = machine.machine_name.toLowerCase().includes(searchName.toLowerCase());
-    const matchIP = machine.machine_ip.includes(searchIP);
-    const matchType = machine.machine_type.toLowerCase().includes(searchType.toLowerCase());
+  const filteredMachineData = machines.filter(machine => {
+    const matchName = (machine.machine_name || '').toLowerCase().includes(searchName.toLowerCase());
+    const matchIP = (machine.machine_ip || '').includes(searchIP);
+    const matchType = (machine.machine_type || '').toLowerCase().includes(searchType.toLowerCase());
     return matchName && matchIP && matchType;
   });
 
@@ -754,6 +787,109 @@ const ManageMachine = () => {
   const openContainerDetail = (container) => {
     setSelectedContainer(container);
     setDetailModalVisible(true);
+  };
+
+  // 打开添加宿主机弹窗
+  const openAddHostModal = () => {
+    addHostForm.resetFields();
+    setAddHostVisible(true);
+  };
+
+  // 添加宿主机确认
+  const handleAddHostConfirm = async () => {
+    try {
+      const values = await addHostForm.validateFields();
+      setAddHostLoading(true);
+
+      const payload = {
+        machine_name: values.machine_name,
+        machine_ip: values.machine_ip,
+        machine_type: (values.machine_type || 'CPU').toUpperCase(),
+        machine_description: values.machine_description || '',
+        cpu_core_number: values.cpu_core_number || null,
+        gpu_number: values.gpu_number || null,
+        gpu_type: values.gpu_type || null,
+        memory_size: values.memory_size || null,
+        disk_size: values.disk_size || null,
+      };
+
+      try {
+        const res = await addMachine(payload).catch(err => { throw err; });
+        // try to get id from response, fallback to timestamp
+        const newId = (res && (res.machine_id || res.id)) ? String(res.machine_id || res.id) : String(Date.now());
+        const newMachine = {
+          key: newId,
+          machine_id: newId,
+          machine_name: payload.machine_name,
+          machine_ip: payload.machine_ip,
+          machine_type: payload.machine_type,
+          machine_status: values.machine_status || 'ONLINE',
+          cpu_core_number: payload.cpu_core_number,
+          memory_size_gb: payload.memory_size,
+          gpu_number: payload.gpu_number,
+          gpu_type: payload.gpu_type,
+          disk_size_gb: payload.disk_size,
+          machine_description: payload.machine_description || ''
+        };
+        setMachines(prev => [newMachine, ...prev]);
+        message.success('宿主机已添加');
+      } catch (err) {
+        console.error('addMachine failed', err);
+        message.error('添加宿主机失败，已本地保存');
+        const newId = String(Date.now());
+        const newMachine = {
+          key: newId,
+          machine_id: newId,
+          machine_name: payload.machine_name,
+          machine_ip: payload.machine_ip,
+          machine_type: payload.machine_type,
+          machine_status: values.machine_status || 'ONLINE',
+          cpu_core_number: payload.cpu_core_number,
+          memory_size_gb: payload.memory_size,
+          gpu_number: payload.gpu_number,
+          gpu_type: payload.gpu_type,
+          disk_size_gb: payload.disk_size,
+          machine_description: payload.machine_description || ''
+        };
+        setMachines(prev => [newMachine, ...prev]);
+      } finally {
+        setAddHostLoading(false);
+        setAddHostVisible(false);
+      }
+    } catch (err) {
+      // validation failed
+    }
+  };
+
+  // 打开删除确认弹窗
+  const openDeleteConfirm = (machine) => {
+    setDeleteTargetMachine(machine);
+    setDeleteConfirmVisible(true);
+  };
+
+  // 确认删除机器
+  const handleDeleteConfirm = () => {
+    if (!deleteTargetMachine) return;
+    setDeleteLoading(true);
+    // 调用后端删除接口
+    const ids = [];
+    if (deleteTargetMachine.machine_id) ids.push(deleteTargetMachine.machine_id);
+    else ids.push(deleteTargetMachine.key);
+    removeMachine(ids).then(() => {
+      setMachines(prev => prev.filter(m => m.key !== deleteTargetMachine.key && m.machine_id !== deleteTargetMachine.machine_id));
+      containerData = containerData.filter(c => c.machine_id !== deleteTargetMachine.key && c.machine_id !== String(deleteTargetMachine.machine_id));
+      message.success('宿主机已删除');
+    }).catch(err => {
+      console.error('removeMachine failed', err);
+      // fallback to local remove
+      setMachines(prev => prev.filter(m => m.key !== deleteTargetMachine.key));
+      containerData = containerData.filter(c => c.machine_id !== deleteTargetMachine.key && c.machine_id !== String(deleteTargetMachine.machine_id));
+      message.warning('删除请求失败，本地已移除');
+    }).finally(() => {
+      setDeleteLoading(false);
+      setDeleteConfirmVisible(false);
+      setDeleteTargetMachine(null);
+    });
   };
 
   // 打开编辑弹窗
@@ -895,6 +1031,11 @@ const ManageMachine = () => {
                     搜索
                   </Button>
                 </Col>
+                <Col>
+                  <Button type="default" icon={<PlusOutlined />} onClick={openAddHostModal}>
+                    添加宿主机
+                  </Button>
+                </Col>
               </Row>
             </Space>
           </Flex>
@@ -907,6 +1048,7 @@ const ManageMachine = () => {
               dataSource={filteredMachineData} 
               rowKey="key" 
               pagination={{ pageSize: 5 }}
+              loading={machinesLoading}
               bordered
               scroll={{ x: true }}
               expandable={expandable}
@@ -947,7 +1089,7 @@ const ManageMachine = () => {
                       >
                         {isExpanded ? '收起容器' : '查看容器'}
                       </Button>
-                      <Button><a style={{ color: '#ff4d4f' }}>删除</a></Button>
+                      <Button onClick={() => openDeleteConfirm(record)}><a style={{ color: '#ff4d4f' }}>删除</a></Button>
                       <Button><a style={{ color: '#faad14' }}>重启</a></Button>
                     </Space>
                   );
@@ -957,6 +1099,144 @@ const ManageMachine = () => {
           </div>
         </Splitter.Panel>
       </Splitter>
+
+      {/* 添加宿主机 确认弹窗（包含表单） */}
+      <ConfirmModal
+        visible={addHostVisible}
+        title="添加宿主机"
+        message="请填写宿主机信息并确认"
+        onConfirm={handleAddHostConfirm}
+        onCancel={() => setAddHostVisible(false)}
+        loading={addHostLoading}
+        confirmText="添加"
+      
+        content={
+          <Form
+            form={addHostForm}
+            layout="vertical"
+            initialValues={{ machine_type: 'CPU', gpu_number: 0 }}
+            onValuesChange={(changedValues) => {
+              if (changedValues.machine_type && changedValues.machine_type !== 'GPU') {
+                addHostForm.setFieldsValue({ gpu_number: 0 });
+              }
+            }}
+          >
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }]}> 
+                  <Input placeholder="机器名" />
+                </Form.Item>
+              </Col>
+
+              <Col span={12}>
+                <Form.Item name="machine_ip" label="IP 地址" rules={[{ required: true, message: '请输入IP地址' }]}> 
+                  <Input placeholder="192.168.x.x" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="machine_type" label="机器类型" initialValue="CPU">
+                  <Radio.Group
+                    options={[
+                      { label: 'CPU', value: 'CPU' },
+                      { label: 'GPU', value: 'GPU' }
+                    ]}
+                    optionType="button"
+                  />
+                </Form.Item>
+              </Col>
+
+              <Col span={12}>
+                <Form.Item name="machine_status" label="状态" initialValue="ONLINE">
+                  <Select>
+                    <Option value="ONLINE">运行中</Option>
+                    <Option value="MAINTENANCE">维护中</Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="cpu_core_number" label="CPU 核心数">
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item shouldUpdate noStyle>
+                  {() => {
+                    const mt = addHostForm.getFieldValue('machine_type');
+                    return (
+                      <Form.Item name="gpu_number" label="GPU 数量">
+                        <InputNumber min={0} style={{ width: '100%' }} disabled={mt !== 'GPU'} />
+                      </Form.Item>
+                    );
+                  }}
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Form.Item shouldUpdate noStyle>
+              {({ getFieldValue }) => {
+                const mt = getFieldValue('machine_type');
+                const gnum = getFieldValue('gpu_number');
+                if (mt === 'GPU' || (typeof gnum === 'number' && gnum > 0)) {
+                  return (
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item name="gpu_type" label="GPU 型号">
+                          <Input placeholder="例如：NVIDIA Tesla V100" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12} />
+                    </Row>
+                  );
+                }
+                return null;
+              }}
+            </Form.Item>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="memory_size" label="内存 (GB)">
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="disk_size" label="磁盘 (GB)">
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row>
+              <Col span={24}>
+                <Form.Item name="machine_description" label="描述">
+                  <Input.TextArea rows={3} placeholder="可选，机器描述" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        }
+      />
+
+      {/* 删除宿主机 - 二次确认（敏感行为） */}
+      <ConfirmModal
+        visible={deleteConfirmVisible}
+        title="删除宿主机"
+        message={
+          deleteTargetMachine
+            ? `即将删除宿主机：${deleteTargetMachine.machine_name || deleteTargetMachine.key}，此操作会移除该机器及其所有容器，属于敏感行为，请再次确认。`
+            : '确认删除该宿主机？'
+        }
+        danger
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => { setDeleteConfirmVisible(false); setDeleteTargetMachine(null); }}
+        loading={deleteLoading}
+        confirmText="删除"
+      />
 
       {/* 容器详情弹窗 */}
       <ContainerDetailModal
