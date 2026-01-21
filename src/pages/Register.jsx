@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button, Form, Input, InputNumber } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { registerUser } from '../api/user_api_chester';
+import { registerUser } from '../api/user_api';
 import ConfirmModal from '../components/ConfirmModal';
 const layout = {
   labelCol: { span: 8 },
@@ -102,7 +102,6 @@ const RegisterBlock = () => {
     onCancel={() => setConfirmVisible(false)}
     confirmText="知道了"
     showCancel={false}
-    cancelText="取消"
   />
   </>
   );

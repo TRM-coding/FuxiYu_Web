@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Button, Checkbox, Form, Input, message } from 'antd';
 import { useNavigate } from 'react-router-dom';
-// import { loginUser } from '../api/user_api';
-import { loginUser } from '../api/user_api_chester';
+import { loginUser } from '../api/user_api';
 import ConfirmModal from '../components/ConfirmModal';
 
 const LoginBlock = () => {
@@ -99,7 +98,6 @@ const LoginBlock = () => {
 				onCancel={() => setConfirmVisible(false)}
 				confirmText="知道了"
 				showCancel={false}
-				cancelText="取消"
 			/>
 		</>
 	);
