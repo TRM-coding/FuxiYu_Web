@@ -14,11 +14,6 @@ const items = [
     label: '宿主机管理',
     key: '/admin/machines',
     icon: <InfoCircleOutlined />,
-  },
-  {
-    label: '容器管理',
-    key: '/admin/containers',
-    icon: <InfoCircleOutlined />,
   }
 ];
 

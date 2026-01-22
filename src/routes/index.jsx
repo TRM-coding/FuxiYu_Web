@@ -12,7 +12,6 @@ import Apply from '../pages/Apply'
 import User from '../pages/User'
 import ManageUser from '../pages/ManageUser'
 import ManageMachine from '../pages/ManageMachine'
-import ManageContainer from '../pages/ManageContainer'
 import AdminProfile from '../pages/AdminProfile'
 
 
@@ -31,7 +30,6 @@ export default function AppRoutes() {
       <Route path="/admin" element={<AdminLayout />}>
         <Route path="users" element={<ManageUser />} />
         <Route path="machines" element={<ManageMachine />} />
-        <Route path="containers" element={<ManageContainer />} />
         <Route path="profile" element={<AdminProfile />} /> 
       </Route>
 
