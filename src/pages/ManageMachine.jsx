@@ -1,26 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine } from '../api/machine_api';
+import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio } from 'antd';
+import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 const { Column } = Table;
 const { Option } = Select;
 
+import { listAllUserBrefInformation } from '../api/user_api';
+
 // machines loaded from backend
 const defaultPageSize = 100;
 
-// 模拟所有用户数据（用于添加用户时的选择）
-const allUsers = [
-  { id: 1, username: 'zhangsan', name: '张三', status: '在线' },
-  { id: 2, username: 'lisi', name: '李四', status: '在线' },
-  { id: 3, username: 'wangwu', name: '王五', status: '在线' },
-  { id: 4, username: 'zhaoliu', name: '赵六', status: '在线' },
-  { id: 5, username: 'qianqi', name: '钱七', status: '离线' },
-  { id: 6, username: 'sunba', name: '孙八', status: '在线' },
-  { id: 7, username: 'zhoujiu', name: '周九', status: '在线' },
-  { id: 8, username: 'wushi', name: '吴十', status: '在线' },
-  { id: 9, username: 'zhengshi', name: '郑石', status: '离线' }
-];
+// Users are fetched from backend; local mock removed.
 
 // ROLE枚举定义
 const ROLE = {
@@ -29,66 +21,8 @@ const ROLE = {
   ROOT: 'ROOT'
 };
 
-// 模拟容器数据 - 初始数据
-let containerData = [
-  { 
-    key: 'c1-1', 
-    machine_id: '1', 
-    container_name: 'nginx容器', 
-    container_image: 'nginx:1.24', 
-    port: '80:80', 
-    container_status: 'online',
-    machine_ip: '192.168.1.101',
-    owners: ['张三', '李四', '王五'],
-    accounts: [
-      { username: 'zhangsan', role: ROLE.ROOT, status: '在线' },
-      { username: 'lisi', role: ROLE.COLLABORATOR, status: '在线' },
-      { username: 'wangwu', role: ROLE.COLLABORATOR, status: '在线' }
-    ]
-  },
-  { 
-    key: 'c1-2', 
-    machine_id: '1', 
-    container_name: 'react前端容器', 
-    container_image: 'react:18', 
-    port: '8080:80', 
-    container_status: 'online',
-    machine_ip: '192.168.1.101',
-    owners: ['赵六', '张三'],
-    accounts: [
-      { username: 'zhaoliu', role: ROLE.ADMIN, status: '在线' },
-      { username: 'zhangsan', role: ROLE.ROOT, status: '在线' }
-    ]
-  },
-  { 
-    key: 'c2-1', 
-    machine_id: '2', 
-    container_name: 'tensorflow训练容器', 
-    container_image: 'tensorflow:2.15', 
-    port: '8888:8888', 
-    container_status: 'maintenance',
-    machine_ip: '192.168.1.102',
-    owners: ['钱七', '张三', '孙八'],
-    accounts: [
-      { username: 'qianqi', role: ROLE.ADMIN, status: '离线' },
-      { username: 'zhangsan', role: ROLE.ROOT, status: '在线' },
-      { username: 'sunba', role: ROLE.COLLABORATOR, status: '在线' }
-    ]
-  },
-  { 
-    key: 'c3-1', 
-    machine_id: '3', 
-    container_name: '存储容器', 
-    container_image: 'centos:7', 
-    port: '9000:9000', 
-    container_status: 'online',
-    machine_ip: '192.168.1.103',
-    owners: ['周九'],
-    accounts: [
-      { username: 'zhoujiu', role: ROLE.ADMIN, status: '在线' }
-    ]
-  }
-];
+// Container data is fetched from server and cached in `containerMap`.
+// Removed local mock `containerData` to always rely on backend responses.
 
 // 角色配置
 const ROLE_CONFIG = {
@@ -136,7 +70,7 @@ const getRoleIcon = (role) => {
 };
 
 // 编辑用户弹窗组件
-const EditUserModal = ({ visible, container, onClose, onSave }) => {
+const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], usersLoading = false }) => {
   const [form] = Form.useForm();
   const [editing, setEditing] = useState(false);
   const [accounts, setAccounts] = useState([]);
@@ -176,7 +110,6 @@ const EditUserModal = ({ visible, container, onClose, onSave }) => {
     const newAccount = {
       username: selectedUser.username,
       role: selectedRole,
-      status: selectedUser.status,
       ownerName: selectedUser.name,
       key: selectedUser.username
     };
@@ -226,8 +159,7 @@ const EditUserModal = ({ visible, container, onClose, onSave }) => {
     setTimeout(() => {
       const updatedAccounts = accounts.map(acc => ({
         username: acc.username,
-        role: acc.role,
-        status: acc.status
+        role: acc.role
       }));
       
       const updatedOwners = accounts.map(acc => acc.ownerName);
@@ -245,8 +177,8 @@ const EditUserModal = ({ visible, container, onClose, onSave }) => {
     }, 500);
   };
 
-  // 获取可选用户列表（排除已添加的用户）
-  const availableUsers = allUsers.filter(
+  // 获取可选用户列表（排除已添加的用户），数据来自传入的 `usersList`
+  const availableUsers = (usersList || []).filter(
     user => !accounts.some(acc => acc.username === user.username)
   );
 
@@ -298,9 +230,10 @@ const EditUserModal = ({ visible, container, onClose, onSave }) => {
                 placeholder="选择用户"
                 style={{ width: '100%' }}
                 value={selectedUser?.username}
+                disabled={usersLoading}
                 onChange={(value) => {
-                  const user = allUsers.find(u => u.username === value);
-                  setSelectedUser(user);
+                  const user = usersList.find(u => u.username === value);
+                  setSelectedUser(user || null);
                 }}
                 showSearch
                 optionFilterProp="children"
@@ -313,9 +246,6 @@ const EditUserModal = ({ visible, container, onClose, onSave }) => {
                     <Space>
                       <Avatar size="small" src={getAvatarUrl(user.username)} />
                       <span>{user.name} (@{user.username})</span>
-                      <Tag color={user.status === '在线' ? 'green' : 'gray'} size="small">
-                        {user.status}
-                      </Tag>
                     </Space>
                   </Option>
                 ))}
@@ -410,9 +340,6 @@ const EditUserModal = ({ visible, container, onClose, onSave }) => {
                   title={
                     <Space>
                       <Typography.Text strong>{account.ownerName}</Typography.Text>
-                      <Tag color={account.status === '在线' ? 'green' : 'gray'}>
-                        {account.status}
-                      </Tag>
                     </Space>
                   }
                   description={
@@ -619,9 +546,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit }) => {
                               <Typography.Text strong>
                                 {account.ownerName}
                               </Typography.Text>
-                              <Tag color={account.status === '在线' ? 'green' : 'gray'} size="small">
-                                {account.status}
-                              </Tag>
+                              {/* 用户在线状态这个其实根本没实现 故暂弃用*/}
                             </div>
                             <Typography.Text type="secondary" style={{ display: 'block' }}>
                               @{account.username}
@@ -655,6 +580,11 @@ const ManageMachine = () => {
   
   // 容器搜索状态
   const [containerSearch, setContainerSearch] = useState({});
+  // containers per machine cache: { [machineId]: { loading: bool, data: [] } }
+  const [containerMap, setContainerMap] = useState({});
+  // users fetched from backend (used for selecting when adding users to a container)
+  const [usersList, setUsersList] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
 
   // 弹窗状态
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -664,6 +594,9 @@ const ManageMachine = () => {
   const [addHostVisible, setAddHostVisible] = useState(false);
   const [addHostLoading, setAddHostLoading] = useState(false);
   const [addHostForm] = Form.useForm();
+  // 编辑模式
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editTargetMachine, setEditTargetMachine] = useState(null);
   // 删除机器的确认弹窗
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deleteTargetMachine, setDeleteTargetMachine] = useState(null);
@@ -683,8 +616,8 @@ const ManageMachine = () => {
           machine_id: m.machine_id,
           machine_name: m.machine_name || '',
           machine_ip: m.machine_ip || '',
-          machine_type: m.machine_type || '',
-          machine_status: m.machine_status || '',
+          machine_type: (m.machine_type || '').toUpperCase(),
+          machine_status: (m.machine_status || '').toLowerCase(),
           cpu_core_number: null,
           memory_size_gb: null,
           gpu_number: null,
@@ -711,7 +644,9 @@ const ManageMachine = () => {
               gpu_number: d.gpu_number ?? it.gpu_number,
               gpu_type: d.gpu_type ?? it.gpu_type,
               disk_size_gb: d.disk_size_gb ?? it.disk_size_gb,
-              machine_description: d.machine_description ?? it.machine_description
+              machine_description: d.machine_description ?? it.machine_description,
+              machine_type: (d.machine_type ?? it.machine_type).toUpperCase(),
+              machine_status: (d.machine_status ?? it.machine_status).toLowerCase()
             };
           });
           if (mounted) setMachines(merged);
@@ -729,6 +664,27 @@ const ManageMachine = () => {
     return () => { mounted = false; };
   }, []);
 
+  // 选择要加入的用户
+  useEffect(() => {
+    let mounted = true;
+    const loadUsers = async () => {
+      setUsersLoading(true);
+      try {
+        const res = await listAllUserBrefInformation({ page_number: 0, page_size: 500 });
+        const items = (res && (res.users || res.users_info || res.data || res.users_list)) || [];
+        const mapped = items.map(u => ({ id: u.user_id || u.id || u.uid || u.userId, username: u.username || u.name || String(u.id), name: u.display_name || u.name || u.username }));
+        if (mounted) setUsersList(mapped);
+      } catch (err) {
+        console.error('Failed to load users', err);
+        if (mounted) setUsersList([]);
+      } finally {
+        if (mounted) setUsersLoading(false);
+      }
+    };
+    loadUsers();
+    return () => { mounted = false; };
+  }, []);
+
   // 过滤机器数据
   const filteredMachineData = machines.filter(machine => {
     const matchName = (machine.machine_name || '').toLowerCase().includes(searchName.toLowerCase());
@@ -739,10 +695,12 @@ const ManageMachine = () => {
 
   // 获取某个机器的容器数据
   const getContainersForMachine = (machineId) => {
-    let containers = containerData.filter(container => container.machine_id === machineId);
+    const mid = String(machineId); // 这里统一使用字符串key
+    const cached = containerMap[mid]; // 这里可能是undefined
+    let containers = (cached && cached.data) || [];
     
-    // 应用搜索过滤
-    const searchText = containerSearch[machineId];
+    // 应用搜索过滤 ( string/number 都支持 )
+    const searchText = containerSearch[mid] || containerSearch[machineId];
     if (searchText) {
       containers = containers.filter(container => 
         container.container_name.toLowerCase().includes(searchText.toLowerCase())
@@ -750,6 +708,38 @@ const ManageMachine = () => {
     }
     
     return containers;
+  };
+
+  const fetchContainersForMachine = async (machineId, pageNumber = 0) => {
+    // avoid duplicate fetch
+    if (!machineId) return;
+    const mid = String(machineId);
+    // if same page already loaded, skip
+    if (containerMap[mid]?.loading || (containerMap[mid]?.data && containerMap[mid]?.page === pageNumber)) return;
+    // mark loading
+    setContainerMap(prev => ({ ...prev, [mid]: { ...(prev[mid] || {}), loading: true, data: [], page: pageNumber, total_page: prev[mid]?.total_page || 1 } }));
+    try {
+      const pageSize = 5;
+      const res = await listAllContainerBrefInformation({ machine_id: mid, page_number: pageNumber, page_size: pageSize });
+      const items = (res && (res.containers_info || res.containers)) || [];
+      const total_page = (res && (res.total_page || res.totalPages || res.total_pages)) || 1;
+      const mapped = items.map((c, idx) => ({
+        key: c.container_id ? String(c.container_id) : `${mid}-${pageNumber}-${idx}`,
+        container_name: c.container_name || c.name || `container-${idx}`,
+        container_image: c.container_image || '',
+        port: c.port ? String(c.port) : (c.port_str || ''),
+        container_status: (c.container_status || '').toLowerCase(),
+        machine_id: mid,
+        machine_ip: c.machine_ip || '',
+        owners: c.owners || [],
+        accounts: c.accounts || []
+      }));
+      setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: mapped, page: pageNumber, total_page: total_page, page_size: pageSize } }));
+    } catch (err) {
+      console.error('fetchContainersForMachine failed', machineId, err);
+      // fallback: keep loading false but no data so UI will use local mock
+      setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: [], page: pageNumber, total_page: 1 } }));
+    }
   };
 
   // 机器状态标签
@@ -783,15 +773,69 @@ const ManageMachine = () => {
     }));
   };
 
-  // 打开容器详情弹窗
-  const openContainerDetail = (container) => {
-    setSelectedContainer(container);
-    setDetailModalVisible(true);
+  // 打开容器详情弹窗: 先从后端获取详情数据再展示
+  const openContainerDetail = async (container) => {
+    if (!container) return;
+    const cid = container.key || container.container_id || container.container_id === 0 ? container.key || container.container_id : null;
+    try {
+      // show small loading state by clearing selection
+      setSelectedContainer(null);
+      // fetch detail from server
+      const res = await getContainerDetailInformation(cid);
+      // support multiple possible response shapes
+      const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
+      if (!detail) {
+        message.error('未能获取容器详情');
+        return;
+      }
+      const mapped = {
+        key: detail.container_id ? String(detail.container_id) : (container.key || String(Date.now())),
+        container_name: detail.container_name || detail.name || container.container_name || '',
+        container_image: detail.container_image || detail.image || container.container_image || '',
+        port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
+        container_status: (detail.container_status || detail.status || '').toLowerCase(),
+        machine_ip: detail.machine_ip || container.machine_ip || '',
+        owners: detail.owners || detail.owner_list || container.owners || [],
+        accounts: detail.accounts || detail.account_list || container.accounts || []
+      };
+      setSelectedContainer(mapped);
+      setDetailModalVisible(true);
+    } catch (err) {
+      console.error('getContainerDetailInformation failed', err);
+      message.error('获取容器详情失败');
+      // fallback: show passed container if available
+      setSelectedContainer(container);
+      setDetailModalVisible(true);
+    }
   };
 
   // 打开添加宿主机弹窗
   const openAddHostModal = () => {
     addHostForm.resetFields();
+    // set defaults for add mode: default status = maintenance
+    addHostForm.setFieldsValue({ machine_status: 'maintenance', machine_type: 'CPU', gpu_number: 0 });
+    setIsEditMode(false);
+    setEditTargetMachine(null);
+    setAddHostVisible(true);
+  };
+
+  // 打开编辑宿主机弹窗（与添加使用同一表单，但为编辑模式）
+  const openEditMachine = (machine) => {
+    setIsEditMode(true);
+    setEditTargetMachine(machine);
+    // 预填表单
+    addHostForm.setFieldsValue({
+      machine_name: machine.machine_name || '',
+      machine_ip: machine.machine_ip || '',
+      machine_type: (machine.machine_type || 'CPU').toUpperCase() === 'GPU' ? 'GPU' : 'CPU',
+      machine_status: (machine.machine_status || 'online').toLowerCase(),
+      cpu_core_number: machine.cpu_core_number || null,
+      gpu_number: machine.gpu_number ?? 0,
+      gpu_type: machine.gpu_type || '',
+      memory_size: machine.memory_size_gb || null,
+      disk_size: machine.disk_size_gb || null,
+      machine_description: machine.machine_description || ''
+    });
     setAddHostVisible(true);
   };
 
@@ -800,61 +844,96 @@ const ManageMachine = () => {
     try {
       const values = await addHostForm.validateFields();
       setAddHostLoading(true);
-
       const payload = {
         machine_name: values.machine_name,
         machine_ip: values.machine_ip,
+        // send machine_type as uppercase (per request)
         machine_type: (values.machine_type || 'CPU').toUpperCase(),
+        // send status as lowercase
+        machine_status: (values.machine_status || 'online').toLowerCase(),
         machine_description: values.machine_description || '',
         cpu_core_number: values.cpu_core_number || null,
-        gpu_number: values.gpu_number || null,
+        gpu_number: values.gpu_number || 0,
         gpu_type: values.gpu_type || null,
         memory_size: values.memory_size || null,
         disk_size: values.disk_size || null,
       };
 
-      try {
-        const res = await addMachine(payload).catch(err => { throw err; });
-        // try to get id from response, fallback to timestamp
-        const newId = (res && (res.machine_id || res.id)) ? String(res.machine_id || res.id) : String(Date.now());
-        const newMachine = {
-          key: newId,
-          machine_id: newId,
-          machine_name: payload.machine_name,
-          machine_ip: payload.machine_ip,
-          machine_type: payload.machine_type,
-          machine_status: values.machine_status || 'ONLINE',
-          cpu_core_number: payload.cpu_core_number,
-          memory_size_gb: payload.memory_size,
-          gpu_number: payload.gpu_number,
-          gpu_type: payload.gpu_type,
-          disk_size_gb: payload.disk_size,
-          machine_description: payload.machine_description || ''
-        };
-        setMachines(prev => [newMachine, ...prev]);
-        message.success('宿主机已添加');
-      } catch (err) {
-        console.error('addMachine failed', err);
-        message.error('添加宿主机失败，已本地保存');
-        const newId = String(Date.now());
-        const newMachine = {
-          key: newId,
-          machine_id: newId,
-          machine_name: payload.machine_name,
-          machine_ip: payload.machine_ip,
-          machine_type: payload.machine_type,
-          machine_status: values.machine_status || 'ONLINE',
-          cpu_core_number: payload.cpu_core_number,
-          memory_size_gb: payload.memory_size,
-          gpu_number: payload.gpu_number,
-          gpu_type: payload.gpu_type,
-          disk_size_gb: payload.disk_size,
-          machine_description: payload.machine_description || ''
-        };
-        setMachines(prev => [newMachine, ...prev]);
-      } finally {
-        setAddHostLoading(false);
-        setAddHostVisible(false);
+      if (isEditMode && editTargetMachine) {
+        // 编辑模式 -> 调用更新接口
+        try {
+          const mid = editTargetMachine.machine_id || editTargetMachine.key;
+          await updateMachine(mid, payload);
+          const updatedMachine = {
+            ...editTargetMachine,
+            machine_name: payload.machine_name,
+            machine_ip: payload.machine_ip,
+            machine_type: (payload.machine_type || '').toUpperCase(),
+            machine_status: (values.machine_status || editTargetMachine.machine_status || 'online').toLowerCase(),
+            cpu_core_number: payload.cpu_core_number,
+            memory_size_gb: payload.memory_size,
+            gpu_number: payload.gpu_number,
+            gpu_type: payload.gpu_type,
+            disk_size_gb: payload.disk_size,
+            machine_description: payload.machine_description || ''
+          };
+          setMachines(prev => prev.map(m => (m.key === editTargetMachine.key ? updatedMachine : m)));
+          message.success('宿主机已更新');
+        } catch (err) {
+          console.error('updateMachine failed', err);
+          message.error('更新宿主机失败：' + (err?.message || '未知错误'));
+        } finally {
+          setAddHostLoading(false);
+          setAddHostVisible(false);
+          setIsEditMode(false);
+          setEditTargetMachine(null);
+        }
+      } else {
+        // 添加模式
+        try {
+          const res = await addMachine(payload).catch(err => { throw err; });
+          const newId = (res && (res.machine_id || res.id)) ? String(res.machine_id || res.id) : String(Date.now());
+          const newMachine = {
+            key: newId,
+            machine_id: newId,
+            machine_name: payload.machine_name,
+            machine_ip: payload.machine_ip,
+            machine_type: (payload.machine_type || '').toUpperCase(),
+            machine_status: (values.machine_status || 'online').toLowerCase(),
+            cpu_core_number: payload.cpu_core_number,
+            memory_size_gb: payload.memory_size,
+            gpu_number: payload.gpu_number,
+            gpu_type: payload.gpu_type,
+            disk_size_gb: payload.disk_size,
+            machine_description: payload.machine_description || ''
+          };
+          setMachines(prev => [newMachine, ...prev]);
+          message.success('宿主机已添加');
+        } catch (err) {
+          console.error('addMachine failed', err);
+          message.error('添加宿主机失败，已本地保存');
+          const newId = String(Date.now());
+          const newMachine = {
+            key: newId,
+            machine_id: newId,
+            machine_name: payload.machine_name,
+            machine_ip: payload.machine_ip,
+            // display as uppercase in UI
+            machine_type: (payload.machine_type || '').toUpperCase(),
+            // ensure status is lowercase for UI/internal consistency
+            machine_status: (values.machine_status || 'online').toLowerCase(),
+            cpu_core_number: payload.cpu_core_number,
+            memory_size_gb: payload.memory_size,
+            gpu_number: payload.gpu_number,
+            gpu_type: payload.gpu_type,
+            disk_size_gb: payload.disk_size,
+            machine_description: payload.machine_description || ''
+          };
+          setMachines(prev => [newMachine, ...prev]);
+        } finally {
+          setAddHostLoading(false);
+          setAddHostVisible(false);
+        }
       }
     } catch (err) {
       // validation failed
@@ -877,13 +956,23 @@ const ManageMachine = () => {
     else ids.push(deleteTargetMachine.key);
     removeMachine(ids).then(() => {
       setMachines(prev => prev.filter(m => m.key !== deleteTargetMachine.key && m.machine_id !== deleteTargetMachine.machine_id));
-      containerData = containerData.filter(c => c.machine_id !== deleteTargetMachine.key && c.machine_id !== String(deleteTargetMachine.machine_id));
+      setContainerMap(prev => { // 主要是即时相应删除数据 原文这里也是如此
+        const copy = { ...prev };
+        delete copy[deleteTargetMachine.key];
+        if (deleteTargetMachine.machine_id) delete copy[String(deleteTargetMachine.machine_id)];
+        return copy;
+      });
       message.success('宿主机已删除');
     }).catch(err => {
       console.error('removeMachine failed', err);
       // fallback to local remove
       setMachines(prev => prev.filter(m => m.key !== deleteTargetMachine.key));
-      containerData = containerData.filter(c => c.machine_id !== deleteTargetMachine.key && c.machine_id !== String(deleteTargetMachine.machine_id));
+      setContainerMap(prev => { // 同上
+        const copy = { ...prev };
+        delete copy[deleteTargetMachine.key];
+        if (deleteTargetMachine.machine_id) delete copy[String(deleteTargetMachine.machine_id)];
+        return copy;
+      });
       message.warning('删除请求失败，本地已移除');
     }).finally(() => {
       setDeleteLoading(false);
@@ -907,11 +996,14 @@ const ManageMachine = () => {
 
   // 保存用户权限修改
   const handleSaveUserPermissions = (updatedContainer) => {
-    // 在实际应用中，这里应该调用API更新数据
-    const index = containerData.findIndex(c => c.key === updatedContainer.key);
-    if (index !== -1) {
-      containerData[index] = updatedContainer;
-    }
+    // 这里更新 containerMap 中对应的容器数据
+    const mid = String(updatedContainer.machine_id || updatedContainer.machine_id);
+    setContainerMap(prev => {
+      const entry = prev[mid];
+      if (!entry || !entry.data) return prev;
+      const newData = entry.data.map(c => c.key === updatedContainer.key ? updatedContainer : c);
+      return { ...prev, [mid]: { ...entry, data: newData } };
+    });
     
     // 这里可以触发重新渲染
     message.success('用户权限已更新');
@@ -924,8 +1016,12 @@ const ManageMachine = () => {
       setExpandedRowKeys(expandedKeys);
     },
     expandedRowRender: (record) => {
-      const containers = getContainersForMachine(record.key);
-      
+      const mid = String(record.key);
+      // trigger fetch for this machine page 0 if needed
+      fetchContainersForMachine(mid, 0); // 根据机器求取容器数据
+      const entry = containerMap[mid] || {};
+      const containers = entry.data || [];
+
       return (
         <div style={{ margin: '16px 0', padding: '16px', background: '#fafafa', borderRadius: '4px' }}>
           <Row gutter={[16, 16]} style={{ marginBottom: '16px' }}>
@@ -947,10 +1043,11 @@ const ManageMachine = () => {
           </Typography.Title>
           <Table
             dataSource={containers}
-            rowKey="key"
-            pagination={containers.length > 5 ? { pageSize: 5 } : false}
+            rowKey="key" // 选择性展示翻页按钮 节省空间
+            pagination={containers.length > 5 ? { pageSize: entry.page_size || 5 } : false}
             bordered
             size="middle"
+            loading={entry.loading || false}
           >
             <Column title="容器ID" dataIndex="key" key="key" />
             <Column title="容器名" dataIndex="container_name" key="container_name" />
@@ -982,6 +1079,26 @@ const ManageMachine = () => {
               )}
             />
           </Table>
+          {/* 内侧列表的分页 */}
+          {(() => {
+            const mid = String(record.key);
+            const entry = containerMap[mid];
+            const pages = entry?.total_page || 0;
+            if (pages > 1) {
+              return (
+                <div style={{ marginTop: 12, textAlign: 'right' }}>
+                  <Pagination
+                    current={(entry?.page || 0) + 1}
+                    total={pages * (entry?.page_size || 5)}
+                    pageSize={entry?.page_size || 5}
+                    onChange={(p) => fetchContainersForMachine(record.key, p - 1)}
+                    size="small"
+                  />
+                </div>
+              );
+            }
+            return null;
+          })()}
         </div>
       );
     },
@@ -1089,7 +1206,8 @@ const ManageMachine = () => {
                       >
                         {isExpanded ? '收起容器' : '查看容器'}
                       </Button>
-                      <Button onClick={() => openDeleteConfirm(record)}><a style={{ color: '#ff4d4f' }}>删除</a></Button>
+                              <Button onClick={() => openEditMachine(record)}><a>编辑</a></Button>
+                              <Button onClick={() => openDeleteConfirm(record)}><a style={{ color: '#ff4d4f' }}>删除</a></Button>
                       <Button><a style={{ color: '#faad14' }}>重启</a></Button>
                     </Space>
                   );
@@ -1103,23 +1221,25 @@ const ManageMachine = () => {
       {/* 添加宿主机 确认弹窗（包含表单） */}
       <ConfirmModal
         visible={addHostVisible}
-        title="添加宿主机"
-        message="请填写宿主机信息并确认"
+        title={isEditMode ? "编辑宿主机" : "添加宿主机"}
+        message={isEditMode ? "请修改宿主机信息并确认更新" : "请填写宿主机信息并确认"}
         onConfirm={handleAddHostConfirm}
-        onCancel={() => setAddHostVisible(false)}
+        onCancel={() => { setAddHostVisible(false); setIsEditMode(false); setEditTargetMachine(null); }}
         loading={addHostLoading}
-        confirmText="添加"
-      
+        confirmText={isEditMode ? '更新' : '添加'}
         content={
           <Form
             form={addHostForm}
             layout="vertical"
-            initialValues={{ machine_type: 'CPU', gpu_number: 0 }}
-            onValuesChange={(changedValues) => {
-              if (changedValues.machine_type && changedValues.machine_type !== 'GPU') {
-                addHostForm.setFieldsValue({ gpu_number: 0 });
-              }
-            }}
+            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance' }}
+              onValuesChange={(changedValues) => {
+                if (changedValues.machine_type) {
+                  if (changedValues.machine_type !== 'GPU') {
+                    // when switching away from GPU, reset gpu-related fields
+                    addHostForm.setFieldsValue({ gpu_number: 0, gpu_type: '' });
+                  }
+                }
+              }}
           >
             <Row gutter={16}>
               <Col span={12}>
@@ -1148,14 +1268,14 @@ const ManageMachine = () => {
                 </Form.Item>
               </Col>
 
-              <Col span={12}>
-                <Form.Item name="machine_status" label="状态" initialValue="ONLINE">
-                  <Select>
-                    <Option value="ONLINE">运行中</Option>
-                    <Option value="MAINTENANCE">维护中</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
+                <Col span={12}>
+                  <Form.Item name="machine_status" label="状态">
+                    <Select disabled={!isEditMode}>
+                      <Option value="online">运行中</Option>
+                      <Option value="maintenance">维护中</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
             </Row>
 
             <Row gutter={16}>
@@ -1225,13 +1345,46 @@ const ManageMachine = () => {
       {/* 删除宿主机 - 二次确认（敏感行为） */}
       <ConfirmModal
         visible={deleteConfirmVisible}
-        title="删除宿主机"
-        message={
-          deleteTargetMachine
-            ? `即将删除宿主机：${deleteTargetMachine.machine_name || deleteTargetMachine.key}，此操作会移除该机器及其所有容器，属于敏感行为，请再次确认。`
-            : '确认删除该宿主机？'
+        title="确认删除宿主机"
+        message={deleteTargetMachine ? `请确认以下信息并删除宿主机 ${deleteTargetMachine.machine_name || deleteTargetMachine.key}` : '确认删除该宿主机？'}
+        content={
+          deleteTargetMachine ? (
+            <div style={{ 
+              background: '#fff2f0', 
+              padding: 16, 
+              borderRadius: 4,
+              border: '1px solid #ffccc7'
+            }}>
+              <Row gutter={[0, 8]}>
+                <Col span={24}>
+                  <Typography.Text type="secondary">机器ID：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetMachine.machine_id || deleteTargetMachine.key}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">机器名：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetMachine.machine_name}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">IP：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetMachine.machine_ip}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">类型：</Typography.Text>
+                  <Tag style={{ marginLeft: 8 }}>{(deleteTargetMachine.machine_type || '').toUpperCase()}</Tag>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">状态：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{(deleteTargetMachine.machine_status || '').toLowerCase()}</Typography.Text>
+                </Col>
+              </Row>
+              <Typography.Text type="danger" style={{ display: 'block', marginTop: 12 }}>
+                此操作不可恢复！此操作将移除该机器及其所有容器。
+              </Typography.Text>
+            </div>
+          ) : null
         }
         danger
+        iconColor="#ff4d4f"
         onConfirm={handleDeleteConfirm}
         onCancel={() => { setDeleteConfirmVisible(false); setDeleteTargetMachine(null); }}
         loading={deleteLoading}
@@ -1252,6 +1405,8 @@ const ManageMachine = () => {
         container={selectedContainer}
         onClose={closeAllModals}
         onSave={handleSaveUserPermissions}
+        usersList={usersList}
+        usersLoading={usersLoading}
       />
     </>
   );
