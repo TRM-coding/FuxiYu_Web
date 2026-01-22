@@ -1,12 +1,19 @@
 // 单文件配置，移除对 config.js 的依赖
 
-export const BACKEND_BASE_URL = 'http://localhost:5000';
+// Use IPv4 loopback to avoid IPv6 (::1) connection issues in some browsers
+export const BACKEND_BASE_URL = 'http://127.0.0.1:5000';
 export const REQUEST_TIMEOUT = 5000;
 export const CREDENTIALS = 'include'; // 携带 cookies
 
 export const API_ROUTES = {
+	// User routes
 	LOGIN: '/api/login',
 	REGISTER: '/api/register',
+	USERS_CHANGE_PASSWORD: '/api/users/change_password',
+	USERS_DELETE: '/api/users/delete_user',
+	USERS_GET_DETAIL: '/api/users/get_user_detail_information',
+	USERS_LIST: '/api/users/list_all_user_bref_information',
+
 	// Machine routes
 	MACHINES_ADD: '/api/machines/add_machine',
 	MACHINES_REMOVE: '/api/machines/remove_machine',
