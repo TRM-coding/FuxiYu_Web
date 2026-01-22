@@ -57,4 +57,109 @@ export const registerUser = async ({ username, email, password, graduation_year 
   }
 };
 
-// NOTE: Only `loginUser` and `registerUser` are implemented per API_DOC.md
+const getTokenHeader = () => {
+  try {
+    const token = localStorage.getItem('authToken');
+    return token ? { token } : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+export const changePasswordUser = async ({ user_id, old_password, new_password } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_CHANGE_PASSWORD}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getTokenHeader(),
+      },
+      body: JSON.stringify({ user_id, old_password, new_password }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    return await ensureOk(res, 'Change password');
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') throw new Error('Change password request timed out');
+    throw err;
+  }
+};
+
+export const deleteUser = async (user_id = 0, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_DELETE}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getTokenHeader(),
+      },
+      body: JSON.stringify({ user_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    return await ensureOk(res, 'Delete user');
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') throw new Error('Delete user request timed out');
+    throw err;
+  }
+};
+
+export const getUserDetailInformation = async (user_id = 0, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(`${BACKEND_BASE_URL}${API_ROUTES.USERS_GET_DETAIL}`);
+    url.searchParams.set('user_id', String(user_id));
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        ...getTokenHeader(),
+      },
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    return await ensureOk(res, 'Get user detail');
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') throw new Error('Get user detail request timed out');
+    throw err;
+  }
+};
+
+export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 10 } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(`${BACKEND_BASE_URL}${API_ROUTES.USERS_LIST}`);
+    url.searchParams.set('page_number', String(page_number));
+    url.searchParams.set('page_size', String(page_size));
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        ...getTokenHeader(),
+      },
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    return await ensureOk(res, 'List users');
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') throw new Error('List users request timed out');
+    throw err;
+  }
+};
+
+export default {
+  loginUser,
+  registerUser,
+  changePasswordUser,
+  deleteUser,
+  getUserDetailInformation,
+  listAllUserBrefInformation,
+};
