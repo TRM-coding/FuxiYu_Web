@@ -209,7 +209,7 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
     >
       <div style={{ marginBottom: 24 }}>
         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-          当前容器: {container?.container_name} | 所在机器: {container?.machine_ip}
+          当前容器: {container?.container_name} | 所属机器ID: {container?.machine_id || container?.machine_ip}
         </Typography.Text>
 
         {/* 添加用户区域 */}
@@ -451,7 +451,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit }) => {
         }}>
           <Row gutter={[24, 16]}>
             {/* 容器状态 */}
-            <Col span={8}>
+            <Col span={6}>
               <Space align="start">
                 <SettingOutlined style={{ fontSize: 20, color: '#1890ff' }} />
                 <div>
@@ -464,24 +464,39 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit }) => {
                 </div>
               </Space>
             </Col>
-            
-            {/* 所属机器IP */}
-            <Col span={8}>
+
+            {/* 所属机器ID */}
+            <Col span={6}>
               <Space align="start">
                 <GlobalOutlined style={{ fontSize: 20, color: '#1890ff' }} />
                 <div>
                   <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-                    所在机器
+                    所属机器ID
                   </Typography.Text>
                   <Typography.Text style={{ fontSize: '16px' }}>
-                    {container.machine_ip}
+                    {container.machine_id || container.machine_ip}
                   </Typography.Text>
                 </div>
               </Space>
             </Col>
-            
+
+            {/* 镜像 */}
+            <Col span={6}>
+              <Space align="start">
+                <ClockCircleOutlined style={{ fontSize: 20, color: '#1890ff' }} />
+                <div>
+                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    镜像
+                  </Typography.Text>
+                  <Typography.Text style={{ fontSize: '14px' }} ellipsis={{ tooltip: container.container_image }}>
+                    {container.container_image}
+                  </Typography.Text>
+                </div>
+              </Space>
+            </Col>
+
             {/* 端口信息 */}
-            <Col span={8}>
+            <Col span={6}>
               <Space align="start">
                 <SettingOutlined style={{ fontSize: 20, color: '#1890ff' }} />
                 <div>
@@ -795,6 +810,7 @@ const ManageMachine = () => {
         port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
         container_status: (detail.container_status || detail.status || '').toLowerCase(),
         machine_ip: detail.machine_ip || container.machine_ip || '',
+        machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
         owners: detail.owners || detail.owner_list || container.owners || [],
         accounts: detail.accounts || detail.account_list || container.accounts || []
       };
@@ -1051,7 +1067,6 @@ const ManageMachine = () => {
           >
             <Column title="容器ID" dataIndex="key" key="key" />
             <Column title="容器名" dataIndex="container_name" key="container_name" />
-            <Column title="镜像" dataIndex="container_image" key="container_image" />
             <Column title="端口" dataIndex="port" key="port" />
             <Column 
               title="状态" 
