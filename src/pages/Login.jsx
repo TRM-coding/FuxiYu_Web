@@ -17,6 +17,9 @@ const LoginBlock = () => {
 			// 假设后端返回 { token: '...', success: true } 或类似结构
 			if (data && (data.token || data.success !== false)) {
 				if (data.token) localStorage.setItem('authToken', data.token);
+				// store basic user info returned by backend for later UI usage
+				if (data.user_id) localStorage.setItem('currentUserId', String(data.user_id));
+				if (data.username) localStorage.setItem('currentUserName', String(data.username));
 
       // if (data && Number(data.success) === 1) {
 			// 	// Cookie 为 HttpOnly

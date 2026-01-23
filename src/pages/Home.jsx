@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, message } from 'antd';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
+import { listAllContainerBrefInformation } from '../api/container_api';
 const { Column, ColumnGroup } = Table;
 
 const Desc = props => (
@@ -14,42 +16,75 @@ const Desc = props => (
 );
 
 
-const data = [
-  {
-    key: '1',
-    container_name: 'web',
-    container_image: 'nginx:1.25',
-    machine_id: '1',
-    container_status: 'online',
-    port: '5017',
-    // accounts as list of [username, role]
-    accounts: [['alice', 'ADMIN']],
-  },
-  {
-    key: '2',
-    container_name: 'db',
-    container_image: 'mysql:8.0',
-    machine_id: '2',
-    container_status: 'maintenance',
-    port: '5011',
-    accounts: [['test', 'ADMIN'], ['alice', 'COLLABORATOR']],
-  },
-  {
-    key: '3',
-    container_name: 'api',
-    container_image: 'python:3.11',
-    machine_id: '4',
-    container_status: 'online',
-    port: '5012',
-    accounts: [['alice', 'ADMIN'], ['bob', 'COLLABORATOR']],
-  },
-];
+// will be populated from backend
+const initialContainers = [];
 
 const Home = () => {
   const [value3, setValue3] = useState('Any');
   const [position, setPosition] = useState('end');
-  // temporary current user for UI behavior
-  const currentUser = 'alice';
+  const navigate = useNavigate();
+
+  // read current user name from localStorage; if missing or error, clear auth and redirect to login
+  const [currentUserName, setCurrentUserName] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  useEffect(() => {
+    try {
+      const name = localStorage.getItem('currentUserName');
+      const id = localStorage.getItem('currentUserId');
+      // require both name and id; if missing, clear auth and force login
+      if (!name || !id) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('currentUserId');
+        localStorage.removeItem('currentUserName');
+        document.cookie = 'auth_token=; Max-Age=0; path=/';
+        navigate('/login');
+        return;
+      }
+      setCurrentUserName(name);
+      setCurrentUserId(id);
+    } catch (e) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('currentUserId');
+      localStorage.removeItem('currentUserName');
+      document.cookie = 'auth_token=; Max-Age=0; path=/';
+      navigate('/login');
+    }
+  }, [navigate]);
+
+  // containers state loaded from backend
+  const [containers, setContainers] = useState(initialContainers);
+  const [loadingContainers, setLoadingContainers] = useState(false);
+
+  useEffect(() => {
+    if (!currentUserId) return; // wait until we have the id
+    let mounted = true;
+    const load = async () => {
+      setLoadingContainers(true);
+      try {
+        // machine_id should be null for this global list request
+        // pagination: backend expects pages starting from 0
+        const res = await listAllContainerBrefInformation({ machine_id: null, user_id: Number(currentUserId), page_number: 0, page_size: 100 });
+        const items = (res && (res.containers_info || res.containers)) || [];
+        const mapped = items.map((c, idx) => ({
+          key: c.container_id ? String(c.container_id) : `c-${idx}`,
+          container_name: c.container_name || c.name || `container-${idx}`,
+          container_image: c.container_image || '',
+          port: c.port ? String(c.port) : (c.port_str || ''),
+          container_status: (c.container_status || '').toLowerCase(),
+          machine_id: c.machine_id ? String(c.machine_id) : null,
+          accounts: c.accounts || [],
+        }));
+        if (mounted) setContainers(mapped);
+      } catch (err) {
+        console.error('load containers failed', err);
+        message.error('加载容器列表失败');
+      } finally {
+        if (mounted) setLoadingContainers(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, [currentUserId]);
 
   // Modal state
   const [modal, setModal] = useState({
@@ -218,7 +253,7 @@ const Home = () => {
       
     <Splitter layout="vertical" style={{ height: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
       <Splitter.Panel>
-        <Table dataSource={data} style={{ padding: '16px' }}>
+        <Table dataSource={containers} loading={loadingContainers} style={{ padding: '16px' }}>
           <Column title="容器名称" dataIndex="container_name" key="container_name" render={text => <a>{text}</a>} />
           <Column title="容器ID" dataIndex="key" key="key" />
           <Column title="容器蓝图" dataIndex="container_image" key="container_image" />
@@ -262,7 +297,7 @@ const Home = () => {
               return (
                 <>
                   {list.map(({ username, role }, idx) => {
-                    const isAdmin = getRoleForUser(record.accounts, currentUser) === 'ADMIN';
+                    const isAdmin = getRoleForUser(record.accounts, currentUserName) === 'ADMIN';
                     return (
                       <Tag
                         color={role === 'ADMIN' ? 'volcano' : 'green'}
@@ -300,7 +335,7 @@ const Home = () => {
             title="操作"
             key="action"
             render={(_, record) => {
-              const myRole = getRoleForUser(record.accounts, currentUser);
+              const myRole = getRoleForUser(record.accounts, currentUserName);
               if (myRole === 'ADMIN') {
                 return (
                   <Space size="middle">
