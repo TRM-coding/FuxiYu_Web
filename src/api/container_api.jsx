@@ -156,7 +156,7 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 	}
 };
 
-export const listAllContainerBrefInformation = async ({ machine_id = '', page_number = 1, page_size = 10 } = {}, timeout = null) => {
+export const listAllContainerBrefInformation = async ({ machine_id = '', user_id = '', page_number = 1, page_size = 10 } = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_LIST}`, {
@@ -165,7 +165,7 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', page_nu
 				'Content-Type': 'application/json',
 				...getTokenHeader(),
 			},
-			body: JSON.stringify({ machine_id, page_number, page_size }),
+			body: JSON.stringify({ machine_id, user_id, page_number, page_size }),
 			signal: controller.signal,
 			credentials: CREDENTIALS,
 		});
