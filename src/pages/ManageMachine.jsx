@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
@@ -74,6 +74,7 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
   const [form] = Form.useForm();
   const [editing, setEditing] = useState(false);
   const [accounts, setAccounts] = useState([]);
+  const [adding, setAdding] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedRole, setSelectedRole] = useState(ROLE.COLLABORATOR);
 
@@ -82,8 +83,9 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
     if (container) {
       const initialAccounts = container.accounts?.map((account, index) => ({
         ...account,
-        ownerName: container.owners[index] || account.username,
-        key: account.username
+        user_id: account.user_id ?? account.id ?? null,
+        ownerName: (usersList.find(u => String(u.id) === String(account.user_id))?.name) || account.username,
+        key: String(account.user_id ?? account.username)
       })) || [];
       setAccounts(initialAccounts);
       
@@ -92,7 +94,7 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
         accounts: initialAccounts
       });
     }
-  }, [container, form]);
+  }, [container, form, usersList]);
 
   // 添加用户
   const handleAddUser = () => {
@@ -101,80 +103,134 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
       return;
     }
 
-    const userExists = accounts.some(account => account.username === selectedUser.username);
+    const userExists = accounts.some(account => String(account.user_id) === String(selectedUser.id) || account.username === selectedUser.username);
     if (userExists) {
       message.warning('该用户已存在');
       return;
     }
 
-    const newAccount = {
-      username: selectedUser.username,
-      role: selectedRole,
-      ownerName: selectedUser.name,
-      key: selectedUser.username
-    };
+    const cid = container?.key || container?.container_id;
+    if (!cid) {
+      message.error('未能识别容器ID，无法添加用户');
+      return;
+    }
 
-    setAccounts([...accounts, newAccount]);
-    setSelectedUser(null);
-    setSelectedRole(ROLE.COLLABORATOR);
-    message.success('用户已添加到列表');
+    setAdding(true);
+    addCollaborator({ user_id: selectedUser.id, container_id: cid, role: selectedRole }).then(() => {
+      const newAccount = {
+        username: selectedUser.username,
+        role: selectedRole,
+        ownerName: selectedUser.name,
+        user_id: selectedUser.id,
+        key: String(selectedUser.id)
+      };
+
+      // 如果添加的用户以ROOT添加，自动将其他ROOT降级为ADMIN（本地反映）
+      if (selectedRole === ROLE.ROOT) {
+        const demoted = accounts.map(acc => acc.role === ROLE.ROOT ? { ...acc, role: ROLE.ADMIN } : acc);
+        setAccounts([...demoted, newAccount]);
+      } else {
+        setAccounts(prev => [...prev, newAccount]);
+      }
+
+      setSelectedUser(null);
+      setSelectedRole(ROLE.COLLABORATOR);
+      message.success('用户已添加');
+    }).catch(err => {
+      console.error('addCollaborator failed', err);
+      message.error('添加用户失败');
+    }).finally(() => setAdding(false));
   };
 
   // 删除用户
-  const handleDeleteUser = (username) => {
-    // 不能删除最后一个ROOT用户
-    const rootUsers = accounts.filter(acc => acc.role === ROLE.ROOT);
-    const userToDelete = accounts.find(acc => acc.username === username);
-    
-    if (userToDelete?.role === ROLE.ROOT && rootUsers.length <= 1) {
-      message.error('必须至少保留一个ROOT用户');
+  const handleDeleteUser = async (username) => {
+    const userToDelete = accounts.find(acc => acc.username === username || String(acc.user_id) === String(username));
+    if (!userToDelete) return;
+    // 不允许删除超级管理员条目
+    if (userToDelete.role === ROLE.ROOT) {
+      message.error('不能删除超级管理员');
       return;
     }
 
-    setAccounts(accounts.filter(acc => acc.username !== username));
-    message.success('用户已移除');
+    const userId = userToDelete.user_id ?? (usersList.find(u => u.username === userToDelete.username)?.id);
+    const cid = container?.key || container?.container_id;
+    if (!userId || !cid) {
+      // fallback to local remove
+      setAccounts(prev => prev.filter(acc => acc.username !== username));
+      message.warning('本地已移除，后端ID信息缺失');
+      return;
+    }
+
+    try {
+      await removeCollaborator({ user_id: userId, container_id: cid });
+      setAccounts(prev => prev.filter(acc => String(acc.user_id) !== String(userId)));
+      message.success('用户已移除');
+    } catch (err) {
+      console.error('removeCollaborator failed', err);
+      message.error('移除用户失败');
+    }
   };
 
   // 更新用户角色
-  const handleRoleChange = (username, newRole) => {
-    // 不能修改最后一个ROOT用户的角色
-    const rootUsers = accounts.filter(acc => acc.role === ROLE.ROOT);
-    const userToUpdate = accounts.find(acc => acc.username === username);
-    
-    if (userToUpdate?.role === ROLE.ROOT && rootUsers.length <= 1 && newRole !== ROLE.ROOT) {
-      message.error('必须至少保留一个ROOT用户');
+  const handleRoleChange = async (username, newRole) => {
+    const userToUpdate = accounts.find(acc => acc.username === username || String(acc.user_id) === String(username));
+    if (!userToUpdate) return;
+
+    // 已经是超级管理员的条目不可被手动修改
+    if (userToUpdate.role === ROLE.ROOT) {
+      message.error('超级管理员身份不可被修改');
       return;
     }
 
-    setAccounts(accounts.map(acc => 
-      acc.username === username ? { ...acc, role: newRole } : acc
-    ));
+    const userId = userToUpdate.user_id ?? (usersList.find(u => u.username === userToUpdate.username)?.id);
+    const cid = container?.key || container?.container_id;
+    if (!userId || !cid) {
+      // fallback local update
+      setAccounts(prev => prev.map(acc => (acc.username === username ? { ...acc, role: newRole } : acc)));
+      return;
+    }
+
+    // 如果将某个非ROOT用户提升为ROOT，自动将其他ROOT降级为ADMIN（需要通知后端）
+    try {
+      if (newRole === ROLE.ROOT) {
+        // demote existing roots first
+        const roots = accounts.filter(acc => acc.role === ROLE.ROOT && String(acc.user_id) !== String(userId));
+        for (const r of roots) {
+          const rid = r.user_id ?? (usersList.find(u => u.username === r.username)?.id);
+          if (rid) await updateRole({ container_id: cid, user_id: rid, updated_role: ROLE.ADMIN });
+        }
+        // promote target
+        await updateRole({ container_id: cid, user_id: userId, updated_role: ROLE.ROOT });
+        // update local copy
+        setAccounts(prev => prev.map(acc => {
+          if (String(acc.user_id) === String(userId)) return { ...acc, role: ROLE.ROOT };
+          if (acc.role === ROLE.ROOT) return { ...acc, role: ROLE.ADMIN };
+          return acc;
+        }));
+        message.success('角色已更新');
+        return;
+      }
+
+      // 普通角色变更
+      await updateRole({ container_id: cid, user_id: userId, updated_role: newRole });
+      setAccounts(prev => prev.map(acc => (String(acc.user_id) === String(userId) ? { ...acc, role: newRole } : acc)));
+      message.success('角色已更新');
+    } catch (err) {
+      console.error('updateRole failed', err);
+      message.error('更新角色失败');
+    }
   };
 
   // 保存修改
   const handleSave = () => {
     setEditing(true);
-    
-    // 模拟API调用
-    setTimeout(() => {
-      const updatedAccounts = accounts.map(acc => ({
-        username: acc.username,
-        role: acc.role
-      }));
-      
-      const updatedOwners = accounts.map(acc => acc.ownerName);
-      
-      // 调用父组件的保存函数
-      onSave({
-        ...container,
-        accounts: updatedAccounts,
-        owners: updatedOwners
-      });
-      
-      message.success('用户权限已更新');
-      setEditing(false);
-      onClose();
-    }, 500);
+    // All operations (add/remove/update) are performed immediately via API calls above.
+    const updatedAccounts = accounts.map(acc => ({ username: acc.username, role: acc.role, user_id: acc.user_id }));
+    const updatedOwners = accounts.map(acc => acc.ownerName);
+    onSave({ ...container, accounts: updatedAccounts, owners: updatedOwners });
+    message.success('用户权限已更新');
+    setEditing(false);
+    onClose();
   };
 
   // 获取可选用户列表（排除已添加的用户），数据来自传入的 `usersList`
@@ -275,7 +331,8 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
                 type="primary" 
                 icon={<PlusOutlined />}
                 onClick={handleAddUser}
-                disabled={!selectedUser}
+                disabled={!selectedUser || adding}
+                loading={adding}
               >
                 添加用户
               </Button>
@@ -299,8 +356,7 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
                     value={account.role}
                     onChange={(value) => handleRoleChange(account.username, value)}
                     style={{ width: 120 }}
-                    disabled={account.role === ROLE.ROOT && 
-                             accounts.filter(acc => acc.role === ROLE.ROOT).length <= 1}
+                    disabled={account.role === ROLE.ROOT}
                   >
                     <Option value={ROLE.COLLABORATOR}>
                       <Tag color="green">协作者</Tag>
@@ -316,15 +372,13 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
                     key="delete"
                     title="确定要移除此用户吗？"
                     onConfirm={() => handleDeleteUser(account.username)}
-                    disabled={account.role === ROLE.ROOT && 
-                             accounts.filter(acc => acc.role === ROLE.ROOT).length <= 1}
+                    disabled={account.role === ROLE.ROOT}
                   >
                     <Button 
                       type="text" 
                       danger 
                       icon={<DeleteOutlined />}
-                      disabled={account.role === ROLE.ROOT && 
-                               accounts.filter(acc => acc.role === ROLE.ROOT).length <= 1}
+                      disabled={account.role === ROLE.ROOT}
                     />
                   </Popconfirm>
                 ]}
@@ -391,7 +445,7 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
 };
 
 // 容器详情弹窗组件
-const ContainerDetailModal = ({ visible, container, onClose, onEdit }) => {
+const ContainerDetailModal = ({ visible, container, onClose, onEdit, usersList = [] }) => {
   if (!container) return null;
 
   // 按角色分组账户
@@ -399,10 +453,11 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit }) => {
     const role = account.role;
     if (!acc[role]) {
       acc[role] = [];
-    }
+    } // 备忘：正常运行时， ownerName 应该从 user_id 映射而来；但保险起见，这里也fallback到 username（但可能导致删除用户后显示异常）
+    const ownerName = (usersList.find(u => String(u.id) === String(account.user_id))?.name) || account.username;
     acc[role].push({
       ...account,
-      ownerName: container.owners[index] || account.username
+      ownerName
     });
     return acc;
   }, {});
@@ -1412,6 +1467,7 @@ const ManageMachine = () => {
         container={selectedContainer}
         onClose={closeAllModals}
         onEdit={openEditModal}
+        usersList={usersList}
       />
 
       {/* 编辑用户弹窗 */}

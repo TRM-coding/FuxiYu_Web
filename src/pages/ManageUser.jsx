@@ -218,18 +218,22 @@ const ManageUser = () => {
           const det = (detRes && (detRes.container_info || detRes.container || detRes.data || detRes.container_detail)) || detRes || null;
           const image = (det && (det.container_image || det.image)) || c.container_image;
           const accounts = det?.accounts || c.accounts || [];
-          // accounts may be [{username, role}] or [[username, role]]; normalize to find user's role
+          // accounts expected to be objects with `user_id`/`username`/`role`; map user's role by matching username or user_id
           let userRole = null;
           if (username && accounts && Array.isArray(accounts)) {
-            const found = accounts.find(a => (a && (a.username === username || (Array.isArray(a) && a[0] === username))));
-            if (found) {
-              userRole = found.role ?? (Array.isArray(found) ? found[1] : null);
-            }
+            const found = accounts.find(a => {
+              if (!a) return false;
+              if (typeof a === 'object') {
+                return a.username === username || String(a.user_id) === String(userId) || String(a.user_id) === String(userObj?.key);
+              }
+              return false;
+            });
+            if (found) userRole = found.role ?? null;
           }
           return { ...c, container_image: image, accounts, userRole, machine_id: det?.machine_id ? String(det.machine_id) : c.machine_id };
         } catch (e) {
-          // if detail fetch fails, fallback to bref info
-          return { ...c, userRole: getUserRoleInContainer(c.accounts, username) };
+          // if detail fetch fails, do not attempt old fallback — keep bref info but no userRole
+          return { ...c, accounts: c.accounts || [], userRole: null };
         }
       }));
       setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: detailed } }));
@@ -248,11 +252,7 @@ const ManageUser = () => {
       return [];
     }
     const data = containerMap[id].data || [];
-    return data.map(c => {
-      // prefer role resolved from container detail fetch (c.userRole), otherwise derive from accounts
-      const resolvedRole = c.userRole ?? getUserRoleInContainer(c.accounts, username);
-      return { ...c, userRole: resolvedRole };
-    });
+    return data; // `userRole` is provided by detail fetch and stored in cache
   };
 
   // 切换展开状态
