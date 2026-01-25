@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
@@ -12,7 +12,6 @@ import { listAllUserBrefInformation } from '../api/user_api';
 // machines loaded from backend
 const defaultPageSize = 100;
 
-// Users are fetched from backend; local mock removed.
 
 // ROLE枚举定义
 const ROLE = {
@@ -21,8 +20,7 @@ const ROLE = {
   ROOT: 'ROOT'
 };
 
-// Container data is fetched from server and cached in `containerMap`.
-// Removed local mock `containerData` to always rely on backend responses.
+// 远端获取的数据会被存在 `containerMap`
 
 // 角色配置
 const ROLE_CONFIG = {
@@ -664,6 +662,11 @@ const ManageMachine = () => {
   const [addHostVisible, setAddHostVisible] = useState(false);
   const [addHostLoading, setAddHostLoading] = useState(false);
   const [addHostForm] = Form.useForm();
+  // 添加容器弹窗
+  const [addContainerVisible, setAddContainerVisible] = useState(false);
+  const [addContainerLoading, setAddContainerLoading] = useState(false);
+  const [addContainerForm] = Form.useForm();
+  const [addContainerMachineId, setAddContainerMachineId] = useState(null);
   // 编辑模式
   const [isEditMode, setIsEditMode] = useState(false);
   const [editTargetMachine, setEditTargetMachine] = useState(null);
@@ -835,6 +838,14 @@ const ManageMachine = () => {
     });
   };
 
+  // When rows expand, fetch containers for those machines.
+  useEffect(() => {
+    if (!expandedRowKeys || expandedRowKeys.length === 0) return;
+    expandedRowKeys.forEach(mid => {
+      if (mid) fetchContainersForMachine(String(mid), 0);
+    });
+  }, [expandedRowKeys]);
+
   // 处理容器搜索输入
   const handleContainerSearch = (machineId, value) => {
     setContainerSearch(prev => ({
@@ -888,6 +899,78 @@ const ManageMachine = () => {
     setIsEditMode(false);
     setEditTargetMachine(null);
     setAddHostVisible(true);
+  };
+
+  // 打开添加容器弹窗（基于宿主机）
+  const openAddContainerModal = (machine) => {
+    // machine may be a record from table
+    const mid = machine?.machine_id ?? machine?.key ?? null;
+    setAddContainerMachineId(mid);
+    addContainerForm.resetFields();
+    // prefill machine id and defaults
+    const defaultUser = localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
+    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [], root_user: defaultUser });
+    setAddContainerVisible(true);
+  };
+
+  // 添加容器确认
+  const handleAddContainerConfirm = async () => {
+    try {
+      const values = await addContainerForm.validateFields();
+      setAddContainerLoading(true);
+      const machineId = values.machine_id || addContainerMachineId;
+      const currentUserName = values.root_user || localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
+      const payload = {
+        user_name: currentUserName,
+        machine_id: machineId,
+        container: {
+          GPU_LIST: values.GPU_LIST || [],
+          CPU_NUMBER: values.CPU_NUMBER || 1,
+          MEMORY: values.MEMORY || 512,
+          NAME: values.NAME || `container-${Date.now()}`,
+          image: values.image || ''
+        },
+        public_key: values.public_key || ''
+      };
+
+      try {
+        const res = await createContainer(payload);
+        // refresh container list for the machine and ensure row expanded
+        if (machineId) {
+          const mid = String(machineId);
+          setExpandedRowKeys(prev => (prev.includes(mid) ? prev : [...prev, mid]));
+          fetchContainersForMachine(mid, 0);
+        }
+        message.success('容器添加成功');
+      } catch (err) {
+        console.error('createContainer failed', err);
+        message.error('添加容器失败，已尝试本地添加');
+        // fallback: add local mock entry
+        const mid = String(machineId || addContainerMachineId || Date.now());
+        const newId = String(Date.now());
+        const newContainer = {
+          key: newId,
+          container_name: values.NAME || `container-${newId}`,
+          container_image: values.image || '',
+          port: '',
+          container_status: 'maintenance',
+          machine_id: mid,
+          machine_ip: ''
+        };
+        setContainerMap(prev => {
+          const entry = prev[mid] || { data: [], loading: false, page: 0 };
+          return { ...prev, [mid]: { ...entry, data: [newContainer, ...(entry.data || [])] } };
+        });
+        // ensure expanded and refresh view
+        setExpandedRowKeys(prev => (prev.includes(mid) ? prev : [...prev, mid]));
+      } finally {
+        setAddContainerLoading(false);
+        setAddContainerVisible(false);
+        setAddContainerMachineId(null);
+      }
+    } catch (err) {
+      // validation failed
+    }
   };
 
   // 打开编辑宿主机弹窗（与添加使用同一表单，但为编辑模式）
@@ -1088,8 +1171,6 @@ const ManageMachine = () => {
     },
     expandedRowRender: (record) => {
       const mid = String(record.key);
-      // trigger fetch for this machine page 0 if needed
-      fetchContainersForMachine(mid, 0); // 根据机器求取容器数据
       const entry = containerMap[mid] || {};
       const containers = entry.data || [];
 
@@ -1110,7 +1191,7 @@ const ManageMachine = () => {
             </Col>
           </Row>
           <Typography.Title level={5} style={{ margin: '0 0 16px 0' }}>
-            容器列表 - {record.machine_name}  <Button>添加</Button>
+            容器列表 - {record.machine_name}  <Button onClick={() => openAddContainerModal(record)}>添加</Button>
           </Typography.Title>
           <Table
             dataSource={containers}
@@ -1468,6 +1549,83 @@ const ManageMachine = () => {
         onClose={closeAllModals}
         onEdit={openEditModal}
         usersList={usersList}
+      />
+
+      {/* 添加容器 确认弹窗（包含表单） */}
+      <ConfirmModal
+        visible={addContainerVisible}
+        title="添加容器"
+        message="请填写容器信息并确认添加"
+        onConfirm={handleAddContainerConfirm}
+        onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); }}
+        loading={addContainerLoading}
+        confirmText="添加"
+        content={
+          <Form
+            form={addContainerForm}
+            layout="vertical"
+            initialValues={{ CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [] }}
+          >
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }]}>
+                  <Input placeholder="容器名" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}>
+                  <Input placeholder="例如：nginx:latest" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="CPU_NUMBER" label="CPU 数量">
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="MEMORY" label="内存 (MB)">
+                  <InputNumber min={128} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="root_user" label="Root 用户" rules={[{ required: true, message: '请选择Root用户' }]}>
+                  <Select
+                    placeholder="选择Root用户"
+                    loading={usersLoading}
+                    showSearch
+                    optionFilterProp="children"
+                    filterOption={(input, option) => (option?.children ?? '').toLowerCase().includes(input.toLowerCase())}
+                  >
+                    {(usersList || []).map(u => (
+                      <Option key={u.id} value={u.username}>
+                        <span>{u.name} (@{u.username})</span>
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="machine_id" label="宿主机ID">
+                  <Input disabled value={addContainerMachineId || ''} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.Item name="public_key" label="公钥 (可选)">
+                  <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        }
       />
 
       {/* 编辑用户弹窗 */}

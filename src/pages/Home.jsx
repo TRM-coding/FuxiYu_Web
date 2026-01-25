@@ -37,7 +37,7 @@ const Home = () => {
         localStorage.removeItem('currentUserId');
         localStorage.removeItem('currentUserName');
         document.cookie = 'auth_token=; Max-Age=0; path=/';
-        navigate('/login');
+        navigate('/');
         return;
       }
       setCurrentUserName(name);
@@ -47,7 +47,7 @@ const Home = () => {
       localStorage.removeItem('currentUserId');
       localStorage.removeItem('currentUserName');
       document.cookie = 'auth_token=; Max-Age=0; path=/';
-      navigate('/login');
+      navigate('/');
     }
   }, [navigate]);
 
