@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
-import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, message } from 'antd';
+import { Flex, Typography, Row, Col, Button, Input, Space, Table, Tag, message } from 'antd';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
-import { listAllContainerBrefInformation } from '../api/container_api';
+import EditUserModal from '../components/EditUserModal';
+import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator } from '../api/container_api';
+import { listAllUserBrefInformation } from '../api/user_api';
+import ContainerDetailModal from '../components/ContainerDetailModal';
 const { Column, ColumnGroup } = Table;
 
 const Desc = props => (
@@ -94,6 +97,37 @@ const Home = () => {
     data: null,
   });
 
+  // track which parent modal was open when confirm modal is shown
+  const [modalParent, setModalParent] = useState(null); // 'detail' | 'edit' | null
+
+  // container detail modal state
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailContainer, setDetailContainer] = useState(null);
+  const [reopenDetailOnCancel, setReopenDetailOnCancel] = useState(false);
+
+  // edit-user modal state
+  const [editVisible, setEditVisible] = useState(false);
+  const [editContainer, setEditContainer] = useState(null);
+  const [usersList, setUsersList] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  const openEditModal = (container) => {
+    setEditContainer(container);
+    setEditVisible(true);
+  };
+
+  const closeEditModal = () => {
+    setEditVisible(false);
+    setEditContainer(null);
+  };
+
+  const handleEditSave = (updated) => {
+    // update local containers list to reflect edits
+    setContainers(prev => prev.map(c => (String(c.key) === String(updated.key) ? { ...c, ...updated } : c)));
+    message.success('容器用户信息已保存');
+    closeEditModal();
+  };
+
   // helpers
   const getRoleForUser = (accounts, username) => {
     if (!accounts) return null;
@@ -111,59 +145,131 @@ const Home = () => {
     return null;
   };
 
-  const handleInvite = record => {
-    setModal({ visible: true, type: 'invite', loading: false, data: { record } });
+  const openConfirm = (type, data) => {
+    // hide parent modal (detail/edit) if open and remember which
+    if (detailVisible) {
+      setModalParent('detail');
+      setDetailVisible(false);
+    } else if (editVisible) {
+      setModalParent('edit');
+      setEditVisible(false);
+    } else {
+      setModalParent(null);
+    }
+    setModal({ visible: true, type, loading: false, data });
   };
-  const handleDeleteContainer = record => {
-    setModal({ visible: true, type: 'delete', loading: false, data: { record } });
-  };
-  const handleLeave = record => {
-    setModal({ visible: true, type: 'leave', loading: false, data: { record } });
-  };
-  const handleRemoveUser = (record, username) => {
-    setModal({ visible: true, type: 'removeUser', loading: false, data: { record, username } });
-  };
-  const handleChangeRole = (record, username) => {
-    setModal({ visible: true, type: 'changeRole', loading: false, data: { record, username } });
-  };
+
+  const handleInvite = record => openConfirm('invite', { record });
+  const handleDeleteContainer = record => openConfirm('delete', { record });
+  const handleLeave = record => openConfirm('leave', { record });
+  const handleRemoveUser = (record, username) => openConfirm('removeUser', { record, username });
+  const handleChangeRole = (record, username) => openConfirm('changeRole', { record, username });
 
   const closeModal = () => {
     setModal({ visible: false, type: '', loading: false, data: null });
+    // if a parent modal was hidden to show confirmation, reopen it on cancel
+    if (modalParent === 'detail') {
+      setDetailVisible(true);
+    } else if (modalParent === 'edit') {
+      setEditVisible(true);
+    }
+    setModalParent(null);
   };
 
-  const handleModalConfirm = () => {
+  const handleModalConfirm = async () => {
     setModal(prev => ({ ...prev, loading: true }));
-    
-    setTimeout(() => {
-      const { type, data } = modal;
-      
-      switch (type) {
-        case 'delete':
-          console.log('删除容器:', data.record);
-          message.success(`容器 ${data.record.container_name} 已删除`);
-          break;
-        case 'leave':
-          console.log('退出容器:', data.record);
-          message.success(`已退出容器 ${data.record.container_name}`);
-          break;
-        case 'removeUser':
-          console.log('移除用户:', data.username, 'from', data.record);
-          message.success(`已将 ${data.username} 移出容器`);
-          break;
-        case 'changeRole':
-          console.log('变更角色:', data.username, 'in', data.record);
-          message.success(`已变更 ${data.username} 的角色`);
-          break;
-        case 'invite':
-          console.log('邀请用户到:', data.record);
-          message.success(`已发送邀请`);
-          break;
-        default:
-          break;
+    const { type, data } = modal;
+    try {
+      if (type === 'delete') {
+        const cid = data?.record?.key || data?.record?.container_id;
+        await deleteContainer(Number(cid));
+        setContainers(prev => prev.filter(c => String(c.key) !== String(cid)));
+        message.success(`容器 ${data.record.container_name} 已删除`);
+        setReopenDetailOnCancel(false);
+      } else if (type === 'leave') {
+        // current user leaving the container
+        const cid = data?.record?.key || data?.record?.container_id;
+        const uid = Number(currentUserId);
+        if (uid && cid) {
+          try {
+            await removeCollaborator({ user_id: uid, container_id: Number(cid) });
+          } catch (e) {
+            console.error('removeCollaborator failed', e);
+          }
+        }
+        // remove from local list for the current user
+        setContainers(prev => prev.filter(c => String(c.key) !== String(cid)));
+        message.success(`已解除与容器 ${data.record.container_name} 的关联`);
+      } else if (type === 'removeUser') {
+        message.success(`已将 ${data.username} 移出容器`);
+      } else if (type === 'changeRole') {
+        message.success(`已变更 ${data.username} 的角色`);
+      } else if (type === 'invite') {
+        message.success(`已发送邀请`);
       }
-      
+    } catch (err) {
+      console.error('modal action failed', err);
+      message.error('操作失败，请重试');
+    } finally {
       setModal({ visible: false, type: '', loading: false, data: null });
-    }, 500);
+    }
+  };
+
+  const openContainerDetail = async (container) => {
+    if (!container) return;
+    const cid = container.key || container.container_id || (container.container_id === 0 ? container.key || container.container_id : null);
+    try {
+      setDetailContainer(null);
+      setDetailVisible(false);
+
+      // fetch container detail
+      const res = await getContainerDetailInformation(cid);
+      const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
+      if (!detail) {
+        message.error('未能获取容器详情');
+        return;
+      }
+      const mapped = {
+        key: detail.container_id ? String(detail.container_id) : (container.key || String(Date.now())),
+        container_name: detail.container_name || detail.name || container.container_name || '',
+        container_image: detail.container_image || detail.image || container.container_image || '',
+        port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
+        container_status: (detail.container_status || detail.status || '').toLowerCase(),
+        machine_ip: detail.machine_ip || container.machine_ip || '',
+        machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
+        owners: detail.owners || detail.owner_list || container.owners || [],
+        accounts: detail.accounts || detail.account_list || container.accounts || []
+      };
+
+      // fetch users for mapping owner names
+      setUsersLoading(true);
+      try {
+        const ures = await listAllUserBrefInformation({ page_number: 0, page_size: 500 });
+        const items = (ures && (ures.users || ures.users_info || ures.data || ures.users_list)) || [];
+        const mappedUsers = items.map(u => ({ id: u.user_id || u.id || u.uid || u.userId, username: u.username || u.name || String(u.id), name: u.display_name || u.name || u.username }));
+        setUsersList(mappedUsers);
+      } catch (e) {
+        console.error('load users failed', e);
+        setUsersList([]);
+      } finally {
+        setUsersLoading(false);
+      }
+
+      setDetailContainer(mapped);
+      setDetailVisible(true);
+    } catch (err) {
+      console.error('getContainerDetailInformation failed', err);
+      message.error('获取容器详情失败');
+      setDetailContainer(container);
+      setDetailVisible(true);
+    }
+  };
+
+  const handleDetailDelete = (container) => {
+    // hide detail and open confirm; if cancel, we'll reopen detail
+    setReopenDetailOnCancel(true);
+    setDetailVisible(false);
+    setModal({ visible: true, type: 'delete', loading: false, data: { record: container } });
   };
 
   const onChange3 = ({ target: { value } }) => {
@@ -237,7 +343,7 @@ const Home = () => {
   };
 
   return (
-    <>
+    <div>
       <ConfirmModal
         visible={modal.visible}
         title={getModalConfig().title}
@@ -251,118 +357,102 @@ const Home = () => {
         loading={modal.loading}
       />
       
-    <Splitter layout="vertical" style={{ height: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
-      <Splitter.Panel>
-        <Table dataSource={containers} loading={loadingContainers} style={{ padding: '16px' }}>
-          <Column title="容器名称" dataIndex="container_name" key="container_name" render={text => <a>{text}</a>} />
-          <Column title="容器ID" dataIndex="key" key="key" />
-          <Column title="容器蓝图" dataIndex="container_image" key="container_image" />
-          <Column title="机器ID" dataIndex="machine_id" key="machine_id" />
-          <Column
-            title="容器状态"
-            dataIndex="container_status"
-            key="container_status"
-            render={status => {
-              let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
-              return <Tag color={color}>{String(status).toUpperCase()}</Tag>;
-            }}
-          />
-          <Column title="端口" dataIndex="port" key="port" />
-          <Column
-            title="人员组"
-            dataIndex="accounts"
-            key="accounts"
-            render={(accounts, record) => {
-              // normalize accounts into [{username, role}]
-              let list = [];
-              if (Array.isArray(accounts)) {
-                // items may be [username, role] or username strings
-                list = accounts.map(item => {
-                  if (Array.isArray(item)) {
-                    return { username: item[0], role: item[1] };
-                  }
-                  if (item && typeof item === 'object') {
-                    return { username: item.name ?? item.username ?? String(item), role: item.type ?? item.role ?? null };
-                  }
-                  return { username: String(item), role: null };
-                });
-              } else if (accounts && typeof accounts === 'object') {
-                // single object shape
-                list = [{ username: accounts.name ?? accounts.username ?? String(accounts), role: accounts.type ?? accounts.role ?? null }];
-              }
-
-              // sort ADMIN first
-              list.sort((a, b) => (a.role === 'ADMIN' && b.role !== 'ADMIN' ? -1 : b.role === 'ADMIN' && a.role !== 'ADMIN' ? 1 : 0));
-
-              return (
-                <>
-                  {list.map(({ username, role }, idx) => {
-                    const isAdmin = getRoleForUser(record.accounts, currentUserName) === 'ADMIN';
-                    return (
-                      <Tag
-                        color={role === 'ADMIN' ? 'volcano' : 'green'}
-                        key={`${username}-${idx}`}
-                        closable={isAdmin}
-                        onClose={e => {
-                          if (e && typeof e.preventDefault === 'function') {
-                            e.preventDefault();
-                            e.stopPropagation && e.stopPropagation();
-                          }
-                          handleRemoveUser(record, username);
-                        }}
-                      >
-                        {String(username)}
-                        {isAdmin && role !== 'ADMIN' && (
-                          <a
-                            onClick={e => {
-                              e && typeof e.preventDefault === 'function' && e.preventDefault();
-                              e && e.stopPropagation && e.stopPropagation();
-                              handleChangeRole(record, username);
-                            }}
-                            style={{ marginLeft: 8, color: 'rgba(255,255,255,0.9)', textDecoration: 'underline' }}
-                          >
-                            ⚙
-                          </a>
-                        )}
-                      </Tag>
-                    );
-                  })}
-                </>
-              );
-            }}
-          />
-          <Column
-            title="操作"
-            key="action"
-            render={(_, record) => {
-              const myRole = getRoleForUser(record.accounts, currentUserName);
-              if (myRole === 'ADMIN') {
+      <div style={{ minHeight: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
+        <div style={{ padding: '16px', background: '#fafafa' }}>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col xs={24} sm={12} md={6}>
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>总容器数</Typography.Text>
+                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#1890ff' }}>{containers.length}</Typography.Title>
+              </div>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>运行中</Typography.Text>
+                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#52c41a' }}>{containers.filter(c => c.container_status === 'online').length}</Typography.Title>
+              </div>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>维护中</Typography.Text>
+                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#faad14' }}>{containers.filter(c => c.container_status === 'maintenance').length}</Typography.Title>
+              </div>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>离线</Typography.Text>
+                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#ff4d4f' }}>{containers.filter(c => c.container_status === 'offline').length}</Typography.Title>
+              </div>
+            </Col>
+          </Row>
+        </div>
+        <div style={{ padding: '16px' }}>
+          <Table dataSource={containers} loading={loadingContainers} style={{ padding: '16px' }}>
+            <Column title="容器名称" dataIndex="container_name" key="container_name" render={(text, record) => <a onClick={() => openContainerDetail(record)}>{text}</a>} />
+            <Column title="容器ID" dataIndex="key" key="key" />
+            <Column title="机器ID" dataIndex="machine_id" key="machine_id" />
+            <Column
+              title="容器状态"
+              dataIndex="container_status"
+              key="container_status"
+              render={status => {
+                let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
+                return <Tag color={color}>{String(status).toUpperCase()}</Tag>;
+              }}
+            />
+            <Column title="端口" dataIndex="port" key="port" />
+            <Column
+              title="操作"
+              key="action"
+              render={(_, record) => {
+                const myRole = getRoleForUser(record.accounts, currentUserName);
+                if (myRole === 'ADMIN') {
+                  return (
+                    <Space size="middle">
+                      <a onClick={() => handleInvite(record)}>邀请</a>
+                      <a onClick={() => handleDeleteContainer(record)}>删除容器</a>
+                    </Space>
+                  );
+                }
+                if (myRole === 'COLLABORATOR') {
+                  return (
+                    <Space size="middle">
+                      <a onClick={() => handleLeave(record)}>退出</a>
+                    </Space>
+                  );
+                }
+                // default actions for others
                 return (
                   <Space size="middle">
-                    <a onClick={() => handleInvite(record)}>邀请</a>
-                    <a onClick={() => handleDeleteContainer(record)}>删除容器</a>
+                    <a onClick={() => openContainerDetail(record)}>查看详情</a>
                   </Space>
                 );
-              }
-              if (myRole === 'COLLABORATOR') {
-                return (
-                  <Space size="middle">
-                    <a onClick={() => handleLeave(record)}>退出</a>
-                  </Space>
-                );
-              }
-              // default actions for others
-              return (
-                <Space size="middle">
-                  <a onClick={() => console.log('request access', record)}>申请访问</a>
-                </Space>
-              );
-            }}
+              }}
+            />
+          </Table>
+
+          <ContainerDetailModal
+            visible={detailVisible}
+            container={detailContainer}
+            onClose={() => setDetailVisible(false)}
+            onDelete={handleDetailDelete}
+            onLeave={handleLeave}
+            onEdit={openEditModal}
+            usersList={usersList}
+            currentUserName={currentUserName}
           />
-        </Table>
-      </Splitter.Panel>
-    </Splitter>
-    </>
+
+          <EditUserModal
+            visible={editVisible}
+            container={editContainer}
+            onClose={closeEditModal}
+            onSave={handleEditSave}
+            usersList={usersList}
+            usersLoading={usersLoading}
+          />
+        </div>
+      </div>
+    </div>
   );
 };
 
