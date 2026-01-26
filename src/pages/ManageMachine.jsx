@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
@@ -443,7 +443,7 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
 };
 
 // 容器详情弹窗组件
-const ContainerDetailModal = ({ visible, container, onClose, onEdit, usersList = [] }) => {
+const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, usersList = [] }) => {
   if (!container) return null;
 
   // 按角色分组账户
@@ -469,6 +469,9 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, usersList =
       footer={[
         <Button key="close" onClick={onClose}>
           关闭
+        </Button>,
+        <Button key="deleteContainer" danger icon={<DeleteOutlined />} onClick={() => onDelete && onDelete(container)}>
+          删除容器
         </Button>,
         <Button 
           key="edit" 
@@ -674,6 +677,10 @@ const ManageMachine = () => {
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deleteTargetMachine, setDeleteTargetMachine] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  // 删除容器的二次确认状态
+  const [containerDeleteConfirmVisible, setContainerDeleteConfirmVisible] = useState(false);
+  const [deleteTargetContainer, setDeleteTargetContainer] = useState(null);
+  const [containerDeleteLoading, setContainerDeleteLoading] = useState(false);
 
   // load machines from backend on mount
   useEffect(() => {
@@ -1135,6 +1142,57 @@ const ManageMachine = () => {
     });
   };
 
+  // 打开删除容器的确认弹窗
+  const openDeleteContainerConfirm = (container) => {
+    setDeleteTargetContainer(container);
+    // 隐藏详情弹窗以展示二次确认
+    setDetailModalVisible(false);
+    setContainerDeleteConfirmVisible(true);
+  };
+
+  // 确认删除容器
+  const handleDeleteContainerConfirm = async () => {
+    if (!deleteTargetContainer) return;
+    setContainerDeleteLoading(true);
+    const cid = deleteTargetContainer.key || deleteTargetContainer.container_id;
+    try {
+      await deleteContainer(cid);
+      // 从 containerMap 中移除
+      const mid = String(deleteTargetContainer.machine_id || deleteTargetContainer.machine_ip || deleteTargetContainer.machine_id || '');
+      setContainerMap(prev => {
+        const copy = { ...prev };
+        if (copy[mid] && Array.isArray(copy[mid].data)) {
+          copy[mid] = { ...copy[mid], data: copy[mid].data.filter(c => c.key !== deleteTargetContainer.key && String(c.container_id) !== String(cid)) };
+        }
+        return copy;
+      });
+      // 关闭相关弹窗
+      if (selectedContainer && (selectedContainer.key === deleteTargetContainer.key || selectedContainer.container_id === deleteTargetContainer.container_id)) {
+        closeAllModals();
+      }
+      message.success('容器已删除');
+    } catch (err) {
+      console.error('deleteContainer failed', err);
+      // fallback: local remove
+      const mid = String(deleteTargetContainer.machine_id || deleteTargetContainer.machine_ip || deleteTargetContainer.machine_id || '');
+      setContainerMap(prev => {
+        const copy = { ...prev };
+        if (copy[mid] && Array.isArray(copy[mid].data)) {
+          copy[mid] = { ...copy[mid], data: copy[mid].data.filter(c => c.key !== deleteTargetContainer.key) };
+        }
+        return copy;
+      });
+      message.warning('删除请求失败，本地已移除');
+    } finally {
+      setContainerDeleteLoading(false);
+      setContainerDeleteConfirmVisible(false);
+      setDeleteTargetContainer(null);
+      // Ensure detail modal is closed after deletion attempt and clear selection
+      setDetailModalVisible(false);
+      setSelectedContainer(null);
+    }
+  };
+
   // 打开编辑弹窗
   const openEditModal = (container) => {
     setSelectedContainer(container);
@@ -1542,12 +1600,49 @@ const ManageMachine = () => {
         confirmText="删除"
       />
 
+      {/* 删除容器 - 二次确认 */}
+      <ConfirmModal
+        visible={containerDeleteConfirmVisible}
+        title="确认删除容器"
+        message={deleteTargetContainer ? `请确认以下信息并删除容器 ${deleteTargetContainer.container_name || deleteTargetContainer.key}` : '确认删除该容器？'}
+        content={
+          deleteTargetContainer ? (
+            <div style={{ background: '#fff2f0', padding: 16, borderRadius: 4, border: '1px solid #ffccc7' }}>
+              <Row gutter={[0, 8]}>
+                <Col span={24}>
+                  <Typography.Text type="secondary">容器ID：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetContainer.key || deleteTargetContainer.container_id}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">容器名：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetContainer.container_name}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">所属机器：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetContainer.machine_id || deleteTargetContainer.machine_ip}</Typography.Text>
+                </Col>
+              </Row>
+              <Typography.Text type="danger" style={{ display: 'block', marginTop: 12 }}>
+                此操作不可恢复！此操作将永久删除该容器。
+              </Typography.Text>
+            </div>
+          ) : null
+        }
+        danger
+        iconColor="#ff4d4f"
+        onConfirm={handleDeleteContainerConfirm}
+        onCancel={() => { setContainerDeleteConfirmVisible(false); setDeleteTargetContainer(null); setDetailModalVisible(true); }}
+        loading={containerDeleteLoading}
+        confirmText="删除"
+      />
+
       {/* 容器详情弹窗 */}
       <ContainerDetailModal
         visible={detailModalVisible}
         container={selectedContainer}
         onClose={closeAllModals}
         onEdit={openEditModal}
+        onDelete={openDeleteContainerConfirm}
         usersList={usersList}
       />
 
