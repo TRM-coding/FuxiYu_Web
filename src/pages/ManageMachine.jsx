@@ -261,6 +261,7 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
         </Button>
       ]}
     >
+      <Form form={form} layout="vertical">
       <div style={{ marginBottom: 24 }}>
         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
           当前容器: {container?.container_name} | 所属机器ID: {container?.machine_id || container?.machine_ip}
@@ -438,6 +439,7 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
           </ul>
         </div>
       </div>
+      </Form>
     </Modal>
   );
 };
