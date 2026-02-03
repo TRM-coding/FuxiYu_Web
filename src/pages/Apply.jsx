@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Table, Tag, Radio, Space, Form, InputNumber, message } from 'antd';
 const { Column } = Table;
@@ -17,9 +18,37 @@ import ConfirmModal from '../components/ConfirmModal';
 // data will be fetched from backend; table will use mapped `tableData` built from API response.
 
 const Apply = () => {
+  const navigate = useNavigate();
   const [value3, setValue3] = useState('Any');
   const [searchIp, setSearchIp] = useState('');
   const [searchId, setSearchId] = useState('');
+  const [currentUserName, setCurrentUserName] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  // 读取当前用户信息，如果缺失则清除 auth 并重定向到登录
+  useEffect(() => {
+    try {
+      const name = localStorage.getItem('currentUserName');
+      const id = localStorage.getItem('currentUserId');
+      // 需要同时拥有 name 和 id；如果缺失，清除 auth 并强制登录
+      if (!name || !id) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('currentUserId');
+        localStorage.removeItem('currentUserName');
+        document.cookie = 'auth_token=; Max-Age=0; path=/';
+        navigate('/');
+        return;
+      }
+      setCurrentUserName(name);
+      setCurrentUserId(id);
+    } catch (e) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('currentUserId');
+      localStorage.removeItem('currentUserName');
+      document.cookie = 'auth_token=; Max-Age=0; path=/';
+      navigate('/');
+    }
+  }, [navigate]);
 
   const [machines, setMachines] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -79,11 +108,10 @@ const Apply = () => {
       const values = await addContainerForm.validateFields();
       setAddContainerLoading(true);
       const machineId = values.machine_id || addContainerMachineId;
-      const currentUserName = localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
-      const currentUserId = localStorage.getItem('currentUserId') || localStorage.getItem('currentUser') || null;
+      // 使用状态中的 currentUserName 和 currentUserId
       const payload = {
-        user_name: currentUserName,
-        user_id: currentUserId,
+        user_name: currentUserName || '',
+        user_id: currentUserId || null,
         machine_id: machineId,
         container: {
           GPU_LIST: values.GPU_LIST || [],
