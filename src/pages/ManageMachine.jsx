@@ -217,14 +217,14 @@ const ManageMachine = () => {
 
   // 机器状态标签
   const renderStatusTag = (status) => {
-    const color = status === 'online' ? 'green' : 'orange';
-    return <Tag color={color}>{status === 'online' ? '运行中' : '维护中'}</Tag>;
+    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
+    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : '维护中'}</Tag>;
   };
 
   // 容器状态标签
   const renderContainerStatus = (status) => {
-    const color = status === 'online' ? 'green' : 'red';
-    return <Tag color={color}>{status === 'online' ? '运行中' : '维护中'}</Tag>;
+    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
+    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : '维护中'}</Tag>;
   };
 
   // 切换展开状态
@@ -870,14 +870,19 @@ const ManageMachine = () => {
                 </Form.Item>
               </Col>
 
-                <Col span={12}>
-                  <Form.Item name="machine_status" label="状态">
-                    <Select disabled={!isEditMode}>
-                      <Option value="online">运行中</Option>
-                      <Option value="maintenance">维护中</Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
+              <Form.Item shouldUpdate={(prevValues, currentValues) => prevValues.machine_status !== currentValues.machine_status} noStyle>
+                {({ getFieldValue }) => (
+                  <Col span={12}>
+                    <Form.Item name="machine_status" label="状态">
+                      <Select disabled={!isEditMode || getFieldValue('machine_status') === 'offline'}>
+                        <Option value="offline">已停止</Option>
+                        <Option value="online">运行中</Option>
+                        <Option value="maintenance">维护中</Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                )}
+              </Form.Item>
             </Row>
 
             <Row gutter={16}>

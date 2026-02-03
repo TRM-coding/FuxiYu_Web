@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SearchOutlined } from '@ant-design/icons';
-import { Typography, Row, Col, Button, Input, Table, Tag, Radio, Space } from 'antd';
+import { Typography, Row, Col, Button, Input, Table, Tag, Radio, Space, Form, InputNumber, message } from 'antd';
 const { Column } = Table;
 
 const options = [
@@ -11,6 +11,7 @@ const options = [
 
 
 import { listAllMachineBrefInformation, getDetailInformation } from '../api/machine_api';
+import { createContainer } from '../api/container_api';
 import ConfirmModal from '../components/ConfirmModal';
 
 // data will be fetched from backend; table will use mapped `tableData` built from API response.
@@ -29,6 +30,12 @@ const Apply = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailInfo, setDetailInfo] = useState(null);
   const [detailError, setDetailError] = useState('');
+  // add-container modal states (reuse form from ManageMachine)
+  const [addContainerVisible, setAddContainerVisible] = useState(false);
+  const [addContainerLoading, setAddContainerLoading] = useState(false);
+  const [addContainerForm] = Form.useForm();
+  const [addContainerMachineId, setAddContainerMachineId] = useState(null);
+  
 
   const fetchMachines = async (p = page, ps = pageSize) => {
     setLoading(true);
@@ -56,6 +63,52 @@ const Apply = () => {
     fetchMachines(page, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize]);
+
+  
+
+  const openAddContainerModal = (machine) => {
+    const mid = machine?.machine_id ?? machine?.key ?? null;
+    setAddContainerMachineId(mid);
+    addContainerForm.resetFields();
+    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [] });
+    setAddContainerVisible(true);
+  };
+
+  const handleAddContainerConfirm = async () => {
+    try {
+      const values = await addContainerForm.validateFields();
+      setAddContainerLoading(true);
+      const machineId = values.machine_id || addContainerMachineId;
+      const currentUserName = localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
+      const currentUserId = localStorage.getItem('currentUserId') || localStorage.getItem('currentUser') || null;
+      const payload = {
+        user_name: currentUserName,
+        user_id: currentUserId,
+        machine_id: machineId,
+        container: {
+          GPU_LIST: values.GPU_LIST || [],
+          CPU_NUMBER: values.CPU_NUMBER || 1,
+          MEMORY: values.MEMORY || 512,
+          NAME: values.NAME || `container-${Date.now()}`,
+          image: values.image || ''
+        },
+        public_key: values.public_key || ''
+      };
+
+      try {
+        await createContainer(payload);
+        message.success('容器创建请求已发送');
+        setAddContainerVisible(false);
+      } catch (err) {
+        console.error('createContainer failed', err);
+        message.error('创建容器失败');
+      } finally {
+        setAddContainerLoading(false);
+      }
+    } catch (err) {
+      // validation failed; do nothing
+    }
+  };
 
   const filteredData = machines
     .map((m, idx) => ({
@@ -145,7 +198,34 @@ const Apply = () => {
           }}
           bordered
         >
-          <Column title="机器名称" dataIndex="machine_name" key="machine_name" render={text => <a>{text}</a>} />
+          <Column
+            title="机器名称"
+            dataIndex="machine_name"
+            key="machine_name"
+            render={(text, record) => (
+              <a
+                onClick={async () => {
+                  const id = record.machine_id || 0;
+                  setDetailError('');
+                  setDetailInfo(null);
+                  setDetailLoading(true);
+                  try {
+                    const res = await getDetailInformation(id);
+                    setDetailInfo(res);
+                    setDetailVisible(true);
+                  } catch (err) {
+                    console.error('Failed to get detail', err);
+                    setDetailError(err.message || 'Failed to load details');
+                    setDetailVisible(true);
+                  } finally {
+                    setDetailLoading(false);
+                  }
+                }}
+              >
+                {text}
+              </a>
+            )}
+          />
           <Column title="机器ID" dataIndex="key" key="key" />
           <Column title="IP地址" dataIndex="machine_ip" key="machine_ip" />
           <Column
@@ -197,9 +277,14 @@ const Apply = () => {
             title="操作"
             key="action"
             render={(_, record) => (
-              <Space size="middle">
-                <a>申请 </a>
-              </Space>
+              record.machine_status === 'online' ? (
+                <Space size="middle">
+                  <a onClick={() => openAddContainerModal(record)}>申请</a>
+                  {/* 此处直接用创建容器的方法 */}
+                </Space>
+              ) : (
+                <span style={{ color: '#999' }}>不可用</span>
+              )
             )}
           />
         </Table>
@@ -216,8 +301,6 @@ const Apply = () => {
               </div>
               <div>
                 <b>类型:</b> <Tag color={detailInfo.machine_type === 'GPU' ? 'volcano' : 'green'}>{detailInfo.machine_type}</Tag>
-                &nbsp;
-                <b>状态:</b> <Tag color={detailInfo.machine_status === 'ONLINE' ? 'green' : detailInfo.machine_status === 'OFFLINE' ? 'volcano' : 'orange'}>{detailInfo.machine_status}</Tag>
               </div>
               <div>
                 <b>CPU core 数:</b> {detailInfo.cpu_core_number}
@@ -248,6 +331,65 @@ const Apply = () => {
         loading={detailLoading}
         confirmText="关闭"
         showCancel={false}
+      />
+      <ConfirmModal
+        visible={addContainerVisible}
+        title="添加容器"
+        message="请填写容器信息并确认添加"
+        onConfirm={handleAddContainerConfirm}
+        onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); }}
+        loading={addContainerLoading}
+        confirmText="添加"
+        content={
+          <Form
+            form={addContainerForm}
+            layout="vertical"
+            initialValues={{ CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [] }}
+          >
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }]}>
+                  <Input placeholder="容器名" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}>
+                  <Input placeholder="例如：nginx:latest" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="CPU_NUMBER" label="CPU 数量">
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="MEMORY" label="内存 (MB)">
+                  <InputNumber min={128} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="machine_id" label="宿主机ID">
+                  <Input disabled value={addContainerMachineId || ''} />
+                </Form.Item>
+              </Col>
+              <Col span={12} />
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.Item name="public_key" label="公钥 (可选)">
+                  <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        }
       />
     </div>
   );
