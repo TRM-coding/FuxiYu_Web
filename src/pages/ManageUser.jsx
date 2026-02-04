@@ -5,8 +5,8 @@ import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { handleAuthError } from '../utils/authHelpers';
-import { listAllUserBrefInformation, getUserDetailInformation } from '../api/user_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation } from '../api/container_api';
+import { listAllUserBrefInformation, getUserDetailInformation, deleteUser } from '../api/user_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator } from '../api/container_api';
 const { Column } = Table;
 
 // users and containers will be fetched from backend
@@ -147,35 +147,64 @@ const ManageUser = () => {
   };
 
   // 处理弹窗确认
-  const handleModalConfirm = () => {
+  const handleModalConfirm = async () => {
     setModal(prev => ({ ...prev, loading: true }));
-    
-    setTimeout(() => {
-      const { type, data } = modal;
-      
-      switch (type) {
-        case 'save':
-          console.log('保存用户信息:', data);
-          message.success('用户信息已保存');
-          break;
-        case 'delete':
-          console.log('删除用户:', data);
-          message.success('用户已删除');
-          break;
-        case 'resetPassword':
-          console.log('重置密码:', data);
-          message.success('密码已重置');
-          break;
-        case 'removeAssociation':
-          console.log('移除关联:', data);
-          message.success('关联已移除');
-          break;
-        default:
-          break;
+    const { type, data } = modal;
+
+    try {
+      if (type === 'save') {
+        // local/save simulation kept
+        console.log('保存用户信息:', data);
+        message.success('用户信息已保存');
+      } else if (type === 'delete') {
+        // call delete user API
+        const uid = Number(data?.key || data?.user_id || data?.id);
+        if (!uid) throw new Error('缺少用户ID');
+        await deleteUser(uid);
+        setUsers(prev => prev.filter(u => String(u.key) !== String(data.key)));
+        message.success('用户已删除');
+      } else if (type === 'resetPassword') {
+        console.log('重置密码:', data);
+        message.success('密码已重置');
+      } else if (type === 'removeAssociation') {
+        // remove user-container association via API
+        const username = data?.username;
+        const container = data?.container;
+        const userObj = users.find(u => u.username === username);
+        const uid = Number(userObj?.key || data?.user_id || data?.id);
+        const cid = Number(container?.key || container?.container_id || container?.id);
+        if (!uid || !cid) throw new Error('缺少用户ID或容器ID');
+        await removeCollaborator({ user_id: uid, container_id: cid });
+        // update cache: remove container from this user's container list if present
+        setContainerMap(prev => {
+          const id = String(uid);
+          const entry = prev[id] || { data: [] };
+          const newData = (entry.data || []).filter(c => String(c.key) !== String(cid));
+          return { ...prev, [id]: { ...(entry || {}), loading: false, data: newData } };
+        });
+        message.success('关联已移除');
       }
-      
+    } catch (err) {
+      console.error('modal action failed', err);
+      // Prefer structured error body.message provided by backend (e.g. wild container notice)
+      const status = err?.status || err?.response?.status;
+      let messageText = (err && err.message) ? err.message : '操作失败，请重试';
+      try {
+        if (err && err.body && typeof err.body === 'object') {
+          if (err.body.message) messageText = String(err.body.message);
+          if (err.body.wild_containers) {
+            const wc = err.body.wild_containers;
+            const list = Array.isArray(wc) ? wc.join(', ') : String(wc);
+            messageText = `${messageText}。受影响容器: ${list}`;
+          }
+        }
+      } catch (e) {
+        // fall back to err.message
+      }
+      await showErrorModal({ message: messageText, status });
+    } finally {
       setModal({ visible: false, type: '', loading: false, data: null });
-    }, 500);   // Future TODO 这里的延时模拟API调用，后续替换为真实API请求
+    }
   };
 
   // 处理保存用户信息
@@ -444,7 +473,7 @@ const ManageUser = () => {
       case 'save':
         return `确定要保存用户 ${data?.username} 的信息吗？`;
       case 'delete':
-        return `确定要删除用户 ${data?.username} 吗？`;
+        return `确定要删除用户 ${data?.username} 吗？这将会同时解除用户与所有容器的关联！`;
       case 'resetPassword':
         return `确定要重置用户 ${data?.username} 的密码吗？`;
       case 'removeAssociation':
@@ -669,15 +698,25 @@ const ManageUser = () => {
                             <Column
                               title="操作"
                               key="action"
-                              render={(_, containerRecord) => (
-                                <Button 
-                                  danger 
-                                  size="small"
-                                  onClick={() => handleRemoveUserFromContainer(record.username, containerRecord)}
-                                >
-                                  移除关联
-                                </Button>
-                              )}
+                              render={(_, containerRecord) => {
+                                const role = containerRecord.userRole || containerRecord.role || '';
+                                if (String(role).toUpperCase() === 'ROOT') {
+                                  return (
+                                    <Button size="small" disabled>
+                                      不可移除所有者
+                                    </Button>
+                                  );
+                                }
+                                return (
+                                  <Button 
+                                    danger 
+                                    size="small"
+                                    onClick={() => handleRemoveUserFromContainer(record.username, containerRecord)}
+                                  >
+                                    移除关联
+                                  </Button>
+                                );
+                              }}
                             />
                           </Table>
                         );
