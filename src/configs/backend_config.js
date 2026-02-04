@@ -12,6 +12,8 @@ export const API_ROUTES = {
 	USERS_CHANGE_PASSWORD: '/api/users/change_password',
 	USERS_DELETE: '/api/users/delete_user',
 	USERS_GET_DETAIL: '/api/users/get_user_detail_information',
+	USERS_UPDATE: '/api/users/update_user',
+	USERS_RESET_PASSWORD: '/api/users/reset_password',
 	USERS_LIST: '/api/users/list_all_user_bref_information',
 
 	// Machine routes

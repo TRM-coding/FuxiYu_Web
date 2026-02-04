@@ -112,6 +112,56 @@ export const changePasswordUser = async ({ user_id, old_password, new_password }
   }
 };
 
+export const updateUser = async ({ user_id, fields } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_UPDATE}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getTokenHeader(),
+      },
+      body: JSON.stringify({ user_id, fields }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Update user');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Update user request timed out');
+    throw err;
+  }
+};
+
+export const resetPassword = async ({ user_id } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_RESET_PASSWORD}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getTokenHeader(),
+      },
+      body: JSON.stringify({ user_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Reset password');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Reset password request timed out');
+    throw err;
+  }
+};
+
 export const deleteUser = async (user_id = 0, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
-import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message } from 'antd';
+import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message, InputNumber } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { handleAuthError } from '../utils/authHelpers';
-import { listAllUserBrefInformation, getUserDetailInformation, deleteUser } from '../api/user_api';
+import { listAllUserBrefInformation, getUserDetailInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator } from '../api/container_api';
 const { Column } = Table;
 
@@ -13,6 +13,76 @@ const { Column } = Table;
 const initialUsers = [];
 
 const ManageUser = () => {
+  // Inline editor for expanded rows
+  const EditUserRow = ({ record }) => {
+    const [values, setValues] = React.useState({
+      username: record.username ?? '',
+      email: record.email ?? '',
+      graduation_year: record.graduation_year ?? ''
+    });
+
+    const original = React.useRef({ username: record.username ?? '', email: record.email ?? '', graduation_year: record.graduation_year ?? '' });
+
+    const changedFields = React.useMemo(() => {
+      const out = {};
+      if (String(values.username) !== String(original.current.username)) out.username = values.username;
+      if (String(values.email) !== String(original.current.email)) out.email = values.email;
+      if (String(values.graduation_year) !== String(original.current.graduation_year)) {
+        let v = values.graduation_year;
+        if (v === '' || v === undefined || v === null) {
+          v = null;
+        } else {
+          v = parseInt(v, 10);
+        }
+        out.graduation_year = Number.isNaN(v) ? values.graduation_year : v;
+      }
+      return out;
+    }, [values]);
+
+    const hasChanged = Object.keys(changedFields).length > 0;
+
+    const onReset = () => {
+      setValues({ ...original.current });
+    };
+
+    const onSave = () => {
+      // open modal for confirmation with changedFields
+      openModal('save', { record, changedFields });
+    };
+
+    const labelStyle = (field) => (String(values[field]) !== String(original.current[field]) ? { fontWeight: 700, fontStyle: 'italic' } : {});
+
+    return (
+      <div style={{ background: '#fff' }}>
+        <Form layout="inline" initialValues={{ username: values.username, email: values.email, graduation_year: values.graduation_year }}>
+          <Row gutter={[16, 0]} align="middle" style={{ width: '100%' }}>
+            <Col flex="auto">
+              <Form.Item label={<span style={labelStyle('username')}>用户名</span>} style={{ marginBottom: 0 }}>
+                <Input value={values.username} onChange={e => setValues(v => ({ ...v, username: e.target.value }))} style={{ width: 150 }} />
+              </Form.Item>
+            </Col>
+            <Col flex="auto">
+              <Form.Item label={<span style={labelStyle('email')}>邮箱</span>} style={{ marginBottom: 0 }}>
+                <Input value={values.email} onChange={e => setValues(v => ({ ...v, email: e.target.value }))} style={{ width: 200 }} />
+              </Form.Item>
+            </Col>
+            <Col flex="auto">
+              <Form.Item label={<span style={labelStyle('graduation_year')}>毕业年份</span>} style={{ marginBottom: 0 }}>
+                <InputNumber value={values.graduation_year === '' || values.graduation_year === null ? undefined : Number(values.graduation_year)} onChange={v => setValues(val => ({ ...val, graduation_year: v }))} style={{ width: 120 }} />
+              </Form.Item>
+            </Col>
+            <Col>
+              <Space size="small">
+                <Button type="primary" size="small" onClick={onSave} disabled={!hasChanged}>保存</Button>
+                <Button size="small" onClick={onReset}>{hasChanged ? '重置' : '重置'}</Button>
+              </Space>
+            </Col>
+          </Row>
+        </Form>
+      </div>
+    );
+  };
+
   // 用户搜索状态
   const [searchUsername, setSearchUsername] = useState('');
   const [searchUserId, setSearchUserId] = useState('');
@@ -153,9 +223,18 @@ const ManageUser = () => {
 
     try {
       if (type === 'save') {
-        // local/save simulation kept
-        console.log('保存用户信息:', data);
-        message.success('用户信息已保存');
+        // data should contain { record, changedFields }
+        const uid = Number(data?.record?.key || data?.record?.user_id || data?.record?.id);
+        const fields = data?.changedFields || {};
+        if (!uid) throw new Error('缺少用户ID');
+        if (Object.keys(fields).length === 0) {
+          // nothing to do
+        } else {
+          await updateUser({ user_id: uid, fields });
+          // update local list: only update provided fields
+          setUsers(prev => prev.map(u => (String(u.key) === String(uid) ? { ...u, ...fields } : u)));
+          message.success('用户信息已更新');
+        }
       } else if (type === 'delete') {
         // call delete user API
         const uid = Number(data?.key || data?.user_id || data?.id);
@@ -164,8 +243,15 @@ const ManageUser = () => {
         setUsers(prev => prev.filter(u => String(u.key) !== String(data.key)));
         message.success('用户已删除');
       } else if (type === 'resetPassword') {
-        console.log('重置密码:', data);
-        message.success('密码已重置');
+        const uid = Number(data?.key || data?.user_id || data?.id);
+        if (!uid) throw new Error('缺少用户ID');
+        const res = await resetPassword({ user_id: uid });
+        const newPwd = res && (res.new_password || res.newPassword || res.data?.new_password);
+        if (newPwd) {
+          await showErrorModal({ title: '密码已重置', message: `新密码：${newPwd}`, status: 200 });
+        } else {
+          message.success('密码已重置');
+        }
       } else if (type === 'removeAssociation') {
         // remove user-container association via API
         const username = data?.username;
@@ -354,7 +440,8 @@ const ManageUser = () => {
     
     switch (type) {
       case 'save': {
-        const user = data;
+        const rec = data?.record || {};
+        const changed = data?.changedFields || {};
         return (
           <div style={{ 
             background: '#fafafa', 
@@ -364,17 +451,15 @@ const ManageUser = () => {
           }}>
             <Row gutter={[0, 12]}>
               <Col span={24}>
-                <Typography.Text type="secondary">用户名：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{user?.username}</Typography.Text>
+                <Typography.Text type="secondary">用户：</Typography.Text>
+                <Typography.Text style={{ marginLeft: 8 }}>{rec?.username}</Typography.Text>
               </Col>
-              <Col span={24}>
-                <Typography.Text type="secondary">邮箱：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{user?.email}</Typography.Text>
-              </Col>
-              <Col span={24}>
-                <Typography.Text type="secondary">毕业年份：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{user?.graduation_year}</Typography.Text>
-              </Col>
+              {Object.keys(changed).map((k) => (
+                <Col span={24} key={k}>
+                  <Typography.Text type="secondary">{k}：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{String(changed[k])}</Typography.Text>
+                </Col>
+              ))}
             </Row>
           </div>
         );
@@ -409,6 +494,7 @@ const ManageUser = () => {
         );
       }
       case 'resetPassword': {
+        const user = data || {};
         return (
           <div style={{ 
             background: '#fffbe6', 
@@ -417,7 +503,7 @@ const ManageUser = () => {
             border: '1px solid #ffe58f'
           }}>
             <Typography.Text type="secondary">
-              系统将重置为默认密码，请提醒用户尽快修改密码。
+              系统将为用户 {user?.username || user?.key} 重置密码，确认后会显示新密码，请提醒用户尽快修改。
             </Typography.Text>
           </div>
         );
@@ -471,7 +557,7 @@ const ManageUser = () => {
     
     switch (type) {
       case 'save':
-        return `确定要保存用户 ${data?.username} 的信息吗？`;
+        return `确定要保存用户 ${data?.record?.username} 的信息吗？`;
       case 'delete':
         return `确定要删除用户 ${data?.username} 吗？这将会同时解除用户与所有容器的关联！`;
       case 'resetPassword':
@@ -629,35 +715,7 @@ const ManageUser = () => {
                     border: '1px solid #f0f0f0',
                     marginBottom: '16px'
                   }}>
-                    <Form layout="inline" initialValues={{
-                      username: record.username,
-                      email: record.email,
-                      graduation_year: record.graduation_year,
-                    }}>
-                      <Row gutter={[16, 0]} align="middle" style={{ width: '100%' }}>
-                        <Col flex="auto">
-                          <Form.Item label="用户名" name="username" style={{ marginBottom: 0 }}>
-                            <Input placeholder="请输入用户名" style={{ width: 150 }} />
-                          </Form.Item>
-                        </Col>
-                        <Col flex="auto">
-                          <Form.Item label="邮箱" name="email" style={{ marginBottom: 0 }}>
-                            <Input placeholder="请输入邮箱" style={{ width: 200 }} />
-                          </Form.Item>
-                        </Col>
-                        <Col flex="auto">
-                          <Form.Item label="毕业年份" name="graduation_year" style={{ marginBottom: 0 }}>
-                            <Input placeholder="请输入毕业年份" style={{ width: 120 }} />
-                          </Form.Item>
-                        </Col>
-                        <Col>
-                          <Space size="small">
-                            <Button type="primary" size="small" onClick={() => handleSaveUser(record)}>保存</Button>
-                            <Button size="small" onClick={() => toggleExpand(record.key)}>取消</Button>
-                          </Space>
-                        </Col>
-                      </Row>
-                    </Form>
+                    <EditUserRow record={record} />
                   </div>
 
                   {/* 用户容器子表格 */}

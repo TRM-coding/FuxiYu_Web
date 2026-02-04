@@ -482,6 +482,34 @@ const ManageMachine = () => {
             machine_description: payload.machine_description || ''
           };
           setMachines(prev => prev.map(m => (m.key === editTargetMachine.key ? updatedMachine : m)));
+          // 之后，这里 关闭宿主机 前，会先对容器进行关闭。
+          // TODO
+          try {
+            const oldStatus = String(editTargetMachine.machine_status || '').toLowerCase();
+            const newStatus = String(updatedMachine.machine_status || '').toLowerCase();
+            if (newStatus === 'maintenance' && oldStatus !== 'maintenance') {
+              const midStr = String(mid);
+              const entry = containerMap[midStr] || {};
+              const conts = entry.data || [];
+              conts.forEach(c => {
+                // placeholder for actual stop API call
+                // e.g. await stopContainer(c.key)
+                // for now just log intention
+                // eslint-disable-next-line no-console
+                console.log('stop_container (placeholder) for container', c.key);
+              });
+              // update UI: mark containers as offline
+              setContainerMap(prev => {
+                const copy = { ...(prev || {}) };
+                if (copy[midStr] && Array.isArray(copy[midStr].data)) {
+                  copy[midStr] = { ...copy[midStr], data: copy[midStr].data.map(cc => ({ ...cc, container_status: 'offline' })) };
+                }
+                return copy;
+              });
+            }
+          } catch (e) {
+            // ignore logging errors
+          }
           message.success('宿主机已更新');
           success = true;
         } catch (err) {
@@ -710,21 +738,26 @@ const ManageMachine = () => {
             <Column
               title="操作"
               key="action"
-              render={(_, containerRecord) => (
-                <Space size="middle">
-                  <Button type="primary" size="small">启动</Button>
-                  <Button danger size="small">停止</Button>
-                  <Button size="small">重启</Button>
-                  <Button 
-                    size="small" 
-                    type="primary"
-                    ghost
-                    onClick={() => openContainerDetail(containerRecord)}
-                  >
-                    详情
-                  </Button>
-                </Space>
-              )}
+              render={(_, containerRecord) => {
+                const machineStatus = (record.machine_status || '').toLowerCase();
+                const actionsDisabled = machineStatus === 'offline' || machineStatus === 'maintenance';
+                return (
+                  <Space size="middle">
+                    <Button type="primary" size="small" disabled={actionsDisabled}>启动</Button>
+                    <Button danger size="small" disabled={actionsDisabled}>停止</Button>
+                    <Button size="small" disabled={actionsDisabled}>重启</Button>
+                    <Button 
+                      size="small" 
+                      type="primary"
+                      ghost
+                      onClick={() => openContainerDetail(containerRecord)}
+                      disabled={actionsDisabled}
+                    >
+                      详情
+                    </Button>
+                  </Space>
+                );
+              }}
             />
           </Table>
           {/* 内侧列表的分页 */}
@@ -917,14 +950,23 @@ const ManageMachine = () => {
               </Col>
 
               <Form.Item shouldUpdate={(prevValues, currentValues) => prevValues.machine_status !== currentValues.machine_status} noStyle>
-                {({ getFieldValue }) => (
+                {() => (
                   <Col span={12}>
                     <Form.Item name="machine_status" label="状态">
-                      <Select disabled={!isEditMode || getFieldValue('machine_status') === 'offline'}>
-                        <Option value="offline">已停止</Option>
-                        <Option value="online">运行中</Option>
-                        <Option value="maintenance">维护中</Option>
-                      </Select>
+                      {
+                        // If the loaded machine is offline, lock the field to offline and prevent changing
+                        isEditMode && editTargetMachine && String(editTargetMachine.machine_status).toLowerCase() === 'offline' ? (
+                          <Select disabled value="offline">
+                            <Option value="offline">已停止</Option>
+                          </Select>
+                        ) : (
+                          // Otherwise allow selecting online/maintenance while editing; disabled when not editing
+                          <Select disabled={!isEditMode}>
+                            <Option value="online">运行中</Option>
+                            <Option value="maintenance">维护中</Option>
+                          </Select>
+                        )
+                      }
                     </Form.Item>
                   </Col>
                 )}
@@ -1089,7 +1131,8 @@ const ManageMachine = () => {
         onDelete={openDeleteContainerConfirm}
         usersList={usersList}
         currentUserName={localStorage.getItem('currentUserName')}
-        forceSystemAdmin={true} // 此时currentUserName无意义
+        currentUserId={localStorage.getItem('currentUserId')}
+        forceSystemAdmin={true} // 此时currentUserName/id无意义
       />
 
       {/* 添加容器 确认弹窗（包含表单） */}

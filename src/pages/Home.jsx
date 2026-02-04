@@ -485,6 +485,7 @@ const Home = () => {
             onEdit={openEditModal}
             usersList={usersList}
             currentUserName={currentUserName}
+            currentUserId={currentUserId}
           />
 
           <EditUserModal

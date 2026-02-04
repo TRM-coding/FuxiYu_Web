@@ -18,7 +18,7 @@ const getAvatarUrl = (username) => `https://api.dicebear.com/7.x/miniavs/svg?see
 const formatRole = (role) => (ROLE_CONFIG[role] ? ROLE_CONFIG[role].label : role);
 const getRoleColor = (role) => (ROLE_CONFIG[role] ? ROLE_CONFIG[role].color : 'default');
 
-const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, usersList = [], currentUserName = null, forceSystemAdmin = false }) => {
+const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, usersList = [], currentUserName = null, currentUserId = null, forceSystemAdmin = false }) => {
   if (!container) return null;
 
   const accountsByRole = container.accounts?.reduce((acc, account) => {
@@ -29,9 +29,8 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
     return acc;
   }, {});
 
-  // 此处判断当前用户是否为ROOT用户
-  const currentUserIdFromUsers = usersList?.find(u => u.username === currentUserName)?.id;
-  const isRoot = forceSystemAdmin || (container.accounts || []).some(acc => acc.role === ROLE.ROOT && (String(acc.user_id) === String(currentUserIdFromUsers) || acc.username === currentUserName));
+  // 使用 user_id 精确判断当前用户是否为 ROOT（避免 username 修改导致匹配失败）
+  const isRoot = forceSystemAdmin || (container.accounts || []).some(acc => acc.role === ROLE.ROOT && String(acc.user_id) === String(currentUserId));
 
   return (
     <Modal title="容器详细信息" open={visible} onCancel={onClose} width={750} footer={[
