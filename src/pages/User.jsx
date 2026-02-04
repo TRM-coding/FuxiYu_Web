@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Form, Input, DatePicker, Button, Row, Col, Space, message, InputNumber } from 'antd';
+import showErrorModal from '../utils/showErrorModal';
+import { handleAuthError } from '../utils/authHelpers';
 import { getUserDetailInformation } from '../api/user_api';
 
 const User = () => {
@@ -14,26 +16,39 @@ const User = () => {
 
   // 读取当前用户信息，如果缺失则清除 auth 并重定向到登录
   useEffect(() => {
-    try {
-      const name = localStorage.getItem('currentUserName');
-      const id = localStorage.getItem('currentUserId');
-      // 需要同时拥有 name 和 id；如果缺失，清除 auth 并强制登录
-      if (!name || !id) {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('currentUserId');
-        localStorage.removeItem('currentUserName');
-        document.cookie = 'auth_token=; Max-Age=0; path=/';
-        navigate('/');
-        return;
+    const checkAuth = async () => {
+      try {
+        const name = localStorage.getItem('currentUserName');
+        const id = localStorage.getItem('currentUserId');
+        // 需要同时拥有 name 和 id；如果缺失，先展示401提示，然后清除 auth 并强制登录
+        if (!name || !id) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 401: clear auth and navigate to login
+          handleAuthError(401, navigate);
+          return;
+        }
+        setCurrentUserId(id);
+      } catch (e) {
+        if (!sessionStorage.getItem('auth_modal_shown')) {
+          try {
+            sessionStorage.setItem('auth_modal_shown', '1');
+            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+          } finally {
+            sessionStorage.removeItem('auth_modal_shown');
+          }
+        }
+        // 401: clear auth and navigate to login
+        handleAuthError(401, navigate);
       }
-      setCurrentUserId(id);
-    } catch (e) {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('currentUserId');
-      localStorage.removeItem('currentUserName');
-      document.cookie = 'auth_token=; Max-Age=0; path=/';
-      navigate('/');
-    }
+    };
+    checkAuth();
   }, [navigate]);
 
   // 加载用户详情
@@ -55,7 +70,7 @@ const User = () => {
         });
       } catch (err) {
         console.error('Failed to load user detail', err);
-        message.error('加载用户信息失败');
+        await showErrorModal({ message: '加载用户信息失败', status: err?.response?.status || err?.status });
       }
     };
     load();

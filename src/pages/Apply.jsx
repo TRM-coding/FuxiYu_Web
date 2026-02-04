@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Table, Tag, Radio, Space, Form, InputNumber, message } from 'antd';
+import showErrorModal from '../utils/showErrorModal';
+import { handleAuthError } from '../utils/authHelpers';
 const { Column } = Table;
 
 const options = [
@@ -27,27 +29,40 @@ const Apply = () => {
 
   // 读取当前用户信息，如果缺失则清除 auth 并重定向到登录
   useEffect(() => {
-    try {
-      const name = localStorage.getItem('currentUserName');
-      const id = localStorage.getItem('currentUserId');
-      // 需要同时拥有 name 和 id；如果缺失，清除 auth 并强制登录
-      if (!name || !id) {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('currentUserId');
-        localStorage.removeItem('currentUserName');
-        document.cookie = 'auth_token=; Max-Age=0; path=/';
-        navigate('/');
-        return;
+    const checkAuth = async () => {
+      try {
+        const name = localStorage.getItem('currentUserName');
+        const id = localStorage.getItem('currentUserId');
+        // 需要同时拥有 name 和 id；如果缺失，先弹提示再清除 auth 并强制登录
+        if (!name || !id) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 401: clear auth and navigate to login
+          handleAuthError(401, navigate);
+          return;
+        }
+        setCurrentUserName(name);
+        setCurrentUserId(id);
+      } catch (e) {
+        if (!sessionStorage.getItem('auth_modal_shown')) {
+          try {
+            sessionStorage.setItem('auth_modal_shown', '1');
+            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+          } finally {
+            sessionStorage.removeItem('auth_modal_shown');
+          }
+        }
+        // 401: clear auth and navigate to login
+        handleAuthError(401, navigate);
       }
-      setCurrentUserName(name);
-      setCurrentUserId(id);
-    } catch (e) {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('currentUserId');
-      localStorage.removeItem('currentUserName');
-      document.cookie = 'auth_token=; Max-Age=0; path=/';
-      navigate('/');
-    }
+    };
+    checkAuth();
   }, [navigate]);
 
   const [machines, setMachines] = useState([]);
@@ -129,7 +144,7 @@ const Apply = () => {
         setAddContainerVisible(false);
       } catch (err) {
         console.error('createContainer failed', err);
-        message.error('创建容器失败');
+        await showErrorModal({ message: '创建容器失败', status: err?.response?.status || err?.status });
       } finally {
         setAddContainerLoading(false);
       }

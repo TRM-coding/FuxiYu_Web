@@ -1,7 +1,11 @@
 // pages/AdminProfile.jsx
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, Avatar, Typography, Descriptions } from 'antd';
 import { UserOutlined } from '@ant-design/icons'; // 管理员默认图标
+import showErrorModal from '../utils/showErrorModal';
+import { getUserDetailInformation } from '../api/user_api';
+import { handleAuthError } from '../utils/authHelpers';
 
 // 临时模拟管理员数据（移除网络头像地址，只用默认图标）
 const adminData = {
@@ -14,6 +18,58 @@ const adminData = {
 };
 
 const AdminProfile = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkAuthAndPerm = async () => {
+      try {
+        const name = localStorage.getItem('currentUserName');
+        const id = localStorage.getItem('currentUserId');
+        if (!name || !id) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 401: clear auth and navigate to login
+          handleAuthError(401, navigate);
+          return;
+        }
+
+        const res = await getUserDetailInformation(Number(id));
+        const info = (res && (res.user_info || res.data)) || res || {};
+        const isOperator = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
+        if (!isOperator) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 403: do NOT clear auth; only navigate to /index
+          handleAuthError(403, navigate);
+          return;
+        }
+      } catch (e) {
+        if (!sessionStorage.getItem('auth_modal_shown')) {
+          try {
+            sessionStorage.setItem('auth_modal_shown', '1');
+            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+          } finally {
+            sessionStorage.removeItem('auth_modal_shown');
+          }
+        }
+        // 401: clear auth and navigate to login
+        handleAuthError(401, navigate);
+      }
+    };
+    checkAuthAndPerm();
+  }, [navigate]);
   return (
     <div style={{ padding: '20px' }}>
       <Card title="管理员信息" bordered={false}>

@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Table, Tag, message } from 'antd';
+import showErrorModal from '../utils/showErrorModal';
+import { handleAuthError } from '../utils/authHelpers';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator } from '../api/container_api';
 import { listAllUserBrefInformation } from '../api/user_api';
+import { isAbortError } from '../utils/requestManager';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 const { Column, ColumnGroup } = Table;
 
@@ -31,27 +34,40 @@ const Home = () => {
   const [currentUserName, setCurrentUserName] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   useEffect(() => {
-    try {
-      const name = localStorage.getItem('currentUserName');
-      const id = localStorage.getItem('currentUserId');
-      // require both name and id; if missing, clear auth and force login
-      if (!name || !id) {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('currentUserId');
-        localStorage.removeItem('currentUserName');
-        document.cookie = 'auth_token=; Max-Age=0; path=/';
-        navigate('/');
-        return;
+    const checkAuth = async () => {
+      try {
+        const name = localStorage.getItem('currentUserName');
+        const id = localStorage.getItem('currentUserId');
+        // require both name and id; if missing, show 401 modal then clear auth and force login
+        if (!name || !id) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 401: clear auth and navigate to login
+          handleAuthError(401, navigate);
+          return;
+        }
+        setCurrentUserName(name);
+        setCurrentUserId(id);
+      } catch (e) {
+        if (!sessionStorage.getItem('auth_modal_shown')) {
+          try {
+            sessionStorage.setItem('auth_modal_shown', '1');
+            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+          } finally {
+            sessionStorage.removeItem('auth_modal_shown');
+          }
+        }
+        // 401: clear auth and navigate to login
+        handleAuthError(401, navigate);
       }
-      setCurrentUserName(name);
-      setCurrentUserId(id);
-    } catch (e) {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('currentUserId');
-      localStorage.removeItem('currentUserName');
-      document.cookie = 'auth_token=; Max-Age=0; path=/';
-      navigate('/');
-    }
+    };
+    checkAuth();
   }, [navigate]);
 
   // containers state loaded from backend
@@ -80,7 +96,7 @@ const Home = () => {
         if (mounted) setContainers(mapped);
       } catch (err) {
         console.error('load containers failed', err);
-        message.error('加载容器列表失败');
+        await showErrorModal({ message: '加载容器列表失败', status: err?.response?.status || err?.status });
       } finally {
         if (mounted) setLoadingContainers(false);
       }
@@ -209,7 +225,7 @@ const Home = () => {
       }
     } catch (err) {
       console.error('modal action failed', err);
-      message.error('操作失败，请重试');
+      await showErrorModal({ message: '操作失败，请重试', status: err?.response?.status || err?.status });
     } finally {
       setModal({ visible: false, type: '', loading: false, data: null });
     }
@@ -226,7 +242,7 @@ const Home = () => {
       const res = await getContainerDetailInformation(cid);
       const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
       if (!detail) {
-        message.error('未能获取容器详情');
+        await showErrorModal({ message: '未能获取容器详情' });
         return;
       }
       const mapped = {
@@ -259,9 +275,12 @@ const Home = () => {
       setDetailVisible(true);
     } catch (err) {
       console.error('getContainerDetailInformation failed', err);
-      message.error('获取容器详情失败');
-      setDetailContainer(container);
-      setDetailVisible(true);
+      const status = err?.response?.status || err?.status;
+      await showErrorModal({ message: '获取容器详情失败', status });
+      if (status === 403) {
+        handleAuthError(403, navigate);
+      }
+      return;
     }
   };
 

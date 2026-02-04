@@ -3,9 +3,14 @@ import { listAllMachineBrefInformation, getDetailInformation, addMachine, remove
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
+import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import ContainerDetailModal from '../components/ContainerDetailModal';
+import { handleAuthError } from '../utils/authHelpers';
+import { getUserDetailInformation } from '../api/user_api';
+import { isAbortError } from '../utils/requestManager';
+import { useNavigate } from 'react-router-dom';
 const { Column } = Table;
 const { Option } = Select;
 
@@ -65,6 +70,59 @@ const ManageMachine = () => {
   // users fetched from backend (used for selecting when adding users to a container)
   const [usersList, setUsersList] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const navigate = useNavigate();
+
+  // auth + permission check: ensure logged in and operator permission
+  useEffect(() => {
+    const checkAuthAndPerm = async () => {
+      try {
+        const name = localStorage.getItem('currentUserName');
+        const id = localStorage.getItem('currentUserId');
+        if (!name || !id) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 401: clear auth and navigate to login
+          handleAuthError(401, navigate);
+          return;
+        }
+
+        const res = await getUserDetailInformation(Number(id));
+        const info = (res && (res.user_info || res.data)) || res || {};
+        const isOperator = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
+        if (!isOperator) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 403: do NOT clear auth; only navigate to /index
+          handleAuthError(403, navigate);
+          return;
+        }
+      } catch (e) {
+        if (!sessionStorage.getItem('auth_modal_shown')) {
+          try {
+            sessionStorage.setItem('auth_modal_shown', '1');
+            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+          } finally {
+            sessionStorage.removeItem('auth_modal_shown');
+          }
+        }
+        // 401: clear auth and navigate to login
+        handleAuthError(401, navigate);
+      }
+    };
+    checkAuthAndPerm();
+  }, [navigate]);
 
   // 弹窗状态
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -266,7 +324,7 @@ const ManageMachine = () => {
       // support multiple possible response shapes
       const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
       if (!detail) {
-        message.error('未能获取容器详情');
+        await showErrorModal({ message: '未能获取容器详情' });
         return;
       }
       const mapped = {
@@ -284,10 +342,12 @@ const ManageMachine = () => {
       setDetailModalVisible(true);
     } catch (err) {
       console.error('getContainerDetailInformation failed', err);
-      message.error('获取容器详情失败');
-      // fallback: show passed container if available
-      setSelectedContainer(container);
-      setDetailModalVisible(true);
+      const status = err?.response?.status || err?.status;
+      await showErrorModal({ message: '获取容器详情失败', status });
+      if (status === 403) {
+        handleAuthError(403, navigate);
+      }
+      return;
     }
   };
 
@@ -319,9 +379,9 @@ const ManageMachine = () => {
       const values = await addContainerForm.validateFields();
       setAddContainerLoading(true);
       const machineId = values.machine_id || addContainerMachineId;
-      const currentUserName = values.root_user || localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
+      const toAddUserName = values.root_user || localStorage.getItem('currentUserName') || '';
       const payload = {
-        user_name: currentUserName,
+        user_name: toAddUserName,
         machine_id: machineId,
         container: {
           GPU_LIST: values.GPU_LIST || [],
@@ -332,41 +392,30 @@ const ManageMachine = () => {
         },
         public_key: values.public_key || ''
       };
-
+      let success = false;
       try {
         const res = await createContainer(payload);
         // refresh container list for the machine and ensure row expanded
         if (machineId) {
           const mid = String(machineId);
           setExpandedRowKeys(prev => (prev.includes(mid) ? prev : [...prev, mid]));
-          fetchContainersForMachine(mid, 0);
+          await fetchContainersForMachine(mid, 0);
         }
         message.success('容器添加成功');
+        success = true;
       } catch (err) {
         console.error('createContainer failed', err);
-        message.error('添加容器失败，已尝试本地添加');
-        // fallback: add local mock entry
-        const mid = String(machineId || addContainerMachineId || Date.now());
-        const newId = String(Date.now());
-        const newContainer = {
-          key: newId,
-          container_name: values.NAME || `container-${newId}`,
-          container_image: values.image || '',
-          port: '',
-          container_status: 'maintenance',
-          machine_id: mid,
-          machine_ip: ''
-        };
-        setContainerMap(prev => {
-          const entry = prev[mid] || { data: [], loading: false, page: 0 };
-          return { ...prev, [mid]: { ...entry, data: [newContainer, ...(entry.data || [])] } };
-        });
-        // ensure expanded and refresh view
-        setExpandedRowKeys(prev => (prev.includes(mid) ? prev : [...prev, mid]));
+        const status = err?.response?.status || err?.status;
+        await showErrorModal({ message: '添加容器失败，请重试', status });
+        if (status === 403) {
+          handleAuthError(403, navigate);
+        }
       } finally {
         setAddContainerLoading(false);
-        setAddContainerVisible(false);
-        setAddContainerMachineId(null);
+        if (success) {
+          setAddContainerVisible(false);
+          setAddContainerMachineId(null);
+        }
       }
     } catch (err) {
       // validation failed
@@ -415,6 +464,7 @@ const ManageMachine = () => {
 
       if (isEditMode && editTargetMachine) {
         // 编辑模式 -> 调用更新接口
+        let success = false;
         try {
           const mid = editTargetMachine.machine_id || editTargetMachine.key;
           await updateMachine(mid, payload);
@@ -433,19 +483,25 @@ const ManageMachine = () => {
           };
           setMachines(prev => prev.map(m => (m.key === editTargetMachine.key ? updatedMachine : m)));
           message.success('宿主机已更新');
+          success = true;
         } catch (err) {
           console.error('updateMachine failed', err);
-          message.error('更新宿主机失败：' + (err?.message || '未知错误'));
+          const status = err?.response?.status || err?.status;
+          await showErrorModal({ message: '更新宿主机失败：' + (err?.message || '未知错误'), status });
+          if (status === 403) {
+            handleAuthError(403, navigate);
+          }
         } finally {
           setAddHostLoading(false);
-          setAddHostVisible(false);
           setIsEditMode(false);
           setEditTargetMachine(null);
+          if (success) setAddHostVisible(false);
         }
       } else {
         // 添加模式
+        let success = false;
         try {
-          const res = await addMachine(payload).catch(err => { throw err; });
+          const res = await addMachine(payload);
           const newId = (res && (res.machine_id || res.id)) ? String(res.machine_id || res.id) : String(Date.now());
           const newMachine = {
             key: newId,
@@ -463,30 +519,17 @@ const ManageMachine = () => {
           };
           setMachines(prev => [newMachine, ...prev]);
           message.success('宿主机已添加');
+          success = true;
         } catch (err) {
           console.error('addMachine failed', err);
-          message.error('添加宿主机失败，已本地保存');
-          const newId = String(Date.now());
-          const newMachine = {
-            key: newId,
-            machine_id: newId,
-            machine_name: payload.machine_name,
-            machine_ip: payload.machine_ip,
-            // display as uppercase in UI
-            machine_type: (payload.machine_type || '').toUpperCase(),
-            // ensure status is lowercase for UI/internal consistency
-            machine_status: (values.machine_status || 'online').toLowerCase(),
-            cpu_core_number: payload.cpu_core_number,
-            memory_size_gb: payload.memory_size,
-            gpu_number: payload.gpu_number,
-            gpu_type: payload.gpu_type,
-            disk_size_gb: payload.disk_size,
-            machine_description: payload.machine_description || ''
-          };
-          setMachines(prev => [newMachine, ...prev]);
+          const status = err?.response?.status || err?.status;
+          await showErrorModal({ message: '添加宿主机失败，请重试', status });
+          if (status === 403) {
+            handleAuthError(403, navigate);
+          }
         } finally {
           setAddHostLoading(false);
-          setAddHostVisible(false);
+          if (success) setAddHostVisible(false);
         }
       }
     } catch (err) {
@@ -502,37 +545,42 @@ const ManageMachine = () => {
 
   // 确认删除机器
   const handleDeleteConfirm = () => {
-    if (!deleteTargetMachine) return;
-    setDeleteLoading(true);
-    // 调用后端删除接口
-    const ids = [];
-    if (deleteTargetMachine.machine_id) ids.push(deleteTargetMachine.machine_id);
-    else ids.push(deleteTargetMachine.key);
-    removeMachine(ids).then(() => {
-      setMachines(prev => prev.filter(m => m.key !== deleteTargetMachine.key && m.machine_id !== deleteTargetMachine.machine_id));
-      setContainerMap(prev => { // 主要是即时相应删除数据 原文这里也是如此
-        const copy = { ...prev };
-        delete copy[deleteTargetMachine.key];
-        if (deleteTargetMachine.machine_id) delete copy[String(deleteTargetMachine.machine_id)];
-        return copy;
-      });
-      message.success('宿主机已删除');
-    }).catch(err => {
-      console.error('removeMachine failed', err);
-      // fallback to local remove
-      setMachines(prev => prev.filter(m => m.key !== deleteTargetMachine.key));
-      setContainerMap(prev => { // 同上
-        const copy = { ...prev };
-        delete copy[deleteTargetMachine.key];
-        if (deleteTargetMachine.machine_id) delete copy[String(deleteTargetMachine.machine_id)];
-        return copy;
-      });
-      message.warning('删除请求失败，本地已移除');
-    }).finally(() => {
-      setDeleteLoading(false);
-      setDeleteConfirmVisible(false);
-      setDeleteTargetMachine(null);
-    });
+    (async () => {
+      if (!deleteTargetMachine) return;
+      setDeleteLoading(true);
+      const ids = [];
+      if (deleteTargetMachine.machine_id) ids.push(deleteTargetMachine.machine_id);
+      else ids.push(deleteTargetMachine.key);
+      let success = false;
+      try {
+        await removeMachine(ids);
+        setMachines(prev => prev.filter(m => m.key !== deleteTargetMachine.key && m.machine_id !== deleteTargetMachine.machine_id));
+        setContainerMap(prev => {
+          const copy = { ...prev };
+          delete copy[deleteTargetMachine.key];
+          if (deleteTargetMachine.machine_id) delete copy[String(deleteTargetMachine.machine_id)];
+          return copy;
+        });
+        message.success('宿主机已删除');
+        success = true;
+      } catch (err) {
+        console.error('removeMachine failed', err);
+        // prefer structured body message when available
+        const bodyMsg = err?.body?.message || err?.body || null;
+        const messageText = bodyMsg ? `删除宿主机失败: ${bodyMsg}` : '删除宿主机失败，请重试';
+        const status = err?.status || err?.response?.status || err?.status;
+        await showErrorModal({ message: messageText, status });
+        if (status === 403) {
+          handleAuthError(403, navigate);
+        }
+      } finally {
+        setDeleteLoading(false);
+        if (success) {
+          setDeleteConfirmVisible(false);
+          setDeleteTargetMachine(null);
+        }
+      }
+    })();
   };
 
   // 打开删除容器的确认弹窗
@@ -548,9 +596,9 @@ const ManageMachine = () => {
     if (!deleteTargetContainer) return;
     setContainerDeleteLoading(true);
     const cid = deleteTargetContainer.key || deleteTargetContainer.container_id;
+    let success = false;
     try {
       await deleteContainer(cid);
-      // 从 containerMap 中移除
       const mid = String(deleteTargetContainer.machine_id || deleteTargetContainer.machine_ip || deleteTargetContainer.machine_id || '');
       setContainerMap(prev => {
         const copy = { ...prev };
@@ -559,30 +607,26 @@ const ManageMachine = () => {
         }
         return copy;
       });
-      // 关闭相关弹窗
       if (selectedContainer && (selectedContainer.key === deleteTargetContainer.key || selectedContainer.container_id === deleteTargetContainer.container_id)) {
         closeAllModals();
       }
       message.success('容器已删除');
+      success = true;
     } catch (err) {
       console.error('deleteContainer failed', err);
-      // fallback: local remove
-      const mid = String(deleteTargetContainer.machine_id || deleteTargetContainer.machine_ip || deleteTargetContainer.machine_id || '');
-      setContainerMap(prev => {
-        const copy = { ...prev };
-        if (copy[mid] && Array.isArray(copy[mid].data)) {
-          copy[mid] = { ...copy[mid], data: copy[mid].data.filter(c => c.key !== deleteTargetContainer.key) };
-        }
-        return copy;
-      });
-      message.warning('删除请求失败，本地已移除');
+      const status = err?.response?.status || err?.status;
+      await showErrorModal({ message: '删除容器失败，请重试', status });
+      if (status === 403) {
+        handleAuthError(403, navigate);
+      }
     } finally {
       setContainerDeleteLoading(false);
-      setContainerDeleteConfirmVisible(false);
-      setDeleteTargetContainer(null);
-      // Ensure detail modal is closed after deletion attempt and clear selection
-      setDetailModalVisible(false);
-      setSelectedContainer(null);
+      if (success) {
+        setContainerDeleteConfirmVisible(false);
+        setDeleteTargetContainer(null);
+        setDetailModalVisible(false);
+        setSelectedContainer(null);
+      }
     }
   };
 
@@ -601,7 +645,14 @@ const ManageMachine = () => {
 
   // 保存用户权限修改
   const handleSaveUserPermissions = (updatedContainer) => {
-    // 这里更新 containerMap 中对应的容器数据
+    // Only update UI when caller explicitly indicates success (second arg true)
+    // Usage: onSave(updatedContainer, true)
+    const args = Array.from(arguments);
+    const success = args[1] === true;
+    if (!success) {
+      message.warning('未检测到后端确认，用户权限暂不更新');
+      return;
+    }
     const mid = String(updatedContainer.machine_id || updatedContainer.machine_id);
     setContainerMap(prev => {
       const entry = prev[mid];
@@ -609,8 +660,6 @@ const ManageMachine = () => {
       const newData = entry.data.map(c => c.key === updatedContainer.key ? updatedContainer : c);
       return { ...prev, [mid]: { ...entry, data: newData } };
     });
-    
-    // 这里可以触发重新渲染
     message.success('用户权限已更新');
   };
 
@@ -1043,7 +1092,7 @@ const ManageMachine = () => {
         onDelete={openDeleteContainerConfirm}
         usersList={usersList}
         currentUserName={localStorage.getItem('currentUserName')}
-        forceSystemAdmin={true}
+        forceSystemAdmin={true} // 此时currentUserName无意义
       />
 
       {/* 添加容器 确认弹窗（包含表单） */}

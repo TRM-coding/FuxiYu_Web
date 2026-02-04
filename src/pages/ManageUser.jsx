@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message } from 'antd';
+import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
-import { listAllUserBrefInformation } from '../api/user_api';
+import { handleAuthError } from '../utils/authHelpers';
+import { listAllUserBrefInformation, getUserDetailInformation } from '../api/user_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation } from '../api/container_api';
 const { Column } = Table;
 
@@ -27,6 +29,59 @@ const ManageUser = () => {
   const [containerMap, setContainerMap] = useState({});
 
   const navigate = useNavigate();
+
+  // auth + permission check: show 401 then redirect if missing; fetch user detail to check operator permission
+  React.useEffect(() => {
+    const checkAuthAndPerm = async () => {
+      try {
+        const name = localStorage.getItem('currentUserName');
+        const id = localStorage.getItem('currentUserId');
+        if (!name || !id) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 401: clear auth and navigate to login
+          handleAuthError(401, navigate);
+          return;
+        }
+
+        // fetch user detail to check permissions
+        const res = await getUserDetailInformation(Number(id));
+        const info = (res && (res.user_info || res.data)) || res || {};
+        const isOperator = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
+        if (!isOperator) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // For 403 do NOT clear login info; only navigate to /index
+          handleAuthError(403, navigate);
+          return;
+        }
+      } catch (e) {
+        if (!sessionStorage.getItem('auth_modal_shown')) {
+          try {
+            sessionStorage.setItem('auth_modal_shown', '1');
+            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+          } finally {
+            sessionStorage.removeItem('auth_modal_shown');
+          }
+        }
+        // For 401 clear auth and navigate to login
+        handleAuthError(401, navigate);
+      }
+    };
+    checkAuthAndPerm();
+  }, [navigate]);
 
   // load users on mount
   React.useEffect(() => {
@@ -52,16 +107,11 @@ const ManageUser = () => {
         // if authentication error, clear auth and redirect to login
         const msg = err && err.message ? String(err.message) : '';
         if (msg.toLowerCase().includes('invalid or missing token') || msg.includes('401')) {
-          try {
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('currentUserId');
-            localStorage.removeItem('currentUserName');
-            document.cookie = 'auth_token=; Max-Age=0; path=/';
-          } catch (e) {}
-          navigate('/');
+          // 401: clear auth and navigate to login
+          handleAuthError(401, navigate);
           return;
         }
-        message.error('加载用户列表失败: ' + (msg || '未知错误'));
+        await showErrorModal({ message: '加载用户列表失败: ' + (msg || '未知错误'), status: err?.response?.status || err?.status });
       } finally {
         if (mounted) setUsersLoading(false);
       }
@@ -684,7 +734,7 @@ const ManageUser = () => {
                     <span style={{ color: '#8c8c8c' }}>正常: </span>
                     <span style={{ color: '#52c41a', fontWeight: '500' }}>{runningContainers}</span>
                     <span style={{ color: '#8c8c8c', margin: '0 8px' }}>·</span>
-                    <span style={{ color: '#8c8c8c' }}>由你管理: </span>
+                    <span style={{ color: '#8c8c8c' }}>由ta管理: </span>
                     <span style={{ color: '#faad14', fontWeight: '500' }}>{managedContainers}</span>
                   </span>
                 );
