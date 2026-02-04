@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Form, Button, Space, Typography, Row, Col, Select, Tag, Avatar, List, message } from 'antd';
+import showErrorModal from '../utils/showErrorModal';
 import { EditOutlined, PlusOutlined, TeamOutlined, DeleteOutlined } from '@ant-design/icons';
 import { addCollaborator, removeCollaborator, updateRole } from '../api/container_api';
 
@@ -19,9 +20,9 @@ const ROLE_CONFIG = {
 
 const getAvatarUrl = (username) => `https://api.dicebear.com/7.x/miniavs/svg?seed=${username}`;
 
-const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], usersLoading = false, forceSystemAdmin = false }) => {
+const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], usersLoading = false, forceSystemAdmin = false }) => {
   const [form] = Form.useForm();
-  const [editing, setEditing] = useState(false);
+  // editing state removed (no local save flow)
   const [accounts, setAccounts] = useState([]);
   const [adding, setAdding] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -40,19 +41,19 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
     }
   }, [container, form, usersList]);
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!selectedUser) {
       message.warning('请选择要添加的用户');
       return;
     }
-    const userExists = accounts.some(account => String(account.user_id) === String(selectedUser.id) || account.username === selectedUser.username);
+    const userExists = accounts.some(account => String(account.user_id) === String(selectedUser.id));
     if (userExists) {
       message.warning('该用户已存在');
       return;
     }
     const cid = container?.key || container?.container_id;
     if (!cid) {
-      message.error('未能识别容器ID，无法添加用户');
+      await showErrorModal({ message: '未能识别容器ID，无法添加用户' });
       return;
     }
     setAdding(true);
@@ -73,24 +74,24 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
       setSelectedUser(null);
       setSelectedRole(ROLE.COLLABORATOR);
       message.success('用户已添加');
-    }).catch(err => {
+    }).catch(async err => {
       console.error('addCollaborator failed', err);
-      message.error('添加用户失败');
+      const bodyMsg = err?.body?.message || err?.body || null;
+      const messageText = bodyMsg ? `添加用户失败: ${bodyMsg}` : '添加用户失败';
+      await showErrorModal({ message: messageText, status: err?.status || err?.response?.status || err?.status });
     }).finally(() => setAdding(false));
   };
 
-  const handleDeleteUser = async (username) => {
-    const userToDelete = accounts.find(acc => acc.username === username || String(acc.user_id) === String(username));
+  const handleDeleteUser = async (userId) => {
+    const userToDelete = accounts.find(acc => String(acc.user_id) === String(userId));
     if (!userToDelete) return;
     if (userToDelete.role === ROLE.ROOT) {
-      message.error('不能删除超级管理员');
+      await showErrorModal({ message: '不能删除超级管理员' });
       return;
     }
-    const userId = userToDelete.user_id ?? (usersList.find(u => u.username === userToDelete.username)?.id);
     const cid = container?.key || container?.container_id;
     if (!userId || !cid) {
-      setAccounts(prev => prev.filter(acc => acc.username !== username));
-      message.warning('本地已移除，后端ID信息缺失');
+      await showErrorModal({ message: '缺少后端ID信息，无法删除用户' });
       return;
     }
     try {
@@ -99,70 +100,81 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
       message.success('用户已移除');
     } catch (err) {
       console.error('removeCollaborator failed', err);
-      message.error('移除用户失败');
+      const bodyMsg = err?.body?.message || err?.body || null;
+      const messageText = bodyMsg ? `移除用户失败: ${bodyMsg}` : '移除用户失败';
+      await showErrorModal({ message: messageText, status: err?.status || err?.response?.status || err?.status });
     }
   };
 
-  const handleRoleChange = async (username, newRole) => {
-    const userToUpdate = accounts.find(acc => acc.username === username || String(acc.user_id) === String(username));
+  const handleRoleChange = async (userId, newRole) => {
+    const userToUpdate = accounts.find(acc => String(acc.user_id) === String(userId));
     if (!userToUpdate) return;
     if (userToUpdate.role === ROLE.ROOT) {
-      message.error('超级管理员身份不可被修改');
+      await showErrorModal({ message: '超级管理员身份不可被修改' });
       return;
     }
-    const userId = userToUpdate.user_id ?? (usersList.find(u => u.username === userToUpdate.username)?.id);
+    const resolvedUserId = userToUpdate.user_id;
     const cid = container?.key || container?.container_id;
-    if (!userId || !cid) {
-      setAccounts(prev => prev.map(acc => (acc.username === username ? { ...acc, role: newRole } : acc)));
+    if (!resolvedUserId || !cid) {
+      await showErrorModal({ message: '缺少后端ID信息，无法更新角色' });
       return;
     }
     try {
       if (newRole === ROLE.ROOT) {
-        const roots = accounts.filter(acc => acc.role === ROLE.ROOT && String(acc.user_id) !== String(userId));
+        const roots = accounts.filter(acc => acc.role === ROLE.ROOT && String(acc.user_id) !== String(resolvedUserId));
         for (const r of roots) {
-          const rid = r.user_id ?? (usersList.find(u => u.username === r.username)?.id);
+          const rid = r.user_id;
           if (rid) {
             await updateRole({ container_id: cid, user_id: rid, updated_role: ROLE.ADMIN });
           }
         }
-        await updateRole({ container_id: cid, user_id: userId, updated_role: ROLE.ROOT });
+        await updateRole({ container_id: cid, user_id: resolvedUserId, updated_role: ROLE.ROOT });
         setAccounts(prev => prev.map(acc => {
-          if (String(acc.user_id) === String(userId)) return { ...acc, role: ROLE.ROOT };
-          if (acc.role === ROLE.ROOT) return { ...acc, role: ROLE.ADMIN };
+          if (String(acc.user_id) === String(resolvedUserId)) return { ...acc, role: ROLE.ROOT, username: 'root' };
+          if (acc.role === ROLE.ROOT) {
+            // demoted root -> restore username from usersList when possible
+            const restored = usersList.find(u => String(u.id) === String(acc.user_id));
+            return { ...acc, role: ROLE.ADMIN, username: restored ? restored.username : acc.username };
+          }
           return acc;
         }));
           message.success('角色已更新');
           // 转让后关闭编辑窗口
           try {
             const currentUid = localStorage.getItem('currentUserId');
-            if (String(userId) !== String(currentUid) && !forceSystemAdmin) {
-              onClose && onClose();
+            if (String(resolvedUserId) !== String(currentUid) && !forceSystemAdmin) {
+              onClose();
             }
           } catch (e) {
             // ignore
           }
           return;
       }
-      await updateRole({ container_id: cid, user_id: userId, updated_role: newRole });
-      setAccounts(prev => prev.map(acc => (String(acc.user_id) === String(userId) ? { ...acc, role: newRole } : acc)));
+      await updateRole({ container_id: cid, user_id: resolvedUserId, updated_role: newRole });
+      setAccounts(prev => prev.map(acc => {
+        if (String(acc.user_id) !== String(resolvedUserId)) return acc;
+        // If demoting from ROOT, restore username from usersList if possible
+        if (newRole !== ROLE.ROOT && acc.role === ROLE.ROOT) {
+          const restored = usersList.find(u => String(u.id) === String(acc.user_id));
+          return { ...acc, role: newRole, username: restored ? restored.username : acc.username };
+        }
+        // If promoting to ROOT, set username to 'root'
+        if (newRole === ROLE.ROOT) {
+          return { ...acc, role: newRole, username: 'root' };
+        }
+        return { ...acc, role: newRole };
+      }));
       message.success('角色已更新');
     } catch (err) {
       console.error('updateRole failed', err);
-      message.error('更新角色失败');
+      const bodyMsg = err?.body?.message || err?.body || null;
+      const messageText = bodyMsg ? `更新角色失败: ${bodyMsg}` : '更新角色失败';
+      await showErrorModal({ message: messageText, status: err?.status || err?.response?.status || err?.status });
     }
   };
 
-  const handleSave = () => {
-    setEditing(true);
-    const updatedAccounts = accounts.map(acc => ({ username: acc.username, role: acc.role, user_id: acc.user_id }));
-    const updatedOwners = accounts.map(acc => acc.ownerName);
-    onSave({ ...container, accounts: updatedAccounts, owners: updatedOwners });
-    message.success('用户权限已更新');
-    setEditing(false);
-    onClose();
-  };
 
-  const availableUsers = (usersList || []).filter(user => !accounts.some(acc => acc.username === user.username));
+  const availableUsers = (usersList || []).filter(user => !accounts.some(acc => String(acc.user_id) === String(user.id)));
 
   return (
     <Modal
@@ -173,11 +185,11 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
         </Space>
       )}
       open={visible}
-      onCancel={onClose}
+      onCancel={() => { onBack();  }}
       width={800}
       footer={[
-        <Button key="cancel" onClick={onClose}>取消</Button>,
-        <Button key="save" type="primary" loading={editing} onClick={handleSave}>保存修改</Button>
+        <Button key="back" onClick={() => { onBack(); }}>返回详情页</Button>,
+        <Button key="done" type="primary" onClick={async () => { onClose(); }}>完成</Button>
       ]}
     >
       <Form form={form} layout="vertical">
@@ -192,9 +204,16 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
             </Typography.Title>
             <Row gutter={[16, 16]} align="middle">
               <Col span={10}>
-                <Select placeholder="选择用户" style={{ width: '100%' }} value={selectedUser?.username} disabled={usersLoading} onChange={(value) => { const user = usersList.find(u => u.username === value); setSelectedUser(user || null); }} showSearch optionFilterProp="children" filterOption={(input, option) => (option?.children ?? '').toLowerCase().includes(input.toLowerCase())}>
+                <Select
+                  placeholder="点击选择"
+                  style={{ width: '100%' }}
+                  value={selectedUser?.id ?? undefined}
+                  disabled={usersLoading}
+                  onChange={(value) => { const user = usersList.find(u => String(u.id) === String(value)); setSelectedUser(user || null); }}
+                  showSearch={false}
+                >
                   {availableUsers.map(user => (
-                    <Option key={user.id} value={user.username}>
+                    <Option key={user.id} value={user.id}>
                       <Space>
                         <Avatar size="small" src={getAvatarUrl(user.username)} />
                         <span>{user.name} (@{user.username})</span>
@@ -207,7 +226,6 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
                 <Select style={{ width: '100%' }} value={selectedRole} onChange={setSelectedRole}>
                   <Option value={ROLE.COLLABORATOR}><Tag color="green">协作者</Tag></Option>
                   <Option value={ROLE.ADMIN}><Tag color="blue">管理员</Tag></Option>
-                  <Option value={ROLE.ROOT}><Tag color="red">超级管理员</Tag></Option>
                 </Select>
               </Col>
               <Col span={6}>
@@ -222,12 +240,12 @@ const EditUserModal = ({ visible, container, onClose, onSave, usersList = [], us
             </Typography.Title>
             <List dataSource={accounts} renderItem={(account) => (
               <List.Item actions={[
-                <Select key="role" value={account.role} onChange={(value) => handleRoleChange(account.username, value)} style={{ width: 120 }} disabled={account.role === ROLE.ROOT}>
+                <Select key="role" value={account.role} onChange={(value) => handleRoleChange(account.user_id, value)} style={{ width: 120 }} disabled={account.role === ROLE.ROOT}>
                   <Option value={ROLE.COLLABORATOR}><Tag color="green">协作者</Tag></Option>
                   <Option value={ROLE.ADMIN}><Tag color="blue">管理员</Tag></Option>
                   <Option value={ROLE.ROOT}><Tag color="red">超级管理员</Tag></Option>
                 </Select>,
-                <Button key="delete" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDeleteUser(account.username)} disabled={account.role === ROLE.ROOT} />
+                <Button key="delete" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDeleteUser(account.user_id)} disabled={account.role === ROLE.ROOT} />
               ]} style={{ borderBottom: '1px solid #f0f0f0', padding: '12px 0' }}>
                 <List.Item.Meta avatar={<Avatar src={getAvatarUrl(account.username)} size="large" />} title={<Space><Typography.Text strong>{account.ownerName}</Typography.Text></Space>} description={<Typography.Text type="secondary">@{account.username}</Typography.Text>} />
               </List.Item>

@@ -633,7 +633,23 @@ const ManageMachine = () => {
   // 打开编辑弹窗
   const openEditModal = (container) => {
     setSelectedContainer(container);
+    setDetailModalVisible(false);
     setEditModalVisible(true);
+  };
+
+  // 从编辑返回详情页（编辑为实时更新）——重新拉取容器详情并显示
+  const returnToDetail = async () => {
+    setEditModalVisible(false);
+    if (!selectedContainer) {
+      setDetailModalVisible(true);
+      return;
+    }
+    try {
+      await openContainerDetail(selectedContainer);
+    } catch (e) {
+      // fallback: still show detail modal
+      setDetailModalVisible(true);
+    }
   };
 
   // 关闭所有弹窗
@@ -643,25 +659,6 @@ const ManageMachine = () => {
     setSelectedContainer(null);
   };
 
-  // 保存用户权限修改
-  const handleSaveUserPermissions = (updatedContainer) => {
-    // Only update UI when caller explicitly indicates success (second arg true)
-    // Usage: onSave(updatedContainer, true)
-    const args = Array.from(arguments);
-    const success = args[1] === true;
-    if (!success) {
-      message.warning('未检测到后端确认，用户权限暂不更新');
-      return;
-    }
-    const mid = String(updatedContainer.machine_id || updatedContainer.machine_id);
-    setContainerMap(prev => {
-      const entry = prev[mid];
-      if (!entry || !entry.data) return prev;
-      const newData = entry.data.map(c => c.key === updatedContainer.key ? updatedContainer : c);
-      return { ...prev, [mid]: { ...entry, data: newData } };
-    });
-    message.success('用户权限已更新');
-  };
 
   // 展开行的配置
   const expandable = {
@@ -1177,7 +1174,7 @@ const ManageMachine = () => {
         visible={editModalVisible}
         container={selectedContainer}
         onClose={closeAllModals}
-        onSave={handleSaveUserPermissions}
+        onBack={returnToDetail}
         usersList={usersList}
         usersLoading={usersLoading}
         forceSystemAdmin={true}

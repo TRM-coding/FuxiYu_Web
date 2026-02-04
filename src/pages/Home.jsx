@@ -123,18 +123,44 @@ const Home = () => {
 
   // edit-user modal state
   const [editVisible, setEditVisible] = useState(false);
-  const [editContainer, setEditContainer] = useState(null);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedContainer, setSelectedContainer] = useState(null);
   const [usersList, setUsersList] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
 
   const openEditModal = (container) => {
-    setEditContainer(container);
-    setEditVisible(true);
+    // hide detail modal and open edit modal
+    setSelectedContainer(container);
+    setDetailVisible(false);
+    setEditModalVisible(true);
   };
 
   const closeEditModal = () => {
-    setEditVisible(false);
-    setEditContainer(null);
+    setEditModalVisible(false);
+    setSelectedContainer(null);
+  };
+
+  // 从编辑返回详情页：重新拉取详情并显示
+  const returnToDetail = async () => {
+    setEditModalVisible(false);
+    if (!selectedContainer) {
+      setDetailVisible(true);
+      return;
+    }
+    try {
+      await openContainerDetail(selectedContainer);
+    } catch (e) {
+      // fallback to simply showing detail if fetch fails
+      setDetailVisible(true);
+    }
+  };
+
+  // 关闭所有弹窗（与 ManageMachine 保持一致）
+  const closeAllModals = () => {
+    setDetailVisible(false);
+    setEditModalVisible(false);
+    setSelectedContainer(null);
+    setDetailContainer(null);
   };
 
   const handleEditSave = (updated) => {
@@ -166,7 +192,7 @@ const Home = () => {
     if (detailVisible) {
       setModalParent('detail');
       setDetailVisible(false);
-    } else if (editVisible) {
+    } else if (editModalVisible) {
       setModalParent('edit');
       setEditVisible(false);
     } else {
@@ -462,10 +488,10 @@ const Home = () => {
           />
 
           <EditUserModal
-            visible={editVisible}
-            container={editContainer}
-            onClose={closeEditModal}
-            onSave={handleEditSave}
+            visible={editModalVisible}
+            container={selectedContainer}
+            onClose={closeAllModals}
+            onBack={returnToDetail}
             usersList={usersList}
             usersLoading={usersLoading}
           />

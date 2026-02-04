@@ -42,7 +42,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
         <Button key="leave" icon={<DeleteOutlined />} onClick={() => onLeave && onLeave(container)}>解除关联</Button>
       ),
       isRoot ? (
-        <Button key="edit" type="primary" icon={<EditOutlined />} onClick={() => { onClose(); onEdit && onEdit(container); }}>编辑用户</Button>
+        <Button key="edit" type="primary" icon={<EditOutlined />} onClick={() => { onEdit && onEdit(container); }}>编辑用户</Button>
       ) : null
     ]}>
       <div style={{ marginBottom: 24 }}>
