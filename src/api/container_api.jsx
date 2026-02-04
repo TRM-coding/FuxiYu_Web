@@ -1,9 +1,12 @@
 import { BACKEND_BASE_URL, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
+import { createController, unregisterController, abortAll } from '../utils/requestManager';
 
 
 const createTimeoutController = (timeout) => {
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), timeout || REQUEST_TIMEOUT);
+	const controller = createController();
+	const timer = setTimeout(() => {
+		try { controller.abort(); } catch (e) {}
+	}, timeout || REQUEST_TIMEOUT);
 	return { controller, timer };
 };
 
@@ -19,6 +22,9 @@ const ensureOk = async (res, action) => {
 		const err = new Error(`${action} failed: ${res.status} ${text || res.statusText}`);
 		err.status = res.status;
 		err.body = body;
+		if (res.status === 401 || res.status === 403) {
+			try { abortAll('auth'); } catch (e) {}
+		}
 		throw err;
 	}
 	return res.json();
@@ -47,9 +53,12 @@ export const createContainer = async (payload = {}, timeout = null) => {
 			credentials: CREDENTIALS,
 		});
 		clearTimeout(timer);
-		return await ensureOk(res, 'Create container');
+		const result = await ensureOk(res, 'Create container');
+		unregisterController(controller);
+		return result;
 	} catch (err) {
 		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
 		if (err.name === 'AbortError') throw new Error('Create container request timed out');
 		throw err;
 	}
@@ -69,9 +78,12 @@ export const deleteContainer = async (container_id = 0, timeout = null) => {
 			credentials: CREDENTIALS,
 		});
 		clearTimeout(timer);
-		return await ensureOk(res, 'Delete container');
+		const result = await ensureOk(res, 'Delete container');
+		unregisterController(controller);
+		return result;
 	} catch (err) {
 		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
 		if (err.name === 'AbortError') throw new Error('Delete container request timed out');
 		throw err;
 	}
@@ -91,9 +103,12 @@ export const addCollaborator = async ({ user_id = '', container_id = 0, role = '
 			credentials: CREDENTIALS,
 		});
 		clearTimeout(timer);
-		return await ensureOk(res, 'Add collaborator');
+		const result = await ensureOk(res, 'Add collaborator');
+		unregisterController(controller);
+		return result;
 	} catch (err) {
 		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
 		if (err.name === 'AbortError') throw new Error('Add collaborator request timed out');
 		throw err;
 	}
@@ -113,9 +128,12 @@ export const removeCollaborator = async ({ user_id = '', container_id = 0 } = {}
 			credentials: CREDENTIALS,
 		});
 		clearTimeout(timer);
-		return await ensureOk(res, 'Remove collaborator');
+		const result = await ensureOk(res, 'Remove collaborator');
+		unregisterController(controller);
+		return result;
 	} catch (err) {
 		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
 		if (err.name === 'AbortError') throw new Error('Remove collaborator request timed out');
 		throw err;
 	}
@@ -135,9 +153,12 @@ export const updateRole = async ({ container_id = 0, user_id = '', updated_role 
 			credentials: CREDENTIALS,
 		});
 		clearTimeout(timer);
-		return await ensureOk(res, 'Update role');
+		const result = await ensureOk(res, 'Update role');
+		unregisterController(controller);
+		return result;
 	} catch (err) {
 		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
 		if (err.name === 'AbortError') throw new Error('Update role request timed out');
 		throw err;
 	}
@@ -157,9 +178,12 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 			credentials: CREDENTIALS,
 		});
 		clearTimeout(timer);
-		return await ensureOk(res, 'Get container detail');
+		const result = await ensureOk(res, 'Get container detail');
+		unregisterController(controller);
+		return result;
 	} catch (err) {
 		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
 		if (err.name === 'AbortError') throw new Error('Get container detail request timed out');
 		throw err;
 	}
@@ -179,9 +203,12 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 			credentials: CREDENTIALS,
 		});
 		clearTimeout(timer);
-		return await ensureOk(res, 'List containers');
+		const result = await ensureOk(res, 'List containers');
+		unregisterController(controller);
+		return result;
 	} catch (err) {
 		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
 		if (err.name === 'AbortError') throw new Error('List containers request timed out');
 		throw err;
 	}

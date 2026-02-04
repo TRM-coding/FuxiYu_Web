@@ -1,9 +1,12 @@
 import { BACKEND_BASE_URL, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
+import { createController, unregisterController, abortAll } from '../utils/requestManager';
 
 
 const createTimeoutController = (timeout) => {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout || REQUEST_TIMEOUT);
+  const controller = createController();
+  const timer = setTimeout(() => {
+    try { controller.abort(); } catch (e) {}
+  }, timeout || REQUEST_TIMEOUT);
   return { controller, timer };
 };
 
@@ -19,6 +22,9 @@ const ensureOk = async (res, action) => {
     const err = new Error(`${action} failed: ${res.status} ${text || res.statusText}`);
     err.status = res.status;
     err.body = body;
+    if (res.status === 401 || res.status === 403) {
+      try { abortAll('auth'); } catch (e) {}
+    }
     throw err;
   }
   return res.json();
@@ -35,9 +41,12 @@ export const loginUser = async ({ username, password }, timeout = null) => {
       credentials: CREDENTIALS
     });
     clearTimeout(timer);
-    return await ensureOk(res, 'Login');
+    const result = await ensureOk(res, 'Login');
+    unregisterController(controller);
+    return result;
   } catch (err) {
     clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
     if (err.name === 'AbortError') {
       throw new Error('Login request timed out');
     }
@@ -56,9 +65,12 @@ export const registerUser = async ({ username, email, password, graduation_year 
       credentials: CREDENTIALS
     });
     clearTimeout(timer);
-    return await ensureOk(res, 'Register');
+    const result = await ensureOk(res, 'Register');
+    unregisterController(controller);
+    return result;
   } catch (err) {
     clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
     if (err.name === 'AbortError') {
       throw new Error('Register request timed out');
     }
@@ -89,9 +101,12 @@ export const changePasswordUser = async ({ user_id, old_password, new_password }
       credentials: CREDENTIALS,
     });
     clearTimeout(timer);
-    return await ensureOk(res, 'Change password');
+    const result = await ensureOk(res, 'Change password');
+    unregisterController(controller);
+    return result;
   } catch (err) {
     clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
     if (err.name === 'AbortError') throw new Error('Change password request timed out');
     throw err;
   }
@@ -111,9 +126,12 @@ export const deleteUser = async (user_id = 0, timeout = null) => {
       credentials: CREDENTIALS,
     });
     clearTimeout(timer);
-    return await ensureOk(res, 'Delete user');
+    const result = await ensureOk(res, 'Delete user');
+    unregisterController(controller);
+    return result;
   } catch (err) {
     clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
     if (err.name === 'AbortError') throw new Error('Delete user request timed out');
     throw err;
   }
@@ -133,9 +151,12 @@ export const getUserDetailInformation = async (user_id = 0, timeout = null) => {
       credentials: CREDENTIALS,
     });
     clearTimeout(timer);
-    return await ensureOk(res, 'Get user detail');
+    const result = await ensureOk(res, 'Get user detail');
+    unregisterController(controller);
+    return result;
   } catch (err) {
     clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
     if (err.name === 'AbortError') throw new Error('Get user detail request timed out');
     throw err;
   }
@@ -156,9 +177,12 @@ export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 
       credentials: CREDENTIALS,
     });
     clearTimeout(timer);
-    return await ensureOk(res, 'List users');
+    const result = await ensureOk(res, 'List users');
+    unregisterController(controller);
+    return result;
   } catch (err) {
     clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
     if (err.name === 'AbortError') throw new Error('List users request timed out');
     throw err;
   }
