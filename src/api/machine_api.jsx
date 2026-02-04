@@ -8,8 +8,18 @@ const createTimeoutController = (timeout) => {
 
 const ensureOk = async (res, action) => {
   if (!res.ok) {
-    const text = await res.text().catch(() => null);
-    throw new Error(`${action} failed: ${res.status} ${text || res.statusText}`);
+    // try to parse JSON body first
+    let body = null;
+    try {
+      body = await res.json();
+    } catch (e) {
+      body = await res.text().catch(() => null);
+    }
+    const text = body && typeof body === 'string' ? body : (body ? JSON.stringify(body) : null);
+    const err = new Error(`${action} failed: ${res.status} ${text || res.statusText}`);
+    err.status = res.status;
+    err.body = body;
+    throw err;
   }
   return res.json();
 };
