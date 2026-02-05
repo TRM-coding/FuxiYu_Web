@@ -1,5 +1,5 @@
 // routes/index.jsx
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import MainLayout from '../layouts/MainLayout'
 import AdminLayout from '../layouts/AdminLayout'
 import LoginLayout from '../layouts/LoginLayout'
@@ -28,6 +28,7 @@ export default function AppRoutes() {
 
       {/* 带导航栏的管理页面 */}
       <Route path="/admin" element={<AdminLayout />}>
+        <Route index element={<Navigate to="users" replace />} />
         <Route path="users" element={<ManageUser />} />
         <Route path="machines" element={<ManageMachine />} />
         <Route path="profile" element={<AdminProfile />} /> 

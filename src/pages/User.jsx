@@ -14,6 +14,7 @@ const User = () => {
   const [graduation_year, setGraduationYear] = useState(null);
   const [originalInfo, setOriginalInfo] = useState({ username: '', email: '', graduation_year: null });
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [isOperator, setIsOperator] = useState(false);
   const [usernameMsg, setUsernameMsg] = useState(null);
   const [emailMsg, setEmailMsg] = useState(null);
   const [yearMsg, setYearMsg] = useState(null);
@@ -72,6 +73,8 @@ const User = () => {
         setEmail(info.email || '');
         setGraduationYear(info.graduation_year || null);
         setOriginalInfo({ username: info.username || '', email: info.email || '', graduation_year: info.graduation_year || null });
+        const isOp = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
+        setIsOperator(Boolean(isOp));
         // clear inline messages when data loads
         setUsernameMsg(null);
         setEmailMsg(null);
@@ -87,7 +90,7 @@ const User = () => {
         setNewPassword('');
       } catch (err) {
         console.error('Failed to load user detail', err);
-        await showErrorModal({ message: '加载用户信息失败', status: err?.response?.status || err?.status });
+        await showErrorModal({ message: err?.body?.message || '加载用户信息失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       }
     };
     load();
@@ -128,10 +131,10 @@ const User = () => {
     >
       {/* 增加span数值，让列更宽 */}
       <Col span={14} offset={0}>
-        <Card 
-          title="用户信息" 
-          bordered 
-          // 调整卡片宽度为100%，并增加内边距
+        <Card
+          title="用户信息"
+          bordered
+          extra={isOperator ? <Button type="primary" onClick={() => navigate('/admin')}>管理后台</Button> : null}
           style={{ width: '100%', padding: '24px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)' }}
         >
           <Form form={form} layout="vertical" initialValues={{}}>
