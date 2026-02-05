@@ -3,6 +3,7 @@ import { Button, Checkbox, Form, Input, message } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { loginUser } from '../api/user_api';
 import ConfirmModal from '../components/ConfirmModal';
+import showErrorModal from '../utils/showErrorModal';
 
 const LoginBlock = () => {
 	const [confirmVisible, setConfirmVisible] = useState(false);
@@ -38,11 +39,8 @@ const LoginBlock = () => {
 			} else if (errMsg.toLowerCase().includes('timed out')) {
 				userMsg = '请求超时，请稍后重试。';
 			}
-			// 使用 ConfirmModal 显示错误，并保留后端返回详情位置
-			setConfirmTitle('登录出错');
-			setConfirmMessage(userMsg);
-			setConfirmContent(<pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{errMsg}</pre>);
-			setConfirmVisible(true);
+			// use showErrorModal to display exceptions
+			await showErrorModal({ title: '登录出错', message: err?.body?.message || userMsg, status: err?.status || undefined, route: err?.route || err?.response?.url });
 		}
 	};
 

@@ -3,6 +3,7 @@ import { Button, Form, Input, InputNumber } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { registerUser } from '../api/user_api';
 import ConfirmModal from '../components/ConfirmModal';
+import showErrorModal from '../utils/showErrorModal';
 const layout = {
   labelCol: { span: 8 },
   wrapperCol: { span: 16 },
@@ -46,13 +47,10 @@ const RegisterBlock = () => {
       );
       setConfirmVisible(true);
     } catch (err) {
-      // show modal on error
+      // show error modal on exception
       console.error('Register error', err);
-      const errMsg = err && err.message ? err.message : '注册失败';
-      setConfirmTitle('注册出错');
-      setConfirmMessage(errMsg);
-      setConfirmContent(<pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{String(err)}</pre>);
-      setConfirmVisible(true);
+      const errMsg = err && err.message ? String(err.message) : '注册失败';
+      await showErrorModal({ title: '注册出错', message: errMsg, status: err?.status });
     }
   };
 

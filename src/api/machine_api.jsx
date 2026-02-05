@@ -21,6 +21,7 @@ const ensureOk = async (res, action) => {
     const text = body && typeof body === 'string' ? body : (body ? JSON.stringify(body) : null);
     const err = new Error(`${action} failed: ${res.status} ${text || res.statusText}`);
     err.status = res.status;
+    err.route = res.url;
     err.body = body;
     if (res.status === 401 || res.status === 403) {
       try { abortAll('auth'); } catch (e) {}

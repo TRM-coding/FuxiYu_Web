@@ -78,7 +78,7 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       console.error('addCollaborator failed', err);
       const bodyMsg = err?.body?.message || err?.body || null;
       const messageText = bodyMsg ? `添加用户失败: ${bodyMsg}` : '添加用户失败';
-      await showErrorModal({ message: messageText, status: err?.status || err?.response?.status || err?.status });
+      await showErrorModal({ message: err?.body?.message || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
     }).finally(() => setAdding(false));
   };
 
@@ -102,7 +102,7 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       console.error('removeCollaborator failed', err);
       const bodyMsg = err?.body?.message || err?.body || null;
       const messageText = bodyMsg ? `移除用户失败: ${bodyMsg}` : '移除用户失败';
-      await showErrorModal({ message: messageText, status: err?.status || err?.response?.status || err?.status });
+      await showErrorModal({ message: err?.body?.message || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
     }
   };
 
@@ -169,7 +169,7 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       console.error('updateRole failed', err);
       const bodyMsg = err?.body?.message || err?.body || null;
       const messageText = bodyMsg ? `更新角色失败: ${bodyMsg}` : '更新角色失败';
-      await showErrorModal({ message: messageText, status: err?.status || err?.response?.status || err?.status });
+      await showErrorModal({ message: err?.body?.message || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
     }
   };
 

@@ -96,7 +96,7 @@ const Home = () => {
         if (mounted) setContainers(mapped);
       } catch (err) {
         console.error('load containers failed', err);
-        await showErrorModal({ message: '加载容器列表失败', status: err?.response?.status || err?.status });
+        await showErrorModal({ message: err?.body?.message || err?.message || '加载容器列表失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       } finally {
         if (mounted) setLoadingContainers(false);
       }
@@ -251,7 +251,7 @@ const Home = () => {
       }
     } catch (err) {
       console.error('modal action failed', err);
-      await showErrorModal({ message: '操作失败，请重试', status: err?.response?.status || err?.status });
+      await showErrorModal({ message: err?.body?.message || err?.message || '操作失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
     } finally {
       setModal({ visible: false, type: '', loading: false, data: null });
     }
@@ -302,7 +302,7 @@ const Home = () => {
     } catch (err) {
       console.error('getContainerDetailInformation failed', err);
       const status = err?.response?.status || err?.status;
-      await showErrorModal({ message: '获取容器详情失败', status });
+      await showErrorModal({ message: err?.body?.message || err?.message || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       if (status === 403) {
         handleAuthError(403, navigate);
       }

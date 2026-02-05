@@ -33,24 +33,172 @@ const restoreModals = () => {
   });
 };
 
-const showErrorModal = ({ title = '错误', message = '发生错误', status } = {}) => {
+const showErrorModal = ({ title = '错误', message = '发生错误', status, route } = {}) => {
   if (typeof document === 'undefined') return Promise.resolve({ confirmed: false, status });
   // Determine HTTP status: prefer explicit, otherwise try to parse from message text
   let code = Number(status);
-  if (Number.isNaN(code)) {
-    // try to extract a three-digit code from the message string
+  // 这里之后的两个Block都是在做json的解析
+  let displayMessage = '';
+  let extraDetails = null;
+  // helper: extract balanced JSON object substring from a string, return null if not found
+  const extractJsonFromString = (s) => {
+    if (!s || typeof s !== 'string') return null;
+    const first = s.indexOf('{');
+    if (first === -1) return null;
+    let depth = 0;
+    for (let i = first; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      if (depth === 0) {
+        const candidate = s.slice(first, i + 1);
+        try {
+          return JSON.parse(candidate);
+        } catch (e) {
+          return null;
+        }
+      }
+    }
+    return null;
+  };
+
+  try {
+    if (typeof message === 'string') {
+      // try to robustly extract a JSON object substring like '... {"a":1} ...'
+      const parsedCandidate = extractJsonFromString(message);
+      if (parsedCandidate && typeof parsedCandidate === 'object') {
+        message = parsedCandidate;
+      } else {
+        displayMessage = String(message || '发生错误');
+      }
+    }
+
+    if (message && typeof message === 'object') {
+      // communication format: { success: 0, message: '...' }
+      if (Object.prototype.hasOwnProperty.call(message, 'message')) {
+        displayMessage = String(message.message);
+      }
+      // some libs put payload under `body` or `data`
+      else if (message.body && typeof message.body === 'object' && message.body.message) {
+        displayMessage = String(message.body.message);
+      } else if (message.data && typeof message.data === 'object' && message.data.message) {
+        displayMessage = String(message.data.message);
+      }
+
+      // extract status if present
+      if (!Number.isFinite(code)) {
+        if (Number.isFinite(Number(message.status))) code = Number(message.status);
+        else if (message.response && Number.isFinite(Number(message.response.status))) code = Number(message.response.status);
+      }
+
+      // keep a copy of other useful fields to show
+      const cloned = { ...message };
+      if (cloned.message) delete cloned.message;
+      if (cloned.success !== undefined) delete cloned.success;
+      if (cloned.status !== undefined) delete cloned.status;
+      //if (Object.keys(cloned).length > 0) extraDetails = cloned;
+    }
+  } catch (e) {
+    displayMessage = typeof message === 'string' ? message : '发生错误';
+  }
+
+  // If we still don't have a readable message, try to extract a three-digit code from the text
+  if (!displayMessage) {
     try {
       const m = String(message || '');
       const found = m.match(/\b(\d{3})\b/);
-      if (found) code = Number(found[1]);
+      if (found) {
+        code = Number(found[1]);
+        displayMessage = `${found[1]} 错误`;
+      }
     } catch (e) {
-      code = NaN;
+      // ignore
     }
   }
+  displayMessage = displayMessage || '发生错误';
+  // prefer parsed numeric `code` (extracted earlier) for hint selection
+  const statusCode = Number.isFinite(Number(code)) ? Number(code) : Number(status);
 
-  // Do not perform redirects or clear auth here; redirect (if any) happens after user confirmation below.
+  // 尝试依赖路由和错误原因来提供更友好的错误提示
+  let routePath = '';
+  try {
+    if (route) {
+      routePath = (new URL(route, window.location.origin)).pathname;
+    } else if (message && message.response && message.response.url) {
+      routePath = (new URL(message.response.url, window.location.origin)).pathname;
+    }
+  } catch (e) {
+    routePath = '';
+  }
+
+  let errorReason = null;
+  if (message && typeof message === 'object') {
+    errorReason = message.error_reason || message.error || (message.body && message.body.error_reason) || (message.data && message.data.error_reason) || null;
+  }
+
+  const routeErrorMap = {
+    // 用户相关
+    '/register': { username_exists: '用户名已存在', email_exists: '邮箱已存在' },
+    '/login': { user_not_found: '用户不存在', password_incorrect: '密码错误' },
+    '/users/change_password': { old_password_incorrect: '旧密码不正确' },
+    '/users/delete_user': { wild_container: '存在无主容器，无法删除用户', missing_user_id: '缺少 user_id' },
+    '/users/get_user_detail_information': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
+    '/users/list_all_user_bref_information': { list_failed: '获取用户列表失败' },
+    '/users/update_user': { missing_fields: '缺少更新字段', user_not_found: '用户不存在' },
+    '/users/reset_password': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
+
+    // 容器相关
+    '/containers/create_container': { duplicate_entry: '创建容器失败：重复项', invalid_payload: '无效的容器数据', create_failed: '创建容器失败' },
+    '/containers/delete_container': { delete_failed: '删除容器失败', not_found: '容器不存在' },
+    '/containers/add_collaborator': { add_collaborator_failed: '添加协作者失败' },
+    '/containers/remove_collaborator': { remove_collaborator_failed: '移除协作者失败' },
+    '/containers/update_role': { update_role_failed: '更新角色失败' },
+    '/containers/get_container_detail_information': { get_detail_failed: '获取容器详情失败' },
+    '/containers/list_all_container_bref_information': { list_failed: '获取容器列表失败' },
+
+    // 机器相关
+    '/machines/add_machine': { duplicate_entry: '机器已存在', internal_error: '内部错误，添加失败', create_failed: '添加机器失败' },
+    '/machines/remove_machine': { remove_failed: '删除机器失败' },
+    '/machines/update_machine': { update_failed: '更新机器失败' },
+    '/machines/get_detail_information': { machine_not_found: '机器不存在' },
+    '/machines/list_all_machine_bref_information': { list_failed: '获取机器列表失败' },
+
+    // 通用/鉴权
+    '': { invalid_token: '身份验证失败，请重新登录', insufficient_permission: '权限不足' },
+    '*': { create_failed: '创建失败', list_failed: '获取列表失败', duplicate_entry: '重复项导致失败', internal_error: '服务器内部错误' }
+  };
+
+  // If an explicit error_reason exists, prefer it for display
+  if (errorReason) {
+    let found = false;
+    // prefer route-specific mapping when routePath is available
+    if (routePath) {
+      for (const key of Object.keys(routeErrorMap)) {
+        if (routePath.endsWith(key) || routePath.indexOf(key) !== -1) {
+          const map = routeErrorMap[key] || {};
+          if (map[errorReason]) {
+            displayMessage = map[errorReason];
+            found = true;
+            break;
+          }
+        }
+      }
+    }
+    // fallback: search all mappings for the errorReason (global match)
+    if (!found) {
+      for (const key of Object.keys(routeErrorMap)) {
+        const map = routeErrorMap[key] || {};
+        if (map[errorReason]) {
+          displayMessage = map[errorReason];
+          found = true;
+          break;
+        }
+      }
+    }
+    if (!extraDetails) extraDetails = {};
+  }
+
   // Provide a localized hint for common HTTP status codes to help users understand errors.
-  const statusCode = Number(status);
   let hint = '';
   switch (statusCode) {
     case 400:
@@ -63,7 +211,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status } =
       hint = '权限不足，您没有执行此操作的权限。';
       break;
     case 404:
-      hint = '未找到资源，可能已被删除或路径错误。';
+      hint = '资源未找到，请确认请求的内容是否存在。';
       break;
     case 409:
       hint = '请求冲突，相同名称的内容已存在。';
@@ -82,7 +230,8 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status } =
     default:
       hint = '';
   }
-  const { modals, masks } = hideExistingModals();
+
+    const { modals, masks } = hideExistingModals();
 
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -101,17 +250,17 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status } =
   return new Promise((resolve) => {
     const onConfirm = () => {
       cleanup();
-      resolve({ confirmed: true, status: code, message });
+      resolve({ confirmed: true, status: code, message: displayMessage });
     };
 
     root.render(
       <ConfirmModal
         visible={true}
         title={title}
-        message={message}
+        message={displayMessage}
         content={(
           <div style={{ background: '#fff2f0', padding: 12, borderRadius: 4, border: '1px solid #ffccc7' }}>
-            <div style={{ color: '#a8071a', marginBottom: 8 }}>{message}</div>
+            <div style={{ color: '#a8071a', marginBottom: 8 }}>{displayMessage}</div>
             {hint ? <div style={{ color: '#a8071a', opacity: 0.9 }}>{hint}</div> : null}
           </div>
         )}

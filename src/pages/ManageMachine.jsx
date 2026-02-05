@@ -149,7 +149,7 @@ const ManageMachine = () => {
   const [deleteTargetContainer, setDeleteTargetContainer] = useState(null);
   const [containerDeleteLoading, setContainerDeleteLoading] = useState(false);
 
-  // load machines from backend on mount
+  //加载机器列表
   useEffect(() => {
     let mounted = true;
     const load = async () => {
@@ -172,7 +172,7 @@ const ManageMachine = () => {
           disk_size_gb: null,
           machine_description: ''
         }));
-        // fetch details for each machine (merge fields); tolerate individual failures
+        // 按机器ID并行获取详情以补全信息
         try {
           const detailPromises = mapped.map(it =>
             getDetailInformation(it.machine_id).catch(err => {
@@ -343,7 +343,7 @@ const ManageMachine = () => {
     } catch (err) {
       console.error('getContainerDetailInformation failed', err);
       const status = err?.response?.status || err?.status;
-      await showErrorModal({ message: '获取容器详情失败', status });
+      await showErrorModal({ message: err?.body?.message || err?.message || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       if (status === 403) {
         handleAuthError(403, navigate);
       }
@@ -406,7 +406,7 @@ const ManageMachine = () => {
       } catch (err) {
         console.error('createContainer failed', err);
         const status = err?.response?.status || err?.status;
-        await showErrorModal({ message: '添加容器失败，请重试', status });
+        await showErrorModal({ message: err?.body?.message || err?.message || '添加容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
         if (status === 403) {
           handleAuthError(403, navigate);
         }
@@ -512,10 +512,10 @@ const ManageMachine = () => {
           }
           message.success('宿主机已更新');
           success = true;
-        } catch (err) {
+          } catch (err) {
           console.error('updateMachine failed', err);
           const status = err?.response?.status || err?.status;
-          await showErrorModal({ message: '更新宿主机失败：' + (err?.message || '未知错误'), status });
+          await showErrorModal({ message: err?.body?.message || ('更新宿主机失败：' + (err?.message || '未知错误')), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
           if (status === 403) {
             handleAuthError(403, navigate);
           }
@@ -551,7 +551,7 @@ const ManageMachine = () => {
         } catch (err) {
           console.error('addMachine failed', err);
           const status = err?.response?.status || err?.status;
-          await showErrorModal({ message: '添加宿主机失败，请重试', status });
+          await showErrorModal({ message: err?.body?.message || err?.message || '添加宿主机失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
           if (status === 403) {
             handleAuthError(403, navigate);
           }
@@ -597,7 +597,7 @@ const ManageMachine = () => {
         const bodyMsg = err?.body?.message || err?.body || null;
         const messageText = bodyMsg ? `删除宿主机失败: ${bodyMsg}` : '删除宿主机失败，请重试';
         const status = err?.status || err?.response?.status || err?.status;
-        await showErrorModal({ message: messageText, status });
+        await showErrorModal({ message: err?.body?.message || messageText, status: status, route: err?.route || err?.response?.url });
         if (status === 403) {
           handleAuthError(403, navigate);
         }
@@ -643,7 +643,7 @@ const ManageMachine = () => {
     } catch (err) {
       console.error('deleteContainer failed', err);
       const status = err?.response?.status || err?.status;
-      await showErrorModal({ message: '删除容器失败，请重试', status });
+      await showErrorModal({ message: err?.body?.message || err?.message || '删除容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       if (status === 403) {
         handleAuthError(403, navigate);
       }
