@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SearchOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
+import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message, InputNumber } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -720,7 +720,12 @@ const ManageUser = () => {
 
                   {/* 用户容器子表格 */}
                   <Card 
-                    title={`${record.username} 的容器`}
+                    title={(
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>{record.username} 的容器</span>
+                        <Button size="small" onClick={() => fetchContainersForUser(record.key)} icon={<ReloadOutlined />} />
+                      </div>
+                    )}
                     bordered={true}
                   >
                     {

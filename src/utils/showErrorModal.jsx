@@ -66,7 +66,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status } =
       hint = '未找到资源，可能已被删除或路径错误。';
       break;
     case 409:
-      hint = '请求冲突，请检查是否存在重复或状态不一致。';
+      hint = '请求冲突，相同名称的内容已存在。';
       break;
     case 422:
       hint = '请求参数校验失败，请修正后重试。';

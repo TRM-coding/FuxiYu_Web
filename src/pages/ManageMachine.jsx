@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer } from '../api/container_api';
-import { SearchOutlined, DownOutlined, UpOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -715,8 +715,12 @@ const ManageMachine = () => {
               <Button type="primary" icon={<SearchOutlined />}>搜索</Button>
             </Col>
           </Row>
-          <Typography.Title level={5} style={{ margin: '0 0 16px 0' }}>
-            容器列表 - {record.machine_name}  <Button onClick={() => openAddContainerModal(record)}>添加</Button>
+          <Typography.Title level={5} style={{ margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>容器列表 - {record.machine_name}</span>
+            <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openAddContainerModal(record)} style={{ marginLeft: 8 }}>
+              添加
+            </Button>
+            <Button size="small" icon={<ReloadOutlined />} onClick={() => fetchContainersForMachine(record.key)} style={{ marginLeft: 8 }} />
           </Typography.Title>
           <Table
             dataSource={containers}
