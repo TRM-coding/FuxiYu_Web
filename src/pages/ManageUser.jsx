@@ -360,7 +360,7 @@ const ManageUser = () => {
     if (!userId) return;
     const id = String(userId);
     // avoid duplicate fetch
-    if (containerMap[id]?.loading || containerMap[id]?.data) return;
+    //if (containerMap[id]?.loading || containerMap[id]?.data) return;
     setContainerMap(prev => ({ ...prev, [id]: { ...(prev[id] || {}), loading: true, data: [] } }));
     try {
       const res = await listAllContainerBrefInformation({ machine_id: null, user_id: Number(userId), page_number: 0, page_size: 200 });

@@ -150,64 +150,68 @@ const ManageMachine = () => {
   const [containerDeleteLoading, setContainerDeleteLoading] = useState(false);
 
   //加载机器列表
+  const fetchMachinesFromApi = async () => {
+    setMachinesLoading(true);
+    try {
+      const res = await listAllMachineBrefInformation({ page_number: 0, page_size: defaultPageSize });
+      const items = (res && res.machines) || [];
+      // map to existing shape with minimal defaults and keep machine_id
+      const mapped = items.map((m, idx) => ({
+        key: String(m.machine_id || idx + 1),
+        machine_id: m.machine_id,
+        machine_name: m.machine_name || '',
+        machine_ip: m.machine_ip || '',
+        machine_type: (m.machine_type || '').toUpperCase(),
+        machine_status: (m.machine_status || '').toLowerCase(),
+        cpu_core_number: null,
+        memory_size_gb: null,
+        gpu_number: null,
+        gpu_type: null,
+        disk_size_gb: null,
+        machine_description: ''
+      }));
+      // 按机器ID并行获取详情以补全信息
+      try {
+        const detailPromises = mapped.map(it =>
+          getDetailInformation(it.machine_id).catch(err => {
+            console.warn('detail fetch failed for', it.machine_id, err && err.message);
+            return null;
+          })
+        );
+        const details = await Promise.all(detailPromises);
+        const merged = mapped.map((it, i) => {
+          const d = details[i];
+          if (!d) return it;
+          return {
+            ...it,
+            cpu_core_number: d.cpu_core_number ?? it.cpu_core_number,
+            memory_size_gb: d.memory_size_gb ?? it.memory_size_gb,
+            gpu_number: d.gpu_number ?? it.gpu_number,
+            gpu_type: d.gpu_type ?? it.gpu_type,
+            disk_size_gb: d.disk_size_gb ?? it.disk_size_gb,
+            machine_description: d.machine_description ?? it.machine_description,
+            machine_type: (d.machine_type ?? it.machine_type).toUpperCase(),
+            machine_status: (d.machine_status ?? it.machine_status).toLowerCase()
+          };
+        });
+        return merged;
+      } catch (e) {
+        return mapped;
+      }
+    } catch (err) {
+      console.error('Failed to load machines', err);
+      return [];
+    } finally {
+      setMachinesLoading(false);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
-    const load = async () => {
-      setMachinesLoading(true);
-      try {
-        const res = await listAllMachineBrefInformation({ page_number: 0, page_size: defaultPageSize });
-        const items = (res && res.machines) || [];
-        // map to existing shape with minimal defaults and keep machine_id
-        const mapped = items.map((m, idx) => ({
-          key: String(m.machine_id || idx + 1),
-          machine_id: m.machine_id,
-          machine_name: m.machine_name || '',
-          machine_ip: m.machine_ip || '',
-          machine_type: (m.machine_type || '').toUpperCase(),
-          machine_status: (m.machine_status || '').toLowerCase(),
-          cpu_core_number: null,
-          memory_size_gb: null,
-          gpu_number: null,
-          gpu_type: null,
-          disk_size_gb: null,
-          machine_description: ''
-        }));
-        // 按机器ID并行获取详情以补全信息
-        try {
-          const detailPromises = mapped.map(it =>
-            getDetailInformation(it.machine_id).catch(err => {
-              console.warn('detail fetch failed for', it.machine_id, err && err.message);
-              return null;
-            })
-          );
-          const details = await Promise.all(detailPromises);
-          const merged = mapped.map((it, i) => {
-            const d = details[i];
-            if (!d) return it;
-            return {
-              ...it,
-              cpu_core_number: d.cpu_core_number ?? it.cpu_core_number,
-              memory_size_gb: d.memory_size_gb ?? it.memory_size_gb,
-              gpu_number: d.gpu_number ?? it.gpu_number,
-              gpu_type: d.gpu_type ?? it.gpu_type,
-              disk_size_gb: d.disk_size_gb ?? it.disk_size_gb,
-              machine_description: d.machine_description ?? it.machine_description,
-              machine_type: (d.machine_type ?? it.machine_type).toUpperCase(),
-              machine_status: (d.machine_status ?? it.machine_status).toLowerCase()
-            };
-          });
-          if (mounted) setMachines(merged);
-        } catch (e) {
-          // fallback to mapped if something unexpected fails
-          if (mounted) setMachines(mapped);
-        }
-      } catch (err) {
-        console.error('Failed to load machines', err);
-      } finally {
-        if (mounted) setMachinesLoading(false);
-      }
-    };
-    load();
+    (async () => {
+      const list = await fetchMachinesFromApi();
+      if (mounted) setMachines(list);
+    })();
     return () => { mounted = false; };
   }, []);
 
@@ -246,7 +250,7 @@ const ManageMachine = () => {
     if (!machineId) return;
     const mid = String(machineId);
     // if same page already loaded, skip
-    if (containerMap[mid]?.loading || (containerMap[mid]?.data && containerMap[mid]?.page === pageNumber)) return;
+    //if (containerMap[mid]?.loading || (containerMap[mid]?.data && containerMap[mid]?.page === pageNumber)) return;
     // mark loading
     setContainerMap(prev => ({ ...prev, [mid]: { ...(prev[mid] || {}), loading: true, data: [], page: pageNumber, total_page: prev[mid]?.total_page || 1 } }));
     try {
@@ -530,22 +534,9 @@ const ManageMachine = () => {
         let success = false;
         try {
           const res = await addMachine(payload);
-          const newId = (res && (res.machine_id || res.id)) ? String(res.machine_id || res.id) : String(Date.now());
-          const newMachine = {
-            key: newId,
-            machine_id: newId,
-            machine_name: payload.machine_name,
-            machine_ip: payload.machine_ip,
-            machine_type: (payload.machine_type || '').toUpperCase(),
-            machine_status: (values.machine_status || 'online').toLowerCase(),
-            cpu_core_number: payload.cpu_core_number,
-            memory_size_gb: payload.memory_size,
-            gpu_number: payload.gpu_number,
-            gpu_type: payload.gpu_type,
-            disk_size_gb: payload.disk_size,
-            machine_description: payload.machine_description || ''
-          };
-          setMachines(prev => [newMachine, ...prev]);
+          // after successful add, reload the machine list from backend to avoid showing a mocked id
+          const refreshed = await fetchMachinesFromApi();
+          setMachines(refreshed);
           message.success('宿主机已添加');
           success = true;
         } catch (err) {
