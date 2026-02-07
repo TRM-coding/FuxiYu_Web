@@ -30,6 +30,7 @@ import { Button, Modal, Space, Typography } from 'antd';
  *    @param {boolean} loading - 加载状态（通常用于 API 调用中）
  *    @param {string} confirmText - 确认按钮文本，默认 '确认'
  *    @param {string} cancelText - 取消按钮文本，默认 '取消'
+ *    @param {boolean} showCancel - 是否显示取消按钮，默认 true
  *    @param {string} iconColor - 标题图标颜色，默认 '#faad14'
  */
 const ConfirmModal = ({ 
@@ -44,10 +45,30 @@ const ConfirmModal = ({
   loading,
   confirmText = '确认',
   cancelText = '取消',
+  showCancel = true,
   iconColor = '#faad14'
 }) => {
   const isDangerMode = danger || isDanger;
-  
+  const footerButtons = [];
+  if (showCancel) {
+    footerButtons.push(
+      <Button key="cancel" onClick={onCancel} disabled={loading}>
+        {cancelText}
+      </Button>
+    );
+  }
+  footerButtons.push(
+    <Button 
+      key="confirm" 
+      type="primary"
+      danger={isDangerMode}
+      loading={loading}
+      onClick={onConfirm}
+    >
+      {confirmText}
+    </Button>
+  );
+
   return (
     <Modal
       title={
@@ -59,20 +80,7 @@ const ConfirmModal = ({
       open={visible}
       onCancel={onCancel}
       width={500}
-      footer={[
-        <Button key="cancel" onClick={onCancel} disabled={loading}>
-          {cancelText}
-        </Button>,
-        <Button 
-          key="confirm" 
-          type="primary"
-          danger={isDangerMode}
-          loading={loading}
-          onClick={onConfirm}
-        >
-          {confirmText}
-        </Button>
-      ]}
+      footer={footerButtons}
     >
       <div style={{ marginBottom: 16 }}>
         <Typography.Text>{messageText}</Typography.Text>

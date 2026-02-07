@@ -1,10 +1,42 @@
-// src/configs/backend_config.js
-// 后端配置（可通过 Vite 环境变量 VITE_BACKEND_BASE_URL 覆盖）
+// 单文件配置，移除对 config.js 的依赖
 
-export const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL || '';
+// Use IPv4 loopback to avoid IPv6 (::1) connection issues in some browsers
+export const BACKEND_BASE_URL = 'http://127.0.0.1:5000';
+export const REQUEST_TIMEOUT = 5000;
+export const CREDENTIALS = 'include'; // 携带 cookies
 
 export const API_ROUTES = {
-  REGISTER: '/register',
-  LOGIN: '/login',
-  // 根据后端实际接口添加更多路由
+	// User routes
+	LOGIN: '/api/login',
+	REGISTER: '/api/register',
+	USERS_CHANGE_PASSWORD: '/api/users/change_password',
+	USERS_DELETE: '/api/users/delete_user',
+	USERS_GET_DETAIL: '/api/users/get_user_detail_information',
+	USERS_UPDATE: '/api/users/update_user',
+	USERS_RESET_PASSWORD: '/api/users/reset_password',
+	USERS_LIST: '/api/users/list_all_user_bref_information',
+
+	// Machine routes
+	MACHINES_ADD: '/api/machines/add_machine',
+	MACHINES_REMOVE: '/api/machines/remove_machine',
+	MACHINES_UPDATE: '/api/machines/update_machine',
+	MACHINES_GET_DETAIL: '/api/machines/get_detail_information',
+	MACHINES_LIST: '/api/machines/list_all_machine_bref_information',
+
+	// Container routes
+	CONTAINERS_CREATE: '/api/containers/create_container',
+	CONTAINERS_DELETE: '/api/containers/delete_container',
+	CONTAINERS_ADD_COLLABORATOR: '/api/containers/add_collaborator',
+	CONTAINERS_REMOVE_COLLABORATOR: '/api/containers/remove_collaborator',
+	CONTAINERS_UPDATE_ROLE: '/api/containers/update_role',
+	CONTAINERS_GET_DETAIL: '/api/containers/get_container_detail_information',
+	CONTAINERS_LIST: '/api/containers/list_all_container_bref_information',
+	
+};
+
+export default {
+	BACKEND_BASE_URL,
+	REQUEST_TIMEOUT,
+	CREDENTIALS,
+	API_ROUTES,
 };

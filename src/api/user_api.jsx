@@ -1,100 +1,249 @@
-import { BACKEND_BASE_URL, API_ROUTES } from '../configs/backend_config';
+import { BACKEND_BASE_URL, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
+import { createController, unregisterController, abortAll } from '../utils/requestManager';
 
-/**
- * 模拟签名函数（因为您后端使用了签名验证）
- * 注意：您需要根据实际的签名逻辑实现这个函数
- */
-const generateSignature = async (message) => {
-    // 开发环境模拟签名
-    console.log('生成消息签名:', message);
-    
-    // 在实际应用中，您需要实现真实的签名逻辑
-    // 这里返回一个模拟签名以便测试
-    return "mock_signature_for_development";
+
+const createTimeoutController = (timeout) => {
+  const controller = createController();
+  const timer = setTimeout(() => {
+    try { controller.abort(); } catch (e) {}
+  }, timeout || REQUEST_TIMEOUT);
+  return { controller, timer };
 };
 
-/**
- * 用户注册API
- * @param {Object} params - 注册参数
- * @param {string} params.username - 用户名
- * @param {string} params.email - 邮箱
- * @param {string} params.password - 密码
- * @param {string|number} params.graduation_year - 毕业年份
- * @param {number} timeout - 超时时间（毫秒），默认10000ms
- * @returns {Promise<Object>} 注册结果
- */
-export const registerUser = async ({ username, email, password, graduation_year }, timeout = 10000) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
-
+const ensureOk = async (res, action) => {
+  if (!res.ok) {
+    let body = null;
     try {
-        // 构建请求体（不需要签名）
-        const requestBody = {
-            username: username.trim(),
-            email: email.trim(),
-            password: password,
-            graduation_year: graduation_year.toString()
-        };
-
-        console.log('发送注册请求:', {
-            url: `${BACKEND_BASE_URL}${API_ROUTES.REGISTER}`,
-            data: requestBody
-        });
-
-        const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.REGISTER}`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify(requestBody),
-            signal: controller.signal
-        });
-
-        clearTimeout(timer);
-        
-        if (!res.ok) {
-            const text = await res.text().catch(() => null);
-            let errorMessage = `注册失败: ${res.status}`;
-            
-            try {
-                if (text) {
-                    const errorData = JSON.parse(text);
-                    if (errorData.error_message) {
-                        errorMessage = errorData.error_message;
-                    } else if (errorData.error) {
-                        errorMessage = errorData.error;
-                    }
-                }
-            } catch (e) {
-                if (text) errorMessage += ` - ${text}`;
-            }
-            
-            throw new Error(errorMessage);
-        }
-        
-        const result = await res.json();
-        
-        // 处理响应
-        if (result.success === 1) {
-            return {
-                success: true,
-                data: {
-                    user_id: result.user_id,
-                    username: result.username,
-                    email: result.email,
-                    graduation_year: result.graduation_year,
-                    message: result.message || '注册成功'
-                }
-            };
-        } else {
-            throw new Error(result.error_message || '注册失败');
-        }
-        
-    } catch (err) {
-        if (err.name === 'AbortError') {
-            throw new Error('注册请求超时');
-        }
-        throw err;
+      body = await res.json();
+    } catch (e) {
+      body = await res.text().catch(() => null);
     }
+    const text = body && typeof body === 'string' ? body : (body ? JSON.stringify(body) : null);
+    const err = new Error(`${action} failed: ${res.status} ${text || res.statusText}`);
+    err.status = res.status;
+    err.route = res.url;
+    err.body = body;
+    if (res.status === 401 || res.status === 403) {
+      try { abortAll('auth'); } catch (e) {}
+    }
+    throw err;
+  }
+  return res.json();
+};
+
+export const loginUser = async ({ username, password }, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.LOGIN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      signal: controller.signal,
+      credentials: CREDENTIALS
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Login');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') {
+      throw new Error('Login request timed out');
+    }
+    throw err;
+  }
+};
+
+export const registerUser = async ({ username, email, password, graduation_year = null }, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.REGISTER}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password, graduation_year }),
+      signal: controller.signal,
+      credentials: CREDENTIALS
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Register');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') {
+      throw new Error('Register request timed out');
+    }
+    throw err;
+  }
+};
+
+const getTokenHeader = () => {
+  try {
+    const token = localStorage.getItem('authToken');
+    return token ? { token } : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+export const changePasswordUser = async ({ user_id, old_password, new_password } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_CHANGE_PASSWORD}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getTokenHeader(),
+      },
+      body: JSON.stringify({ user_id, old_password, new_password }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Change password');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Change password request timed out');
+    throw err;
+  }
+};
+
+export const updateUser = async ({ user_id, fields } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_UPDATE}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getTokenHeader(),
+      },
+      body: JSON.stringify({ user_id, fields }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Update user');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Update user request timed out');
+    throw err;
+  }
+};
+
+export const resetPassword = async ({ user_id } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_RESET_PASSWORD}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getTokenHeader(),
+      },
+      body: JSON.stringify({ user_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Reset password');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Reset password request timed out');
+    throw err;
+  }
+};
+
+export const deleteUser = async (user_id = 0, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_DELETE}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getTokenHeader(),
+      },
+      body: JSON.stringify({ user_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Delete user');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Delete user request timed out');
+    throw err;
+  }
+};
+
+export const getUserDetailInformation = async (user_id = 0, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(`${BACKEND_BASE_URL}${API_ROUTES.USERS_GET_DETAIL}`);
+    url.searchParams.set('user_id', String(user_id));
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        ...getTokenHeader(),
+      },
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Get user detail');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Get user detail request timed out');
+    throw err;
+  }
+};
+
+export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 10 } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(`${BACKEND_BASE_URL}${API_ROUTES.USERS_LIST}`);
+    url.searchParams.set('page_number', String(page_number));
+    url.searchParams.set('page_size', String(page_size));
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        ...getTokenHeader(),
+      },
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'List users');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('List users request timed out');
+    throw err;
+  }
+};
+
+export default {
+  loginUser,
+  registerUser,
+  changePasswordUser,
+  deleteUser,
+  getUserDetailInformation,
+  listAllUserBrefInformation,
 };

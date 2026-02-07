@@ -1,204 +1,88 @@
 import React, { useState } from 'react';
-import { SearchOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
-import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message } from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message, InputNumber } from 'antd';
+import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
+import { handleAuthError } from '../utils/authHelpers';
+import { listAllUserBrefInformation, getUserDetailInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator } from '../api/container_api';
 const { Column } = Table;
 
-// 后续需要改动来源
-const userData = [
-  {
-    key: '1', // 代指user_id
-    username: 'alice',
-    email: 'alice@example.com',
-    graduation_year: '2026',
-  },
-  {
-    key: '2',
-    username: 'bob',
-    email: 'bob@example.com',
-    graduation_year: '2027',
-  },
-  {
-    key: '3',
-    username: 'carol',
-    email: 'carol@example.com',
-    graduation_year: '2025',
-  },
-  {
-    key: '4',
-    username: 'dave',
-    email: 'dave@example.com',
-    graduation_year: '2028',
-  },
-  {
-    key: '5',
-    username: 'erin',
-    email: 'erin@example.com',
-    graduation_year: '2026',
-  },
-  {
-    key: '6',
-    username: 'frank',
-    email: 'frank@example.com',
-    graduation_year: '2027',
-  },
-  {
-    key: '7',
-    username: 'admin_root',
-    email: 'root@example.com',
-    graduation_year: '2024',
-  },
-];
-
-// 容器数据
-const containerData = [
-  {
-    key: '1', // 代指container_id
-    container_name: 'web',
-    container_image: 'nginx:1.25',
-    machine_id: '1',
-    container_status: 'online',
-    port: '8080',
-    accounts: [['alice', 'ADMIN']],
-  },
-  {
-    key: '2',
-    container_name: 'db',
-    container_image: 'mysql:8.0',
-    machine_id: '1',
-    container_status: 'maintenance',
-    port: '3306',
-    accounts: [['test', 'ADMIN'], ['alice', 'COLLABORATOR']],
-  },
-  {
-    key: '3',
-    container_name: 'api',
-    container_image: 'python:3.11',
-    machine_id: '2',
-    container_status: 'offline',
-    port: '9000',
-    accounts: [['bob', 'COLLABORATOR']],
-  },
-  {
-    key: '4',
-    container_name: 'web-node-b',
-    container_image: 'nginx:1.25',
-    machine_id: '2',
-    container_status: 'online',
-    port: '8081',
-    accounts: [['carol', 'COLLABORATOR']],
-  },
-  {
-    key: '5',
-    container_name: 'cache',
-    container_image: 'redis:7',
-    machine_id: '1',
-    container_status: 'online',
-    port: '6379',
-    accounts: [['carol', 'COLLABORATOR']],
-  },
-  {
-    key: '6',
-    container_name: 'ml',
-    container_image: 'pytorch/pytorch:2.4.0',
-    machine_id: '1',
-    container_status: 'online',
-    port: '7010',
-    accounts: [['alice', 'ADMIN']],
-  },
-  {
-    key: '7',
-    container_name: 'db-postgres',
-    container_image: 'postgres:16',
-    machine_id: '2',
-    container_status: 'online',
-    port: '5432',
-    accounts: [['bob', 'COLLABORATOR']],
-  },
-  {
-    key: '8',
-    container_name: 'runner',
-    container_image: 'ghcr.io/actions/runner:latest',
-    machine_id: '2',
-    container_status: 'maintenance',
-    port: '9123',
-    accounts: [['bob', 'COLLABORATOR']],
-  },
-  {
-    key: '9',
-    container_name: 'web-node-c',
-    container_image: 'nginx:1.27',
-    machine_id: '3',
-    container_status: 'online',
-    port: '8082',
-    accounts: [['carol', 'COLLABORATOR'], ['dave', 'COLLABORATOR']],
-  },
-  {
-    key: '10',
-    container_name: 'api-v2',
-    container_image: 'python:3.12',
-    machine_id: '3',
-    container_status: 'online',
-    port: '9001',
-    accounts: [['dave', 'COLLABORATOR']],
-  },
-  {
-    key: '11',
-    container_name: 'db-mysql-3307',
-    container_image: 'mysql:8.4',
-    machine_id: '3',
-    container_status: 'maintenance',
-    port: '3307',
-    accounts: [['frank', 'COLLABORATOR']],
-  },
-  {
-    key: '12',
-    container_name: 'monitor',
-    container_image: 'prom/prometheus:latest',
-    machine_id: '4',
-    container_status: 'online',
-    port: '9090',
-    accounts: [['erin', 'COLLABORATOR']],
-  },
-  {
-    key: '13',
-    container_name: 'web-node-d',
-    container_image: 'nginx:1.27',
-    machine_id: '4',
-    container_status: 'offline',
-    port: '8083',
-    accounts: [['frank', 'COLLABORATOR']],
-  },
-  {
-    key: '14',
-    container_name: 'central-db',
-    container_image: 'mysql:8.0',
-    machine_id: '1',
-    container_status: 'online',
-    port: '3308',
-    accounts: [['admin_root', 'ROOT'], ['alice', 'ADMIN']],
-  },
-  {
-    key: '15',
-    container_name: 'core-api',
-    container_image: 'python:3.12',
-    machine_id: '2',
-    container_status: 'online',
-    port: '9002',
-    accounts: [['admin_root', 'ROOT']],
-  },
-  {
-    key: '16',
-    container_name: 'backup-system',
-    container_image: 'ubuntu:24.04',
-    machine_id: '3',
-    container_status: 'online',
-    port: '8084',
-    accounts: [['admin_root', 'ROOT'], ['bob', 'ADMIN']],
-  },
-];
+// users and containers will be fetched from backend
+const initialUsers = [];
 
 const ManageUser = () => {
+  // Inline editor for expanded rows
+  const EditUserRow = ({ record }) => {
+    const [values, setValues] = React.useState({
+      username: record.username ?? '',
+      email: record.email ?? '',
+      graduation_year: record.graduation_year ?? ''
+    });
+
+    const original = React.useRef({ username: record.username ?? '', email: record.email ?? '', graduation_year: record.graduation_year ?? '' });
+
+    const changedFields = React.useMemo(() => {
+      const out = {};
+      if (String(values.username) !== String(original.current.username)) out.username = values.username;
+      if (String(values.email) !== String(original.current.email)) out.email = values.email;
+      if (String(values.graduation_year) !== String(original.current.graduation_year)) {
+        let v = values.graduation_year;
+        if (v === '' || v === undefined || v === null) {
+          v = null;
+        } else {
+          v = parseInt(v, 10);
+        }
+        out.graduation_year = Number.isNaN(v) ? values.graduation_year : v;
+      }
+      return out;
+    }, [values]);
+
+    const hasChanged = Object.keys(changedFields).length > 0;
+
+    const onReset = () => {
+      setValues({ ...original.current });
+    };
+
+    const onSave = () => {
+      // open modal for confirmation with changedFields
+      openModal('save', { record, changedFields });
+    };
+
+    const labelStyle = (field) => (String(values[field]) !== String(original.current[field]) ? { fontWeight: 700, fontStyle: 'italic' } : {});
+
+    return (
+      <div style={{ background: '#fff' }}>
+        <Form layout="inline" initialValues={{ username: values.username, email: values.email, graduation_year: values.graduation_year }}>
+          <Row gutter={[16, 0]} align="middle" style={{ width: '100%' }}>
+            <Col flex="auto">
+              <Form.Item label={<span style={labelStyle('username')}>用户名</span>} style={{ marginBottom: 0 }}>
+                <Input value={values.username} onChange={e => setValues(v => ({ ...v, username: e.target.value }))} style={{ width: 150 }} />
+              </Form.Item>
+            </Col>
+            <Col flex="auto">
+              <Form.Item label={<span style={labelStyle('email')}>邮箱</span>} style={{ marginBottom: 0 }}>
+                <Input value={values.email} onChange={e => setValues(v => ({ ...v, email: e.target.value }))} style={{ width: 200 }} />
+              </Form.Item>
+            </Col>
+            <Col flex="auto">
+              <Form.Item label={<span style={labelStyle('graduation_year')}>毕业年份</span>} style={{ marginBottom: 0 }}>
+                <InputNumber value={values.graduation_year === '' || values.graduation_year === null ? undefined : Number(values.graduation_year)} onChange={v => setValues(val => ({ ...val, graduation_year: v }))} style={{ width: 120 }} />
+              </Form.Item>
+            </Col>
+            <Col>
+              <Space size="small">
+                <Button type="primary" size="small" onClick={onSave} disabled={!hasChanged}>保存</Button>
+                <Button size="small" onClick={onReset}>{hasChanged ? '重置' : '重置'}</Button>
+              </Space>
+            </Col>
+          </Row>
+        </Form>
+      </div>
+    );
+  };
+
   // 用户搜索状态
   const [searchUsername, setSearchUsername] = useState('');
   const [searchUserId, setSearchUserId] = useState('');
@@ -206,6 +90,105 @@ const ManageUser = () => {
 
   // 展开的行key
   const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+
+  // fetched users
+  const [users, setUsers] = useState(initialUsers);
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  // container cache per user id: { [userId]: { loading, data } }
+  const [containerMap, setContainerMap] = useState({});
+
+  const navigate = useNavigate();
+
+  // auth + permission check: show 401 then redirect if missing; fetch user detail to check operator permission
+  React.useEffect(() => {
+    const checkAuthAndPerm = async () => {
+      try {
+        const name = localStorage.getItem('currentUserName');
+        const id = localStorage.getItem('currentUserId');
+        if (!name || !id) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 401: clear auth and navigate to login
+          handleAuthError(401, navigate);
+          return;
+        }
+
+        // fetch user detail to check permissions
+        const res = await getUserDetailInformation(Number(id));
+        const info = (res && (res.user_info || res.data)) || res || {};
+        const isOperator = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
+        if (!isOperator) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // For 403 do NOT clear login info; only navigate to /index
+          handleAuthError(403, navigate);
+          return;
+        }
+      } catch (e) {
+        if (!sessionStorage.getItem('auth_modal_shown')) {
+          try {
+            sessionStorage.setItem('auth_modal_shown', '1');
+            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+          } finally {
+            sessionStorage.removeItem('auth_modal_shown');
+          }
+        }
+        // For 401 clear auth and navigate to login
+        handleAuthError(401, navigate);
+      }
+    };
+    checkAuthAndPerm();
+  }, [navigate]);
+
+  // load users on mount
+  React.useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setUsersLoading(true);
+      try {
+        const res = await listAllUserBrefInformation({ page_number: 1, page_size: 200 });
+        const items = (res && (res.users || res.items || res.data)) || [];
+        const mapped = items.map(u => ({
+          key: String(u.user_id || u.id || u.uid || u.userId || u.key || ''),
+          username: u.username || u.name || u.display_name || String(u.user_id || u.id || u.userId || ''),
+          email: u.email || '',
+          graduation_year: u.graduation_year || u.year || '',
+          // preserve backend-provided container counts for statistics when row is not expanded
+          amount_of_container: u.amount_of_container ?? u.amount_of_containers ?? 0,
+          amount_of_functional_container: u.amount_of_functional_container ?? 0,
+          amount_of_managed_container: u.amount_of_managed_container ?? 0,
+        }));
+        if (mounted) setUsers(mapped);
+      } catch (err) {
+        console.error('load users failed', err);
+        // if authentication error, clear auth and redirect to login
+        const msg = err && err.message ? String(err.message) : '';
+        if (msg.toLowerCase().includes('invalid or missing token') || msg.includes('401')) {
+          // 401: clear auth and navigate to login
+          handleAuthError(401, navigate);
+          return;
+        }
+        await showErrorModal({ message: err?.body?.message || (msg ? `加载用户列表失败: ${msg}` : '加载用户列表失败'), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      } finally {
+        if (mounted) setUsersLoading(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, []);
 
   // 通用弹窗状态
   const [modal, setModal] = useState({
@@ -216,7 +199,7 @@ const ManageUser = () => {
   });
 
   // 过滤用户数据
-  const filteredUserData = userData.filter(user => {
+  const filteredUserData = users.filter(user => {
     const matchUsername = user.username.toLowerCase().includes(searchUsername.toLowerCase());
     const matchUserId = user.key.includes(searchUserId);
     const matchEmail = user.email.toLowerCase().includes(searchEmail.toLowerCase());
@@ -234,35 +217,80 @@ const ManageUser = () => {
   };
 
   // 处理弹窗确认
-  const handleModalConfirm = () => {
+  const handleModalConfirm = async () => {
     setModal(prev => ({ ...prev, loading: true }));
-    
-    setTimeout(() => {
-      const { type, data } = modal;
-      
-      switch (type) {
-        case 'save':
-          console.log('保存用户信息:', data);
-          message.success('用户信息已保存');
-          break;
-        case 'delete':
-          console.log('删除用户:', data);
-          message.success('用户已删除');
-          break;
-        case 'resetPassword':
-          console.log('重置密码:', data);
+    const { type, data } = modal;
+
+    try {
+      if (type === 'save') {
+        // data should contain { record, changedFields }
+        const uid = Number(data?.record?.key || data?.record?.user_id || data?.record?.id);
+        const fields = data?.changedFields || {};
+        if (!uid) throw new Error('缺少用户ID');
+        if (Object.keys(fields).length === 0) {
+          // nothing to do
+        } else {
+          await updateUser({ user_id: uid, fields });
+          // update local list: only update provided fields
+          setUsers(prev => prev.map(u => (String(u.key) === String(uid) ? { ...u, ...fields } : u)));
+          message.success('用户信息已更新');
+        }
+      } else if (type === 'delete') {
+        // call delete user API
+        const uid = Number(data?.key || data?.user_id || data?.id);
+        if (!uid) throw new Error('缺少用户ID');
+        await deleteUser(uid);
+        setUsers(prev => prev.filter(u => String(u.key) !== String(data.key)));
+        message.success('用户已删除');
+      } else if (type === 'resetPassword') {
+        const uid = Number(data?.key || data?.user_id || data?.id);
+        if (!uid) throw new Error('缺少用户ID');
+        const res = await resetPassword({ user_id: uid });
+        const newPwd = res && (res.new_password || res.newPassword || res.data?.new_password);
+        if (newPwd) {
+          await showErrorModal({ title: '密码已重置', message: `新密码：${newPwd}`, status: 200 });
+        } else {
           message.success('密码已重置');
-          break;
-        case 'removeAssociation':
-          console.log('移除关联:', data);
-          message.success('关联已移除');
-          break;
-        default:
-          break;
+        }
+      } else if (type === 'removeAssociation') {
+        // remove user-container association via API
+        const username = data?.username;
+        const container = data?.container;
+        const userObj = users.find(u => u.username === username);
+        const uid = Number(userObj?.key || data?.user_id || data?.id);
+        const cid = Number(container?.key || container?.container_id || container?.id);
+        if (!uid || !cid) throw new Error('缺少用户ID或容器ID');
+        await removeCollaborator({ user_id: uid, container_id: cid });
+        // update cache: remove container from this user's container list if present
+        setContainerMap(prev => {
+          const id = String(uid);
+          const entry = prev[id] || { data: [] };
+          const newData = (entry.data || []).filter(c => String(c.key) !== String(cid));
+          return { ...prev, [id]: { ...(entry || {}), loading: false, data: newData } };
+        });
+        message.success('关联已移除');
       }
-      
+    } catch (err) {
+      console.error('modal action failed', err);
+      // Prefer structured error body.message provided by backend (e.g. wild container notice)
+      const status = err?.status || err?.response?.status;
+      let messageText = (err && err.message) ? err.message : '操作失败，请重试';
+      try {
+        if (err && err.body && typeof err.body === 'object') {
+          if (err.body.message) messageText = String(err.body.message);
+          if (err.body.wild_containers) {
+            const wc = err.body.wild_containers;
+            const list = Array.isArray(wc) ? wc.join(', ') : String(wc);
+            messageText = `${messageText}。受影响容器: ${list}`;
+          }
+        }
+      } catch (e) {
+        // fall back to err.message
+      }
+      await showErrorModal({ message:  messageText, status, route: err?.route || err?.response?.url });
+    } finally {
       setModal({ visible: false, type: '', loading: false, data: null });
-    }, 500);   // Future TODO 这里的延时模拟API调用，后续替换为真实API请求
+    }
   };
 
   // 处理保存用户信息
@@ -328,20 +356,73 @@ const ManageUser = () => {
   };
 
   // 获取用户的所有容器（带角色信息）
-  const getUserContainers = (username) => {
-    return containerData
-      .filter(container => {
-        const role = getUserRoleInContainer(container.accounts, username);
-        return role !== null;
-      })
-      .map(container => ({
-        ...container,
-        userRole: getUserRoleInContainer(container.accounts, username)
+  const fetchContainersForUser = async (userId) => {
+    if (!userId) return;
+    const id = String(userId);
+    // avoid duplicate fetch
+    //if (containerMap[id]?.loading || containerMap[id]?.data) return;
+    setContainerMap(prev => ({ ...prev, [id]: { ...(prev[id] || {}), loading: true, data: [] } }));
+    try {
+      const res = await listAllContainerBrefInformation({ machine_id: null, user_id: Number(userId), page_number: 0, page_size: 200 });
+      const items = (res && (res.containers_info || res.containers)) || [];
+      const mapped = items.map((c, idx) => ({
+        key: c.container_id ? String(c.container_id) : `c-${idx}`,
+        container_name: c.container_name || c.name || `container-${idx}`,
+        container_image: c.container_image || '',
+        port: c.port ? String(c.port) : (c.port_str || ''),
+        container_status: (c.container_status || '').toLowerCase(),
+        machine_id: c.machine_id ? String(c.machine_id) : null,
+        accounts: c.accounts || [],
       }));
+      // fetch detail per container to enrich with image and account role info for this user
+      const userObj = users.find(u => String(u.key) === String(userId));
+      const username = userObj?.username;
+      const detailed = await Promise.all(mapped.map(async (c) => {
+        try {
+          const detRes = await getContainerDetailInformation(Number(c.key));
+          const det = (detRes && (detRes.container_info || detRes.container || detRes.data || detRes.container_detail)) || detRes || null;
+          const image = (det && (det.container_image || det.image)) || c.container_image;
+          const accounts = det?.accounts || c.accounts || [];
+          // accounts expected to be objects with `user_id`/`username`/`role`; map user's role by matching username or user_id
+          let userRole = null;
+          if (username && accounts && Array.isArray(accounts)) {
+            const found = accounts.find(a => {
+              if (!a) return false;
+              if (typeof a === 'object') {
+                return a.username === username || String(a.user_id) === String(userId) || String(a.user_id) === String(userObj?.key);
+              }
+              return false;
+            });
+            if (found) userRole = found.role ?? null;
+          }
+          return { ...c, container_image: image, accounts, userRole, machine_id: det?.machine_id ? String(det.machine_id) : c.machine_id };
+        } catch (e) {
+          // if detail fetch fails, do not attempt old fallback — keep bref info but no userRole
+          return { ...c, accounts: c.accounts || [], userRole: null };
+        }
+      }));
+      setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: detailed } }));
+    } catch (err) {
+      console.error('fetchContainersForUser failed', userId, err);
+      setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: [] } }));
+    }
+  };
+
+  const getUserContainers = (username) => {
+    const user = users.find(u => u.username === username);
+    if (!user) return [];
+    const id = String(user.key);
+    // do not trigger fetch during render — return empty until data present
+    if (!containerMap[id]) {
+      return [];
+    }
+    const data = containerMap[id].data || [];
+    return data; // `userRole` is provided by detail fetch and stored in cache
   };
 
   // 切换展开状态
   const toggleExpand = (userId) => {
+    const willExpand = !expandedRowKeys.includes(userId);
     setExpandedRowKeys(prev => {
       if (prev.includes(userId)) {
         return prev.filter(key => key !== userId);
@@ -349,6 +430,8 @@ const ManageUser = () => {
         return [...prev, userId];
       }
     });
+    // trigger fetch when user explicitly expands a row (avoids setState during render)
+    if (willExpand) fetchContainersForUser(userId);
   };
 
   // 生成弹窗内容
@@ -357,7 +440,8 @@ const ManageUser = () => {
     
     switch (type) {
       case 'save': {
-        const user = data;
+        const rec = data?.record || {};
+        const changed = data?.changedFields || {};
         return (
           <div style={{ 
             background: '#fafafa', 
@@ -367,17 +451,15 @@ const ManageUser = () => {
           }}>
             <Row gutter={[0, 12]}>
               <Col span={24}>
-                <Typography.Text type="secondary">用户名：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{user?.username}</Typography.Text>
+                <Typography.Text type="secondary">用户：</Typography.Text>
+                <Typography.Text style={{ marginLeft: 8 }}>{rec?.username}</Typography.Text>
               </Col>
-              <Col span={24}>
-                <Typography.Text type="secondary">邮箱：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{user?.email}</Typography.Text>
-              </Col>
-              <Col span={24}>
-                <Typography.Text type="secondary">毕业年份：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{user?.graduation_year}</Typography.Text>
-              </Col>
+              {Object.keys(changed).map((k) => (
+                <Col span={24} key={k}>
+                  <Typography.Text type="secondary">{k}：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{String(changed[k])}</Typography.Text>
+                </Col>
+              ))}
             </Row>
           </div>
         );
@@ -412,6 +494,7 @@ const ManageUser = () => {
         );
       }
       case 'resetPassword': {
+        const user = data || {};
         return (
           <div style={{ 
             background: '#fffbe6', 
@@ -420,7 +503,7 @@ const ManageUser = () => {
             border: '1px solid #ffe58f'
           }}>
             <Typography.Text type="secondary">
-              系统将重置为默认密码，请提醒用户尽快修改密码。
+              系统将为用户 {user?.username || user?.key} 重置密码，确认后会显示新密码，请提醒用户尽快修改。
             </Typography.Text>
           </div>
         );
@@ -474,9 +557,9 @@ const ManageUser = () => {
     
     switch (type) {
       case 'save':
-        return `确定要保存用户 ${data?.username} 的信息吗？`;
+        return `确定要保存用户 ${data?.record?.username} 的信息吗？`;
       case 'delete':
-        return `确定要删除用户 ${data?.username} 吗？`;
+        return `确定要删除用户 ${data?.username} 吗？这将会同时解除用户与所有容器的关联！`;
       case 'resetPassword':
         return `确定要重置用户 ${data?.username} 的密码吗？`;
       case 'removeAssociation':
@@ -595,14 +678,21 @@ const ManageUser = () => {
           <Table 
             dataSource={filteredUserData} 
             rowKey="key" 
+            loading={usersLoading}
             pagination={{ pageSize: 10 }}
             bordered
             scroll={{ x: true }}
             expandable={{
               expandedRowKeys,
-              onExpandedRowsChange: (expandedKeys) => {
-                setExpandedRowKeys(expandedKeys);
-              },
+                onExpandedRowsChange: (expandedKeys) => {
+                  setExpandedRowKeys(expandedKeys);
+                },
+                onExpand: (expanded, record) => {
+                  if (expanded) {
+                    // record.key is the user id string
+                    fetchContainersForUser(record.key);
+                  }
+                },
               showExpandColumn: false,
               expandedRowRender: (record) => (
                 <div style={{ margin: '16px 0', padding: '16px', background: '#fafafa', borderRadius: '4px' }}>
@@ -625,79 +715,76 @@ const ManageUser = () => {
                     border: '1px solid #f0f0f0',
                     marginBottom: '16px'
                   }}>
-                    <Form layout="inline" initialValues={{
-                      username: record.username,
-                      email: record.email,
-                      graduation_year: record.graduation_year,
-                    }}>
-                      <Row gutter={[16, 0]} align="middle" style={{ width: '100%' }}>
-                        <Col flex="auto">
-                          <Form.Item label="用户名" name="username" style={{ marginBottom: 0 }}>
-                            <Input placeholder="请输入用户名" style={{ width: 150 }} />
-                          </Form.Item>
-                        </Col>
-                        <Col flex="auto">
-                          <Form.Item label="邮箱" name="email" style={{ marginBottom: 0 }}>
-                            <Input placeholder="请输入邮箱" style={{ width: 200 }} />
-                          </Form.Item>
-                        </Col>
-                        <Col flex="auto">
-                          <Form.Item label="毕业年份" name="graduation_year" style={{ marginBottom: 0 }}>
-                            <Input placeholder="请输入毕业年份" style={{ width: 120 }} />
-                          </Form.Item>
-                        </Col>
-                        <Col>
-                          <Space size="small">
-                            <Button type="primary" size="small" onClick={() => handleSaveUser(record)}>保存</Button>
-                            <Button size="small" onClick={() => toggleExpand(record.key)}>取消</Button>
-                          </Space>
-                        </Col>
-                      </Row>
-                    </Form>
+                    <EditUserRow record={record} />
                   </div>
 
                   {/* 用户容器子表格 */}
                   <Card 
-                    title={`${record.username} 的容器`}
+                    title={(
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>{record.username} 的容器</span>
+                        <Button size="small" onClick={() => fetchContainersForUser(record.key)} icon={<ReloadOutlined />} />
+                      </div>
+                    )}
                     bordered={true}
                   >
-                    <Table
-                      dataSource={getUserContainers(record.username)}
-                      rowKey="key"
-                      pagination={getUserContainers(record.username).length > 5 ? { pageSize: 5 } : false}
-                      bordered
-                      size="middle"
-                    >
-                      <Column title="容器ID" dataIndex="key" key="key" />
-                      <Column title="容器名称" dataIndex="container_name" key="container_name" />
-                      <Column title="容器镜像" dataIndex="container_image" key="container_image" />
-                      <Column title="端口" dataIndex="port" key="port" />
-                      <Column 
-                        title="容器状态" 
-                        dataIndex="container_status" 
-                        key="container_status" 
-                        render={renderContainerStatus}
-                      />
-                      <Column 
-                        title="用户角色" 
-                        dataIndex="userRole" 
-                        key="userRole" 
-                        render={renderContainerRoleTag}
-                      />
-                      <Column
-                        title="操作"
-                        key="action"
-                        render={(_, containerRecord) => (
-                          <Button 
-                            danger 
-                            size="small"
-                            onClick={() => handleRemoveUserFromContainer(record.username, containerRecord)}
+                    {
+                      (() => {
+                        const id = String(record.key);
+                        const childData = getUserContainers(record.username);
+                        const loading = !!(containerMap[id] && containerMap[id].loading);
+                        return (
+                          <Table
+                            dataSource={childData}
+                            rowKey="key"
+                            pagination={childData.length > 5 ? { pageSize: 5 } : false}
+                            bordered
+                            size="middle"
+                            loading={loading}
                           >
-                            移除关联
-                          </Button>
-                        )}
-                      />
-                    </Table>
+                            <Column title="容器ID" dataIndex="key" key="key" />
+                            <Column title="容器名称" dataIndex="container_name" key="container_name" />
+                            <Column title="容器镜像" dataIndex="container_image" key="container_image" />
+                            <Column title="端口" dataIndex="port" key="port" />
+                            <Column 
+                              title="容器状态" 
+                              dataIndex="container_status" 
+                              key="container_status" 
+                              render={renderContainerStatus}
+                            />
+                            <Column 
+                              title="用户角色" 
+                              dataIndex="userRole" 
+                              key="userRole" 
+                              render={renderContainerRoleTag}
+                            />
+                            <Column
+                              title="操作"
+                              key="action"
+                              render={(_, containerRecord) => {
+                                const role = containerRecord.userRole || containerRecord.role || '';
+                                if (String(role).toUpperCase() === 'ROOT') {
+                                  return (
+                                    <Button size="small" disabled>
+                                      不可移除所有者
+                                    </Button>
+                                  );
+                                }
+                                return (
+                                  <Button 
+                                    danger 
+                                    size="small"
+                                    onClick={() => handleRemoveUserFromContainer(record.username, containerRecord)}
+                                  >
+                                    移除关联
+                                  </Button>
+                                );
+                              }}
+                            />
+                          </Table>
+                        );
+                      })()
+                    }
                   </Card>
                 </div>
               )
@@ -736,14 +823,11 @@ const ManageUser = () => {
               title="统计信息"
               key="stats"
               render={(_, record) => {
-                const userContainers = getUserContainers(record.username);
-                const totalContainers = userContainers.length;
-                const runningContainers = userContainers.filter(c => c.container_status === 'online').length;
-                const managedContainers = userContainers.filter(c => {
-                  const role = getUserRoleInContainer(c.accounts, record.username);
-                  return role === 'ADMIN' || role === 'ROOT';
-                }).length;
-                
+                // Always use bref counts returned by listAllUserBrefInformation
+                const totalContainers = record.amount_of_container ?? record.amountOfContainer ?? (record.containers ? record.containers.length : 0) ?? 0;
+                const runningContainers = record.amount_of_functional_container ?? record.amountOfFunctionalContainer ?? 0;
+                const managedContainers = record.amount_of_managed_container ?? record.amountOfManagedContainer ?? 0;
+
                 return (
                   <span style={{ fontSize: '13px' }}>
                     <span style={{ color: '#8c8c8c' }}>容器: </span>
@@ -752,7 +836,7 @@ const ManageUser = () => {
                     <span style={{ color: '#8c8c8c' }}>正常: </span>
                     <span style={{ color: '#52c41a', fontWeight: '500' }}>{runningContainers}</span>
                     <span style={{ color: '#8c8c8c', margin: '0 8px' }}>·</span>
-                    <span style={{ color: '#8c8c8c' }}>由你管理: </span>
+                    <span style={{ color: '#8c8c8c' }}>由ta管理: </span>
                     <span style={{ color: '#faad14', fontWeight: '500' }}>{managedContainers}</span>
                   </span>
                 );

@@ -1,64 +1,24 @@
-import React, { useState } from 'react';
-import { SearchOutlined, DownOutlined, UpOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer } from '../api/container_api';
+import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
+import showErrorModal from '../utils/showErrorModal';
+import ConfirmModal from '../components/ConfirmModal';
+import EditUserModal from '../components/EditUserModal';
+import ContainerDetailModal from '../components/ContainerDetailModal';
+import { handleAuthError } from '../utils/authHelpers';
+import { getUserDetailInformation } from '../api/user_api';
+import { isAbortError } from '../utils/requestManager';
+import { useNavigate } from 'react-router-dom';
 const { Column } = Table;
 const { Option } = Select;
 
-// 模拟机器数据
-const machineData = [
-  {
-    key: '1',
-    machine_name: '服务器A',
-    machine_ip: '192.168.1.101',
-    machine_type: 'CPU服务器',
-    machine_status: 'online',
-    cpu_core_number: 16,
-    memory_size_gb: 64,
-    gpu_number: 0,
-    gpu_type: '无',
-    disk_size_gb: 2048,
-    machine_description: '前端服务部署机器'
-  },
-  {
-    key: '2',
-    machine_name: 'GPU工作站B',
-    machine_ip: '192.168.1.102',
-    machine_type: 'GPU工作站',
-    machine_status: 'maintenance',
-    cpu_core_number: 32,
-    memory_size_gb: 128,
-    gpu_number: 2,
-    gpu_type: 'NVIDIA RTX 4090',
-    disk_size_gb: 4096,
-    machine_description: 'AI模型训练机器'
-  },
-  {
-    key: '3',
-    machine_name: '存储服务器C',
-    machine_ip: '192.168.1.103',
-    machine_type: '存储服务器',
-    machine_status: 'online',
-    cpu_core_number: 8,
-    memory_size_gb: 32,
-    gpu_number: 0,
-    gpu_type: '无',
-    disk_size_gb: 16384,
-    machine_description: '数据存储节点'
-  }
-];
+import { listAllUserBrefInformation } from '../api/user_api';
 
-// 模拟所有用户数据（用于添加用户时的选择）
-const allUsers = [
-  { id: 1, username: 'zhangsan', name: '张三', status: '在线' },
-  { id: 2, username: 'lisi', name: '李四', status: '在线' },
-  { id: 3, username: 'wangwu', name: '王五', status: '在线' },
-  { id: 4, username: 'zhaoliu', name: '赵六', status: '在线' },
-  { id: 5, username: 'qianqi', name: '钱七', status: '离线' },
-  { id: 6, username: 'sunba', name: '孙八', status: '在线' },
-  { id: 7, username: 'zhoujiu', name: '周九', status: '在线' },
-  { id: 8, username: 'wushi', name: '吴十', status: '在线' },
-  { id: 9, username: 'zhengshi', name: '郑石', status: '离线' }
-];
+// machines loaded from backend
+const defaultPageSize = 100;
+
 
 // ROLE枚举定义
 const ROLE = {
@@ -67,66 +27,7 @@ const ROLE = {
   ROOT: 'ROOT'
 };
 
-// 模拟容器数据 - 初始数据
-let containerData = [
-  { 
-    key: 'c1-1', 
-    machine_id: '1', 
-    container_name: 'nginx容器', 
-    container_image: 'nginx:1.24', 
-    port: '80:80', 
-    container_status: 'online',
-    machine_ip: '192.168.1.101',
-    owners: ['张三', '李四', '王五'],
-    accounts: [
-      { username: 'zhangsan', role: ROLE.ROOT, status: '在线' },
-      { username: 'lisi', role: ROLE.COLLABORATOR, status: '在线' },
-      { username: 'wangwu', role: ROLE.COLLABORATOR, status: '在线' }
-    ]
-  },
-  { 
-    key: 'c1-2', 
-    machine_id: '1', 
-    container_name: 'react前端容器', 
-    container_image: 'react:18', 
-    port: '8080:80', 
-    container_status: 'online',
-    machine_ip: '192.168.1.101',
-    owners: ['赵六', '张三'],
-    accounts: [
-      { username: 'zhaoliu', role: ROLE.ADMIN, status: '在线' },
-      { username: 'zhangsan', role: ROLE.ROOT, status: '在线' }
-    ]
-  },
-  { 
-    key: 'c2-1', 
-    machine_id: '2', 
-    container_name: 'tensorflow训练容器', 
-    container_image: 'tensorflow:2.15', 
-    port: '8888:8888', 
-    container_status: 'maintenance',
-    machine_ip: '192.168.1.102',
-    owners: ['钱七', '张三', '孙八'],
-    accounts: [
-      { username: 'qianqi', role: ROLE.ADMIN, status: '离线' },
-      { username: 'zhangsan', role: ROLE.ROOT, status: '在线' },
-      { username: 'sunba', role: ROLE.COLLABORATOR, status: '在线' }
-    ]
-  },
-  { 
-    key: 'c3-1', 
-    machine_id: '3', 
-    container_name: '存储容器', 
-    container_image: 'centos:7', 
-    port: '9000:9000', 
-    container_status: 'online',
-    machine_ip: '192.168.1.103',
-    owners: ['周九'],
-    accounts: [
-      { username: 'zhoujiu', role: ROLE.ADMIN, status: '在线' }
-    ]
-  }
-];
+// 远端获取的数据会被存在 `containerMap`
 
 // 角色配置
 const ROLE_CONFIG = {
@@ -150,535 +51,6 @@ const ROLE_CONFIG = {
   }
 };
 
-// 获取头像URL
-const getAvatarUrl = (username) => {
-  return `https://api.dicebear.com/7.x/miniavs/svg?seed=${username}`;
-};
-
-// 格式化角色显示
-const formatRole = (role) => {
-  const config = ROLE_CONFIG[role];
-  return config ? config.label : role;
-};
-
-// 获取角色颜色
-const getRoleColor = (role) => {
-  const config = ROLE_CONFIG[role];
-  return config ? config.color : 'default';
-};
-
-// 获取角色图标
-const getRoleIcon = (role) => {
-  const config = ROLE_CONFIG[role];
-  return config ? config.icon : <UserOutlined />;
-};
-
-// 编辑用户弹窗组件
-const EditUserModal = ({ visible, container, onClose, onSave }) => {
-  const [form] = Form.useForm();
-  const [editing, setEditing] = useState(false);
-  const [accounts, setAccounts] = useState([]);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [selectedRole, setSelectedRole] = useState(ROLE.COLLABORATOR);
-
-  // 初始化数据
-  React.useEffect(() => {
-    if (container) {
-      const initialAccounts = container.accounts?.map((account, index) => ({
-        ...account,
-        ownerName: container.owners[index] || account.username,
-        key: account.username
-      })) || [];
-      setAccounts(initialAccounts);
-      
-      // 设置表单初始值
-      form.setFieldsValue({
-        accounts: initialAccounts
-      });
-    }
-  }, [container, form]);
-
-  // 添加用户
-  const handleAddUser = () => {
-    if (!selectedUser) {
-      message.warning('请选择要添加的用户');
-      return;
-    }
-
-    const userExists = accounts.some(account => account.username === selectedUser.username);
-    if (userExists) {
-      message.warning('该用户已存在');
-      return;
-    }
-
-    const newAccount = {
-      username: selectedUser.username,
-      role: selectedRole,
-      status: selectedUser.status,
-      ownerName: selectedUser.name,
-      key: selectedUser.username
-    };
-
-    setAccounts([...accounts, newAccount]);
-    setSelectedUser(null);
-    setSelectedRole(ROLE.COLLABORATOR);
-    message.success('用户已添加到列表');
-  };
-
-  // 删除用户
-  const handleDeleteUser = (username) => {
-    // 不能删除最后一个ROOT用户
-    const rootUsers = accounts.filter(acc => acc.role === ROLE.ROOT);
-    const userToDelete = accounts.find(acc => acc.username === username);
-    
-    if (userToDelete?.role === ROLE.ROOT && rootUsers.length <= 1) {
-      message.error('必须至少保留一个ROOT用户');
-      return;
-    }
-
-    setAccounts(accounts.filter(acc => acc.username !== username));
-    message.success('用户已移除');
-  };
-
-  // 更新用户角色
-  const handleRoleChange = (username, newRole) => {
-    // 不能修改最后一个ROOT用户的角色
-    const rootUsers = accounts.filter(acc => acc.role === ROLE.ROOT);
-    const userToUpdate = accounts.find(acc => acc.username === username);
-    
-    if (userToUpdate?.role === ROLE.ROOT && rootUsers.length <= 1 && newRole !== ROLE.ROOT) {
-      message.error('必须至少保留一个ROOT用户');
-      return;
-    }
-
-    setAccounts(accounts.map(acc => 
-      acc.username === username ? { ...acc, role: newRole } : acc
-    ));
-  };
-
-  // 保存修改
-  const handleSave = () => {
-    setEditing(true);
-    
-    // 模拟API调用
-    setTimeout(() => {
-      const updatedAccounts = accounts.map(acc => ({
-        username: acc.username,
-        role: acc.role,
-        status: acc.status
-      }));
-      
-      const updatedOwners = accounts.map(acc => acc.ownerName);
-      
-      // 调用父组件的保存函数
-      onSave({
-        ...container,
-        accounts: updatedAccounts,
-        owners: updatedOwners
-      });
-      
-      message.success('用户权限已更新');
-      setEditing(false);
-      onClose();
-    }, 500);
-  };
-
-  // 获取可选用户列表（排除已添加的用户）
-  const availableUsers = allUsers.filter(
-    user => !accounts.some(acc => acc.username === user.username)
-  );
-
-  return (
-    <Modal
-      title={
-        <Space>
-          <EditOutlined />
-          <span>编辑容器用户权限 - {container?.container_name}</span>
-        </Space>
-      }
-      open={visible}
-      onCancel={onClose}
-      width={800}
-      footer={[
-        <Button key="cancel" onClick={onClose}>
-          取消
-        </Button>,
-        <Button 
-          key="save" 
-          type="primary" 
-          loading={editing}
-          onClick={handleSave}
-        >
-          保存修改
-        </Button>
-      ]}
-    >
-      <div style={{ marginBottom: 24 }}>
-        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-          当前容器: {container?.container_name} | 所在机器: {container?.machine_ip}
-        </Typography.Text>
-
-        {/* 添加用户区域 */}
-        <div style={{ 
-          background: '#fafafa', 
-          padding: 16, 
-          borderRadius: 8,
-          marginBottom: 24,
-          border: '1px dashed #d9d9d9'
-        }}>
-          <Typography.Title level={5} style={{ marginBottom: 16 }}>
-            <PlusOutlined /> 添加新用户
-          </Typography.Title>
-          
-          <Row gutter={[16, 16]} align="middle">
-            <Col span={10}>
-              <Select
-                placeholder="选择用户"
-                style={{ width: '100%' }}
-                value={selectedUser?.username}
-                onChange={(value) => {
-                  const user = allUsers.find(u => u.username === value);
-                  setSelectedUser(user);
-                }}
-                showSearch
-                optionFilterProp="children"
-                filterOption={(input, option) =>
-                  (option?.children ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-              >
-                {availableUsers.map(user => (
-                  <Option key={user.id} value={user.username}>
-                    <Space>
-                      <Avatar size="small" src={getAvatarUrl(user.username)} />
-                      <span>{user.name} (@{user.username})</span>
-                      <Tag color={user.status === '在线' ? 'green' : 'gray'} size="small">
-                        {user.status}
-                      </Tag>
-                    </Space>
-                  </Option>
-                ))}
-              </Select>
-            </Col>
-            
-            <Col span={8}>
-              <Select
-                style={{ width: '100%' }}
-                value={selectedRole}
-                onChange={setSelectedRole}
-              >
-                <Option value={ROLE.COLLABORATOR}>
-                  <Tag color="green">协作者</Tag>
-                </Option>
-                <Option value={ROLE.ADMIN}>
-                  <Tag color="blue">管理员</Tag>
-                </Option>
-                <Option value={ROLE.ROOT}>
-                  <Tag color="red">超级管理员</Tag>
-                </Option>
-              </Select>
-            </Col>
-            
-            <Col span={6}>
-              <Button 
-                type="primary" 
-                icon={<PlusOutlined />}
-                onClick={handleAddUser}
-                disabled={!selectedUser}
-              >
-                添加用户
-              </Button>
-            </Col>
-          </Row>
-        </div>
-
-        {/* 当前用户列表 */}
-        <div>
-          <Typography.Title level={5} style={{ marginBottom: 16 }}>
-            <TeamOutlined /> 当前用户列表 ({accounts.length}人)
-          </Typography.Title>
-          
-          <List
-            dataSource={accounts}
-            renderItem={(account) => (
-              <List.Item
-                actions={[
-                  <Select
-                    key="role"
-                    value={account.role}
-                    onChange={(value) => handleRoleChange(account.username, value)}
-                    style={{ width: 120 }}
-                    disabled={account.role === ROLE.ROOT && 
-                             accounts.filter(acc => acc.role === ROLE.ROOT).length <= 1}
-                  >
-                    <Option value={ROLE.COLLABORATOR}>
-                      <Tag color="green">协作者</Tag>
-                    </Option>
-                    <Option value={ROLE.ADMIN}>
-                      <Tag color="blue">管理员</Tag>
-                    </Option>
-                    <Option value={ROLE.ROOT}>
-                      <Tag color="red">超级管理员</Tag>
-                    </Option>
-                  </Select>,
-                  <Popconfirm
-                    key="delete"
-                    title="确定要移除此用户吗？"
-                    onConfirm={() => handleDeleteUser(account.username)}
-                    disabled={account.role === ROLE.ROOT && 
-                             accounts.filter(acc => acc.role === ROLE.ROOT).length <= 1}
-                  >
-                    <Button 
-                      type="text" 
-                      danger 
-                      icon={<DeleteOutlined />}
-                      disabled={account.role === ROLE.ROOT && 
-                               accounts.filter(acc => acc.role === ROLE.ROOT).length <= 1}
-                    />
-                  </Popconfirm>
-                ]}
-                style={{ 
-                  borderBottom: '1px solid #f0f0f0',
-                  padding: '12px 0'
-                }}
-              >
-                <List.Item.Meta
-                  avatar={
-                    <Avatar src={getAvatarUrl(account.username)} size="large" />
-                  }
-                  title={
-                    <Space>
-                      <Typography.Text strong>{account.ownerName}</Typography.Text>
-                      <Tag color={account.status === '在线' ? 'green' : 'gray'}>
-                        {account.status}
-                      </Tag>
-                    </Space>
-                  }
-                  description={
-                    <Typography.Text type="secondary">
-                      @{account.username}
-                    </Typography.Text>
-                  }
-                />
-              </List.Item>
-            )}
-          />
-        </div>
-
-        {/* 权限说明 */}
-        <div style={{ 
-          marginTop: 24,
-          padding: 16,
-          background: '#fff7e6',
-          borderRadius: 6,
-          border: '1px solid #ffd591'
-        }}>
-          <Typography.Text strong style={{ display: 'block', marginBottom: 8, color: '#fa8c16' }}>
-            权限说明：
-          </Typography.Text>
-          <ul style={{ margin: 0, paddingLeft: 16 }}>
-            <li>
-              <Typography.Text type="secondary">
-                <Tag color="red" size="small">超级管理员</Tag> 
-                拥有最高权限，每个容器必须至少有一个ROOT用户
-              </Typography.Text>
-            </li>
-            <li>
-              <Typography.Text type="secondary">
-                <Tag color="blue" size="small">管理员</Tag> 
-                可以管理容器，但不能修改用户权限
-              </Typography.Text>
-            </li>
-            <li>
-              <Typography.Text type="secondary">
-                <Tag color="green" size="small">协作者</Tag> 
-                只能使用容器，操作权限有限
-              </Typography.Text>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </Modal>
-  );
-};
-
-// 容器详情弹窗组件
-const ContainerDetailModal = ({ visible, container, onClose, onEdit }) => {
-  if (!container) return null;
-
-  // 按角色分组账户
-  const accountsByRole = container.accounts?.reduce((acc, account, index) => {
-    const role = account.role;
-    if (!acc[role]) {
-      acc[role] = [];
-    }
-    acc[role].push({
-      ...account,
-      ownerName: container.owners[index] || account.username
-    });
-    return acc;
-  }, {});
-
-  return (
-    <Modal
-      title="容器详细信息"
-      open={visible}
-      onCancel={onClose}
-      width={750}
-      footer={[
-        <Button key="close" onClick={onClose}>
-          关闭
-        </Button>,
-        <Button 
-          key="edit" 
-          type="primary" 
-          icon={<EditOutlined />}
-          onClick={() => {
-            onClose();
-            onEdit(container);
-          }}
-        >
-          编辑用户
-        </Button>
-      ]}
-    >
-      <div style={{ marginBottom: 24 }}>
-        {/* 容器标题 */}
-        <div style={{ marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid #f0f0f0' }}>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            {container.container_name}
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            容器ID: {container.key}
-          </Typography.Text>
-        </div>
-
-        {/* 基本信息卡片 */}
-        <div style={{ 
-          background: '#fafafa', 
-          padding: 20, 
-          borderRadius: 8,
-          marginBottom: 24,
-          border: '1px solid #f0f0f0'
-        }}>
-          <Row gutter={[24, 16]}>
-            {/* 容器状态 */}
-            <Col span={8}>
-              <Space align="start">
-                <SettingOutlined style={{ fontSize: 20, color: '#1890ff' }} />
-                <div>
-                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-                    容器状态
-                  </Typography.Text>
-                  <Tag color={container.container_status === 'online' ? 'green' : 'orange'}>
-                    {container.container_status === 'online' ? '运行中' : '维护中'}
-                  </Tag>
-                </div>
-              </Space>
-            </Col>
-            
-            {/* 所属机器IP */}
-            <Col span={8}>
-              <Space align="start">
-                <GlobalOutlined style={{ fontSize: 20, color: '#1890ff' }} />
-                <div>
-                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-                    所在机器
-                  </Typography.Text>
-                  <Typography.Text style={{ fontSize: '16px' }}>
-                    {container.machine_ip}
-                  </Typography.Text>
-                </div>
-              </Space>
-            </Col>
-            
-            {/* 端口信息 */}
-            <Col span={8}>
-              <Space align="start">
-                <SettingOutlined style={{ fontSize: 20, color: '#1890ff' }} />
-                <div>
-                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-                    端口映射
-                  </Typography.Text>
-                  <Tag color="purple">{container.port}</Tag>
-                </div>
-              </Space>
-            </Col>
-          </Row>
-        </div>
-
-        {/* 用户权限部分 */}
-        <div style={{ marginBottom: 24 }}>
-          <Typography.Title level={5} style={{ marginBottom: 16 }}>
-            <TeamOutlined style={{ marginRight: 8 }} />
-            用户权限 ({container.accounts?.length || 0}人)
-          </Typography.Title>
-          
-          {/* 按角色分组显示 */}
-          {Object.entries(accountsByRole || {}).map(([role, accounts]) => {
-            const roleConfig = ROLE_CONFIG[role];
-            return (
-              <div key={role} style={{ marginBottom: 20 }}>
-                <div style={{ 
-                  background: '#f6f8fa', 
-                  padding: '12px 16px', 
-                  borderRadius: '6px 6px 0 0',
-                  border: '1px solid #e1e4e8'
-                }}>
-                  <Space>
-                    {roleConfig?.icon}
-                    <Typography.Text strong>
-                      {formatRole(role)}
-                    </Typography.Text>
-                    <Tag color={getRoleColor(role)} style={{ marginLeft: 8 }}>
-                      {accounts.length}人
-                    </Tag>
-                  </Space>
-                  <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: '12px' }}>
-                    {roleConfig?.description}
-                  </Typography.Text>
-                </div>
-                
-                <div style={{ 
-                  border: '1px solid #e1e4e8',
-                  borderTop: 'none',
-                  borderRadius: '0 0 6px 6px',
-                  padding: '16px'
-                }}>
-                  <Row gutter={[16, 16]}>
-                    {accounts.map((account, index) => (
-                      <Col span={12} key={index}>
-                        <Space align="center" style={{ width: '100%' }}>
-                          <Avatar 
-                            src={getAvatarUrl(account.username)} 
-                            size="large"
-                          />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Typography.Text strong>
-                                {account.ownerName}
-                              </Typography.Text>
-                              <Tag color={account.status === '在线' ? 'green' : 'gray'} size="small">
-                                {account.status}
-                              </Tag>
-                            </div>
-                            <Typography.Text type="secondary" style={{ display: 'block' }}>
-                              @{account.username}
-                            </Typography.Text>
-                          </div>
-                        </Space>
-                      </Col>
-                    ))}
-                  </Row>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </Modal>
-  );
-};
-
 const ManageMachine = () => {
   // 机器搜索状态
   const [searchName, setSearchName] = useState('');
@@ -687,48 +59,234 @@ const ManageMachine = () => {
 
   // 展开的行key
   const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+  // machines from backend
+  const [machines, setMachines] = useState([]);
+  const [machinesLoading, setMachinesLoading] = useState(false);
   
   // 容器搜索状态
   const [containerSearch, setContainerSearch] = useState({});
+  // containers per machine cache: { [machineId]: { loading: bool, data: [] } }
+  const [containerMap, setContainerMap] = useState({});
+  // users fetched from backend (used for selecting when adding users to a container)
+  const [usersList, setUsersList] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const navigate = useNavigate();
+
+  // auth + permission check: ensure logged in and operator permission
+  useEffect(() => {
+    const checkAuthAndPerm = async () => {
+      try {
+        const name = localStorage.getItem('currentUserName');
+        const id = localStorage.getItem('currentUserId');
+        if (!name || !id) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 401: clear auth and navigate to login
+          handleAuthError(401, navigate);
+          return;
+        }
+
+        const res = await getUserDetailInformation(Number(id));
+        const info = (res && (res.user_info || res.data)) || res || {};
+        const isOperator = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
+        if (!isOperator) {
+          if (!sessionStorage.getItem('auth_modal_shown')) {
+            try {
+              sessionStorage.setItem('auth_modal_shown', '1');
+              await showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
+            } finally {
+              sessionStorage.removeItem('auth_modal_shown');
+            }
+          }
+          // 403: do NOT clear auth; only navigate to /index
+          handleAuthError(403, navigate);
+          return;
+        }
+      } catch (e) {
+        if (!sessionStorage.getItem('auth_modal_shown')) {
+          try {
+            sessionStorage.setItem('auth_modal_shown', '1');
+            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+          } finally {
+            sessionStorage.removeItem('auth_modal_shown');
+          }
+        }
+        // 401: clear auth and navigate to login
+        handleAuthError(401, navigate);
+      }
+    };
+    checkAuthAndPerm();
+  }, [navigate]);
 
   // 弹窗状态
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState(null);
+  // 添加宿主机弹窗
+  const [addHostVisible, setAddHostVisible] = useState(false);
+  const [addHostLoading, setAddHostLoading] = useState(false);
+  const [addHostForm] = Form.useForm();
+  // 添加容器弹窗
+  const [addContainerVisible, setAddContainerVisible] = useState(false);
+  const [addContainerLoading, setAddContainerLoading] = useState(false);
+  const [addContainerForm] = Form.useForm();
+  const [addContainerMachineId, setAddContainerMachineId] = useState(null);
+  // 编辑模式
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editTargetMachine, setEditTargetMachine] = useState(null);
+  // 删除机器的确认弹窗
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [deleteTargetMachine, setDeleteTargetMachine] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  // 删除容器的二次确认状态
+  const [containerDeleteConfirmVisible, setContainerDeleteConfirmVisible] = useState(false);
+  const [deleteTargetContainer, setDeleteTargetContainer] = useState(null);
+  const [containerDeleteLoading, setContainerDeleteLoading] = useState(false);
+
+  //加载机器列表
+  const fetchMachinesFromApi = async () => {
+    setMachinesLoading(true);
+    try {
+      const res = await listAllMachineBrefInformation({ page_number: 0, page_size: defaultPageSize });
+      const items = (res && res.machines) || [];
+      // map to existing shape with minimal defaults and keep machine_id
+      const mapped = items.map((m, idx) => ({
+        key: String(m.machine_id || idx + 1),
+        machine_id: m.machine_id,
+        machine_name: m.machine_name || '',
+        machine_ip: m.machine_ip || '',
+        machine_type: (m.machine_type || '').toUpperCase(),
+        machine_status: (m.machine_status || '').toLowerCase(),
+        cpu_core_number: null,
+        memory_size_gb: null,
+        gpu_number: null,
+        gpu_type: null,
+        disk_size_gb: null,
+        machine_description: ''
+      }));
+      // 按机器ID并行获取详情以补全信息
+      try {
+        const detailPromises = mapped.map(it =>
+          getDetailInformation(it.machine_id).catch(err => {
+            console.warn('detail fetch failed for', it.machine_id, err && err.message);
+            return null;
+          })
+        );
+        const details = await Promise.all(detailPromises);
+        const merged = mapped.map((it, i) => {
+          const d = details[i];
+          if (!d) return it;
+          return {
+            ...it,
+            cpu_core_number: d.cpu_core_number ?? it.cpu_core_number,
+            memory_size_gb: d.memory_size_gb ?? it.memory_size_gb,
+            gpu_number: d.gpu_number ?? it.gpu_number,
+            gpu_type: d.gpu_type ?? it.gpu_type,
+            disk_size_gb: d.disk_size_gb ?? it.disk_size_gb,
+            machine_description: d.machine_description ?? it.machine_description,
+            machine_type: (d.machine_type ?? it.machine_type).toUpperCase(),
+            machine_status: (d.machine_status ?? it.machine_status).toLowerCase()
+          };
+        });
+        return merged;
+      } catch (e) {
+        return mapped;
+      }
+    } catch (err) {
+      console.error('Failed to load machines', err);
+      return [];
+    } finally {
+      setMachinesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const list = await fetchMachinesFromApi();
+      if (mounted) setMachines(list);
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  // 选择要加入的用户
+  useEffect(() => {
+    let mounted = true;
+    const loadUsers = async () => {
+      setUsersLoading(true);
+      try {
+        const res = await listAllUserBrefInformation({ page_number: 0, page_size: 500 });
+        const items = (res && (res.users || res.users_info || res.data || res.users_list)) || [];
+        const mapped = items.map(u => ({ id: u.user_id || u.id || u.uid || u.userId, username: u.username || u.name || String(u.id), name: u.display_name || u.name || u.username }));
+        if (mounted) setUsersList(mapped);
+      } catch (err) {
+        console.error('Failed to load users', err);
+        if (mounted) setUsersList([]);
+      } finally {
+        if (mounted) setUsersLoading(false);
+      }
+    };
+    loadUsers();
+    return () => { mounted = false; };
+  }, []);
 
   // 过滤机器数据
-  const filteredMachineData = machineData.filter(machine => {
-    const matchName = machine.machine_name.toLowerCase().includes(searchName.toLowerCase());
-    const matchIP = machine.machine_ip.includes(searchIP);
-    const matchType = machine.machine_type.toLowerCase().includes(searchType.toLowerCase());
+  const filteredMachineData = machines.filter(machine => {
+    const matchName = (machine.machine_name || '').toLowerCase().includes(searchName.toLowerCase());
+    const matchIP = (machine.machine_ip || '').includes(searchIP);
+    const matchType = (machine.machine_type || '').toLowerCase().includes(searchType.toLowerCase());
     return matchName && matchIP && matchType;
   });
 
-  // 获取某个机器的容器数据
-  const getContainersForMachine = (machineId) => {
-    let containers = containerData.filter(container => container.machine_id === machineId);
-    
-    // 应用搜索过滤
-    const searchText = containerSearch[machineId];
-    if (searchText) {
-      containers = containers.filter(container => 
-        container.container_name.toLowerCase().includes(searchText.toLowerCase())
-      );
+
+  const fetchContainersForMachine = async (machineId, pageNumber = 0) => {
+    // avoid duplicate fetch
+    if (!machineId) return;
+    const mid = String(machineId);
+    // if same page already loaded, skip
+    //if (containerMap[mid]?.loading || (containerMap[mid]?.data && containerMap[mid]?.page === pageNumber)) return;
+    // mark loading
+    setContainerMap(prev => ({ ...prev, [mid]: { ...(prev[mid] || {}), loading: true, data: [], page: pageNumber, total_page: prev[mid]?.total_page || 1 } }));
+    try {
+      const pageSize = 5;
+      const res = await listAllContainerBrefInformation({ machine_id: mid, page_number: pageNumber, page_size: pageSize });
+      const items = (res && (res.containers_info || res.containers)) || [];
+      const total_page = (res && (res.total_page || res.totalPages || res.total_pages)) || 1;
+      const mapped = items.map((c, idx) => ({
+        key: c.container_id ? String(c.container_id) : `${mid}-${pageNumber}-${idx}`,
+        container_name: c.container_name || c.name || `container-${idx}`,
+        container_image: c.container_image || '',
+        port: c.port ? String(c.port) : (c.port_str || ''),
+        container_status: (c.container_status || '').toLowerCase(),
+        machine_id: mid,
+        machine_ip: c.machine_ip || '',
+        owners: c.owners || [],
+        accounts: c.accounts || []
+      }));
+      setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: mapped, page: pageNumber, total_page: total_page, page_size: pageSize } }));
+    } catch (err) {
+      console.error('fetchContainersForMachine failed', machineId, err);
+      // fallback: keep loading false but no data so UI will use local mock
+      setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: [], page: pageNumber, total_page: 1 } }));
     }
-    
-    return containers;
   };
 
   // 机器状态标签
   const renderStatusTag = (status) => {
-    const color = status === 'online' ? 'green' : 'orange';
-    return <Tag color={color}>{status === 'online' ? '运行中' : '维护中'}</Tag>;
+    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
+    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : '维护中'}</Tag>;
   };
 
   // 容器状态标签
   const renderContainerStatus = (status) => {
-    const color = status === 'online' ? 'green' : 'red';
-    return <Tag color={color}>{status === 'online' ? '运行中' : '维护中'}</Tag>;
+    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
+    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : '维护中'}</Tag>;
   };
 
   // 切换展开状态
@@ -742,6 +300,14 @@ const ManageMachine = () => {
     });
   };
 
+  // When rows expand, fetch containers for those machines.
+  useEffect(() => {
+    if (!expandedRowKeys || expandedRowKeys.length === 0) return;
+    expandedRowKeys.forEach(mid => {
+      if (mid) fetchContainersForMachine(String(mid), 0);
+    });
+  }, [expandedRowKeys]);
+
   // 处理容器搜索输入
   const handleContainerSearch = (machineId, value) => {
     setContainerSearch(prev => ({
@@ -750,16 +316,359 @@ const ManageMachine = () => {
     }));
   };
 
-  // 打开容器详情弹窗
-  const openContainerDetail = (container) => {
-    setSelectedContainer(container);
-    setDetailModalVisible(true);
+  // 打开容器详情弹窗: 先从后端获取详情数据再展示
+  const openContainerDetail = async (container) => {
+    if (!container) return;
+    const cid = container.key || container.container_id || container.container_id === 0 ? container.key || container.container_id : null;
+    try {
+      // show small loading state by clearing selection
+      setSelectedContainer(null);
+      // fetch detail from server
+      const res = await getContainerDetailInformation(cid);
+      // support multiple possible response shapes
+      const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
+      if (!detail) {
+        await showErrorModal({ message: '未能获取容器详情' });
+        return;
+      }
+      const mapped = {
+        key: detail.container_id ? String(detail.container_id) : (container.key || String(Date.now())),
+        container_name: detail.container_name || detail.name || container.container_name || '',
+        container_image: detail.container_image || detail.image || container.container_image || '',
+        port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
+        container_status: (detail.container_status || detail.status || '').toLowerCase(),
+        machine_ip: detail.machine_ip || container.machine_ip || '',
+        machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
+        owners: detail.owners || detail.owner_list || container.owners || [],
+        accounts: detail.accounts || detail.account_list || container.accounts || []
+      };
+      setSelectedContainer(mapped);
+      setDetailModalVisible(true);
+    } catch (err) {
+      console.error('getContainerDetailInformation failed', err);
+      const status = err?.response?.status || err?.status;
+      await showErrorModal({ message: err?.body?.message || err?.message || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      if (status === 403) {
+        handleAuthError(403, navigate);
+      }
+      return;
+    }
+  };
+
+  // 打开添加宿主机弹窗
+  const openAddHostModal = () => {
+    addHostForm.resetFields();
+    // set defaults for add mode: default status = maintenance
+    addHostForm.setFieldsValue({ machine_status: 'maintenance', machine_type: 'CPU', gpu_number: 0 });
+    setIsEditMode(false);
+    setEditTargetMachine(null);
+    setAddHostVisible(true);
+  };
+
+  // 打开添加容器弹窗（基于宿主机）
+  const openAddContainerModal = (machine) => {
+    // machine may be a record from table
+    const mid = machine?.machine_id ?? machine?.key ?? null;
+    setAddContainerMachineId(mid);
+    addContainerForm.resetFields();
+    // prefill machine id and defaults
+    const defaultUser = localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
+    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [], root_user: defaultUser });
+    setAddContainerVisible(true);
+  };
+
+  // 添加容器确认
+  const handleAddContainerConfirm = async () => {
+    try {
+      const values = await addContainerForm.validateFields();
+      setAddContainerLoading(true);
+      const machineId = values.machine_id || addContainerMachineId;
+      const toAddUserName = values.root_user || localStorage.getItem('currentUserName') || '';
+      const payload = {
+        user_name: toAddUserName,
+        machine_id: machineId,
+        container: {
+          GPU_LIST: values.GPU_LIST || [],
+          CPU_NUMBER: values.CPU_NUMBER || 1,
+          MEMORY: values.MEMORY || 512,
+          NAME: values.NAME || `container-${Date.now()}`,
+          image: values.image || ''
+        },
+        public_key: values.public_key || ''
+      };
+      let success = false;
+      try {
+        const res = await createContainer(payload);
+        // refresh container list for the machine and ensure row expanded
+        if (machineId) {
+          const mid = String(machineId);
+          setExpandedRowKeys(prev => (prev.includes(mid) ? prev : [...prev, mid]));
+          await fetchContainersForMachine(mid, 0);
+        }
+        message.success('容器添加成功');
+        success = true;
+      } catch (err) {
+        console.error('createContainer failed', err);
+        const status = err?.response?.status || err?.status;
+        await showErrorModal({ message: err?.body?.message || err?.message || '添加容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        if (status === 403) {
+          handleAuthError(403, navigate);
+        }
+      } finally {
+        setAddContainerLoading(false);
+        if (success) {
+          setAddContainerVisible(false);
+          setAddContainerMachineId(null);
+        }
+      }
+    } catch (err) {
+      // validation failed
+    }
+  };
+
+  // 打开编辑宿主机弹窗（与添加使用同一表单，但为编辑模式）
+  const openEditMachine = (machine) => {
+    setIsEditMode(true);
+    setEditTargetMachine(machine);
+    // 预填表单
+    addHostForm.setFieldsValue({
+      machine_name: machine.machine_name || '',
+      machine_ip: machine.machine_ip || '',
+      machine_type: (machine.machine_type || 'CPU').toUpperCase() === 'GPU' ? 'GPU' : 'CPU',
+      machine_status: (machine.machine_status || 'online').toLowerCase(),
+      cpu_core_number: machine.cpu_core_number || null,
+      gpu_number: machine.gpu_number ?? 0,
+      gpu_type: machine.gpu_type || '',
+      memory_size: machine.memory_size_gb || null,
+      disk_size: machine.disk_size_gb || null,
+      machine_description: machine.machine_description || ''
+    });
+    setAddHostVisible(true);
+  };
+
+  // 添加宿主机确认
+  const handleAddHostConfirm = async () => {
+    try {
+      const values = await addHostForm.validateFields();
+      setAddHostLoading(true);
+      const payload = {
+        machine_name: values.machine_name,
+        machine_ip: values.machine_ip,
+        // send machine_type as uppercase (per request)
+        machine_type: (values.machine_type || 'CPU').toUpperCase(),
+        // send status as lowercase
+        machine_status: (values.machine_status || 'online').toLowerCase(),
+        machine_description: values.machine_description || '',
+        cpu_core_number: values.cpu_core_number || null,
+        gpu_number: values.gpu_number || 0,
+        gpu_type: values.gpu_type || null,
+        memory_size: values.memory_size || null,
+        disk_size: values.disk_size || null,
+      };
+
+      if (isEditMode && editTargetMachine) {
+        // 编辑模式 -> 调用更新接口
+        let success = false;
+        try {
+          const mid = editTargetMachine.machine_id || editTargetMachine.key;
+          await updateMachine(mid, payload);
+          const updatedMachine = {
+            ...editTargetMachine,
+            machine_name: payload.machine_name,
+            machine_ip: payload.machine_ip,
+            machine_type: (payload.machine_type || '').toUpperCase(),
+            machine_status: (values.machine_status || editTargetMachine.machine_status || 'online').toLowerCase(),
+            cpu_core_number: payload.cpu_core_number,
+            memory_size_gb: payload.memory_size,
+            gpu_number: payload.gpu_number,
+            gpu_type: payload.gpu_type,
+            disk_size_gb: payload.disk_size,
+            machine_description: payload.machine_description || ''
+          };
+          setMachines(prev => prev.map(m => (m.key === editTargetMachine.key ? updatedMachine : m)));
+          // 之后，这里 关闭宿主机 前，会先对容器进行关闭。
+          // TODO
+          try {
+            const oldStatus = String(editTargetMachine.machine_status || '').toLowerCase();
+            const newStatus = String(updatedMachine.machine_status || '').toLowerCase();
+            if (newStatus === 'maintenance' && oldStatus !== 'maintenance') {
+              const midStr = String(mid);
+              const entry = containerMap[midStr] || {};
+              const conts = entry.data || [];
+              conts.forEach(c => {
+                // placeholder for actual stop API call
+                // e.g. await stopContainer(c.key)
+                // for now just log intention
+                // eslint-disable-next-line no-console
+                console.log('stop_container (placeholder) for container', c.key);
+              });
+              // update UI: mark containers as offline
+              setContainerMap(prev => {
+                const copy = { ...(prev || {}) };
+                if (copy[midStr] && Array.isArray(copy[midStr].data)) {
+                  copy[midStr] = { ...copy[midStr], data: copy[midStr].data.map(cc => ({ ...cc, container_status: 'offline' })) };
+                }
+                return copy;
+              });
+            }
+          } catch (e) {
+            // ignore logging errors
+          }
+          message.success('宿主机已更新');
+          success = true;
+          } catch (err) {
+          console.error('updateMachine failed', err);
+          const status = err?.response?.status || err?.status;
+          await showErrorModal({ message: err?.body?.message || ('更新宿主机失败：' + (err?.message || '未知错误')), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+          if (status === 403) {
+            handleAuthError(403, navigate);
+          }
+        } finally {
+          setAddHostLoading(false);
+          setIsEditMode(false);
+          setEditTargetMachine(null);
+          if (success) setAddHostVisible(false);
+        }
+      } else {
+        // 添加模式
+        let success = false;
+        try {
+          const res = await addMachine(payload);
+          // after successful add, reload the machine list from backend to avoid showing a mocked id
+          const refreshed = await fetchMachinesFromApi();
+          setMachines(refreshed);
+          message.success('宿主机已添加');
+          success = true;
+        } catch (err) {
+          console.error('addMachine failed', err);
+          const status = err?.response?.status || err?.status;
+          await showErrorModal({ message: err?.body?.message || err?.message || '添加宿主机失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+          if (status === 403) {
+            handleAuthError(403, navigate);
+          }
+        } finally {
+          setAddHostLoading(false);
+          if (success) setAddHostVisible(false);
+        }
+      }
+    } catch (err) {
+      // validation failed
+    }
+  };
+
+  // 打开删除确认弹窗
+  const openDeleteConfirm = (machine) => {
+    setDeleteTargetMachine(machine);
+    setDeleteConfirmVisible(true);
+  };
+
+  // 确认删除机器
+  const handleDeleteConfirm = () => {
+    (async () => {
+      if (!deleteTargetMachine) return;
+      setDeleteLoading(true);
+      const ids = [];
+      if (deleteTargetMachine.machine_id) ids.push(deleteTargetMachine.machine_id);
+      else ids.push(deleteTargetMachine.key);
+      let success = false;
+      try {
+        await removeMachine(ids);
+        setMachines(prev => prev.filter(m => m.key !== deleteTargetMachine.key && m.machine_id !== deleteTargetMachine.machine_id));
+        setContainerMap(prev => {
+          const copy = { ...prev };
+          delete copy[deleteTargetMachine.key];
+          if (deleteTargetMachine.machine_id) delete copy[String(deleteTargetMachine.machine_id)];
+          return copy;
+        });
+        message.success('宿主机已删除');
+        success = true;
+      } catch (err) {
+        console.error('removeMachine failed', err);
+        // prefer structured body message when available
+        const bodyMsg = err?.body?.message || err?.body || null;
+        const messageText = bodyMsg ? `删除宿主机失败: ${bodyMsg}` : '删除宿主机失败，请重试';
+        const status = err?.status || err?.response?.status || err?.status;
+        await showErrorModal({ message: err?.body?.message || messageText, status: status, route: err?.route || err?.response?.url });
+        if (status === 403) {
+          handleAuthError(403, navigate);
+        }
+      } finally {
+        setDeleteLoading(false);
+        if (success) {
+          setDeleteConfirmVisible(false);
+          setDeleteTargetMachine(null);
+        }
+      }
+    })();
+  };
+
+  // 打开删除容器的确认弹窗
+  const openDeleteContainerConfirm = (container) => {
+    setDeleteTargetContainer(container);
+    // 隐藏详情弹窗以展示二次确认
+    setDetailModalVisible(false);
+    setContainerDeleteConfirmVisible(true);
+  };
+
+  // 确认删除容器
+  const handleDeleteContainerConfirm = async () => {
+    if (!deleteTargetContainer) return;
+    setContainerDeleteLoading(true);
+    const cid = deleteTargetContainer.key || deleteTargetContainer.container_id;
+    let success = false;
+    try {
+      await deleteContainer(cid);
+      const mid = String(deleteTargetContainer.machine_id || deleteTargetContainer.machine_ip || deleteTargetContainer.machine_id || '');
+      setContainerMap(prev => {
+        const copy = { ...prev };
+        if (copy[mid] && Array.isArray(copy[mid].data)) {
+          copy[mid] = { ...copy[mid], data: copy[mid].data.filter(c => c.key !== deleteTargetContainer.key && String(c.container_id) !== String(cid)) };
+        }
+        return copy;
+      });
+      if (selectedContainer && (selectedContainer.key === deleteTargetContainer.key || selectedContainer.container_id === deleteTargetContainer.container_id)) {
+        closeAllModals();
+      }
+      message.success('容器已删除');
+      success = true;
+    } catch (err) {
+      console.error('deleteContainer failed', err);
+      const status = err?.response?.status || err?.status;
+      await showErrorModal({ message: err?.body?.message || err?.message || '删除容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      if (status === 403) {
+        handleAuthError(403, navigate);
+      }
+    } finally {
+      setContainerDeleteLoading(false);
+      if (success) {
+        setContainerDeleteConfirmVisible(false);
+        setDeleteTargetContainer(null);
+        setDetailModalVisible(false);
+        setSelectedContainer(null);
+      }
+    }
   };
 
   // 打开编辑弹窗
   const openEditModal = (container) => {
     setSelectedContainer(container);
+    setDetailModalVisible(false);
     setEditModalVisible(true);
+  };
+
+  // 从编辑返回详情页（编辑为实时更新）——重新拉取容器详情并显示
+  const returnToDetail = async () => {
+    setEditModalVisible(false);
+    if (!selectedContainer) {
+      setDetailModalVisible(true);
+      return;
+    }
+    try {
+      await openContainerDetail(selectedContainer);
+    } catch (e) {
+      // fallback: still show detail modal
+      setDetailModalVisible(true);
+    }
   };
 
   // 关闭所有弹窗
@@ -769,17 +678,6 @@ const ManageMachine = () => {
     setSelectedContainer(null);
   };
 
-  // 保存用户权限修改
-  const handleSaveUserPermissions = (updatedContainer) => {
-    // 在实际应用中，这里应该调用API更新数据
-    const index = containerData.findIndex(c => c.key === updatedContainer.key);
-    if (index !== -1) {
-      containerData[index] = updatedContainer;
-    }
-    
-    // 这里可以触发重新渲染
-    message.success('用户权限已更新');
-  };
 
   // 展开行的配置
   const expandable = {
@@ -788,8 +686,10 @@ const ManageMachine = () => {
       setExpandedRowKeys(expandedKeys);
     },
     expandedRowRender: (record) => {
-      const containers = getContainersForMachine(record.key);
-      
+      const mid = String(record.key);
+      const entry = containerMap[mid] || {};
+      const containers = entry.data || [];
+
       return (
         <div style={{ margin: '16px 0', padding: '16px', background: '#fafafa', borderRadius: '4px' }}>
           <Row gutter={[16, 16]} style={{ marginBottom: '16px' }}>
@@ -806,19 +706,23 @@ const ManageMachine = () => {
               <Button type="primary" icon={<SearchOutlined />}>搜索</Button>
             </Col>
           </Row>
-          <Typography.Title level={5} style={{ margin: '0 0 16px 0' }}>
-            容器列表 - {record.machine_name}  <Button>添加</Button>
+          <Typography.Title level={5} style={{ margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>容器列表 - {record.machine_name}</span>
+            <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openAddContainerModal(record)} style={{ marginLeft: 8 }}>
+              添加
+            </Button>
+            <Button size="small" icon={<ReloadOutlined />} onClick={() => fetchContainersForMachine(record.key)} style={{ marginLeft: 8 }} />
           </Typography.Title>
           <Table
             dataSource={containers}
-            rowKey="key"
-            pagination={containers.length > 5 ? { pageSize: 5 } : false}
+            rowKey="key" // 选择性展示翻页按钮 节省空间
+            pagination={containers.length > 5 ? { pageSize: entry.page_size || 5 } : false}
             bordered
             size="middle"
+            loading={entry.loading || false}
           >
             <Column title="容器ID" dataIndex="key" key="key" />
             <Column title="容器名" dataIndex="container_name" key="container_name" />
-            <Column title="镜像" dataIndex="container_image" key="container_image" />
             <Column title="端口" dataIndex="port" key="port" />
             <Column 
               title="状态" 
@@ -829,23 +733,48 @@ const ManageMachine = () => {
             <Column
               title="操作"
               key="action"
-              render={(_, containerRecord) => (
-                <Space size="middle">
-                  <Button type="primary" size="small">启动</Button>
-                  <Button danger size="small">停止</Button>
-                  <Button size="small">重启</Button>
-                  <Button 
-                    size="small" 
-                    type="primary"
-                    ghost
-                    onClick={() => openContainerDetail(containerRecord)}
-                  >
-                    详情
-                  </Button>
-                </Space>
-              )}
+              render={(_, containerRecord) => {
+                const machineStatus = (record.machine_status || '').toLowerCase();
+                const actionsDisabled = machineStatus === 'offline' || machineStatus === 'maintenance';
+                return (
+                  <Space size="middle">
+                    <Button type="primary" size="small" disabled={actionsDisabled}>启动</Button>
+                    <Button danger size="small" disabled={actionsDisabled}>停止</Button>
+                    <Button size="small" disabled={actionsDisabled}>重启</Button>
+                    <Button 
+                      size="small" 
+                      type="primary"
+                      ghost
+                      onClick={() => openContainerDetail(containerRecord)}
+                      disabled={actionsDisabled}
+                    >
+                      详情
+                    </Button>
+                  </Space>
+                );
+              }}
             />
           </Table>
+          {/* 内侧列表的分页 */}
+          {(() => {
+            const mid = String(record.key);
+            const entry = containerMap[mid];
+            const pages = entry?.total_page || 0;
+            if (pages > 1) {
+              return (
+                <div style={{ marginTop: 12, textAlign: 'right' }}>
+                  <Pagination
+                    current={(entry?.page || 0) + 1}
+                    total={pages * (entry?.page_size || 5)}
+                    pageSize={entry?.page_size || 5}
+                    onChange={(p) => fetchContainersForMachine(record.key, p - 1)}
+                    size="small"
+                  />
+                </div>
+              );
+            }
+            return null;
+          })()}
         </div>
       );
     },
@@ -895,6 +824,11 @@ const ManageMachine = () => {
                     搜索
                   </Button>
                 </Col>
+                <Col>
+                  <Button type="default" icon={<PlusOutlined />} onClick={openAddHostModal}>
+                    添加宿主机
+                  </Button>
+                </Col>
               </Row>
             </Space>
           </Flex>
@@ -907,6 +841,7 @@ const ManageMachine = () => {
               dataSource={filteredMachineData} 
               rowKey="key" 
               pagination={{ pageSize: 5 }}
+              loading={machinesLoading}
               bordered
               scroll={{ x: true }}
               expandable={expandable}
@@ -947,7 +882,8 @@ const ManageMachine = () => {
                       >
                         {isExpanded ? '收起容器' : '查看容器'}
                       </Button>
-                      <Button><a style={{ color: '#ff4d4f' }}>删除</a></Button>
+                              <Button onClick={() => openEditMachine(record)}><a>编辑</a></Button>
+                              <Button onClick={() => openDeleteConfirm(record)}><a style={{ color: '#ff4d4f' }}>删除</a></Button>
                       <Button><a style={{ color: '#faad14' }}>重启</a></Button>
                     </Space>
                   );
@@ -958,12 +894,317 @@ const ManageMachine = () => {
         </Splitter.Panel>
       </Splitter>
 
+      {/* 添加宿主机 确认弹窗（包含表单） */}
+      <ConfirmModal
+        visible={addHostVisible}
+        title={isEditMode ? "编辑宿主机" : "添加宿主机"}
+        message={isEditMode ? "请修改宿主机信息并确认更新" : "请填写宿主机信息并确认"}
+        onConfirm={handleAddHostConfirm}
+        onCancel={() => { setAddHostVisible(false); setIsEditMode(false); setEditTargetMachine(null); }}
+        loading={addHostLoading}
+        confirmText={isEditMode ? '更新' : '添加'}
+        content={
+          <Form
+            form={addHostForm}
+            layout="vertical"
+            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance' }}
+              onValuesChange={(changedValues) => {
+                if (changedValues.machine_type) {
+                  if (changedValues.machine_type !== 'GPU') {
+                    // when switching away from GPU, reset gpu-related fields
+                    addHostForm.setFieldsValue({ gpu_number: 0, gpu_type: '' });
+                  }
+                }
+              }}
+          >
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }]}> 
+                  <Input placeholder="机器名" />
+                </Form.Item>
+              </Col>
+
+              <Col span={12}>
+                <Form.Item name="machine_ip" label="IP 地址" rules={[{ required: true, message: '请输入IP地址' }]}> 
+                  <Input placeholder="192.168.x.x" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="machine_type" label="机器类型" initialValue="CPU">
+                  <Radio.Group
+                    options={[
+                      { label: 'CPU', value: 'CPU' },
+                      { label: 'GPU', value: 'GPU' }
+                    ]}
+                    optionType="button"
+                  />
+                </Form.Item>
+              </Col>
+
+              <Form.Item shouldUpdate={(prevValues, currentValues) => prevValues.machine_status !== currentValues.machine_status} noStyle>
+                {() => (
+                  <Col span={12}>
+                    <Form.Item name="machine_status" label="状态">
+                      {
+                        // If the loaded machine is offline, lock the field to offline and prevent changing
+                        isEditMode && editTargetMachine && String(editTargetMachine.machine_status).toLowerCase() === 'offline' ? (
+                          <Select disabled value="offline">
+                            <Option value="offline">已停止</Option>
+                          </Select>
+                        ) : (
+                          // Otherwise allow selecting online/maintenance while editing; disabled when not editing
+                          <Select disabled={!isEditMode}>
+                            <Option value="online">运行中</Option>
+                            <Option value="maintenance">维护中</Option>
+                          </Select>
+                        )
+                      }
+                    </Form.Item>
+                  </Col>
+                )}
+              </Form.Item>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="cpu_core_number" label="CPU 核心数">
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item shouldUpdate noStyle>
+                  {() => {
+                    const mt = addHostForm.getFieldValue('machine_type');
+                    return (
+                      <Form.Item name="gpu_number" label="GPU 数量">
+                        <InputNumber min={0} style={{ width: '100%' }} disabled={mt !== 'GPU'} />
+                      </Form.Item>
+                    );
+                  }}
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Form.Item shouldUpdate noStyle>
+              {({ getFieldValue }) => {
+                const mt = getFieldValue('machine_type');
+                const gnum = getFieldValue('gpu_number');
+                if (mt === 'GPU' || (typeof gnum === 'number' && gnum > 0)) {
+                  return (
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item name="gpu_type" label="GPU 型号">
+                          <Input placeholder="例如：NVIDIA Tesla V100" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12} />
+                    </Row>
+                  );
+                }
+                return null;
+              }}
+            </Form.Item>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="memory_size" label="内存 (GB)">
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="disk_size" label="磁盘 (GB)">
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row>
+              <Col span={24}>
+                <Form.Item name="machine_description" label="描述">
+                  <Input.TextArea rows={3} placeholder="可选，机器描述" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        }
+      />
+
+      {/* 删除宿主机 - 二次确认（敏感行为） */}
+      <ConfirmModal
+        visible={deleteConfirmVisible}
+        title="确认删除宿主机"
+        message={deleteTargetMachine ? `请确认以下信息并删除宿主机 ${deleteTargetMachine.machine_name || deleteTargetMachine.key}` : '确认删除该宿主机？'}
+        content={
+          deleteTargetMachine ? (
+            <div style={{ 
+              background: '#fff2f0', 
+              padding: 16, 
+              borderRadius: 4,
+              border: '1px solid #ffccc7'
+            }}>
+              <Row gutter={[0, 8]}>
+                <Col span={24}>
+                  <Typography.Text type="secondary">机器ID：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetMachine.machine_id || deleteTargetMachine.key}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">机器名：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetMachine.machine_name}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">IP：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetMachine.machine_ip}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">类型：</Typography.Text>
+                  <Tag style={{ marginLeft: 8 }}>{(deleteTargetMachine.machine_type || '').toUpperCase()}</Tag>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">状态：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{(deleteTargetMachine.machine_status || '').toLowerCase()}</Typography.Text>
+                </Col>
+              </Row>
+              <Typography.Text type="danger" style={{ display: 'block', marginTop: 12 }}>
+                此操作不可恢复！此操作将移除该机器及其所有容器。
+              </Typography.Text>
+            </div>
+          ) : null
+        }
+        danger
+        iconColor="#ff4d4f"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => { setDeleteConfirmVisible(false); setDeleteTargetMachine(null); }}
+        loading={deleteLoading}
+        confirmText="删除"
+      />
+
+      {/* 删除容器 - 二次确认 */}
+      <ConfirmModal
+        visible={containerDeleteConfirmVisible}
+        title="确认删除容器"
+        message={deleteTargetContainer ? `请确认以下信息并删除容器 ${deleteTargetContainer.container_name || deleteTargetContainer.key}` : '确认删除该容器？'}
+        content={
+          deleteTargetContainer ? (
+            <div style={{ background: '#fff2f0', padding: 16, borderRadius: 4, border: '1px solid #ffccc7' }}>
+              <Row gutter={[0, 8]}>
+                <Col span={24}>
+                  <Typography.Text type="secondary">容器ID：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetContainer.key || deleteTargetContainer.container_id}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">容器名：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetContainer.container_name}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">所属机器：</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetContainer.machine_id || deleteTargetContainer.machine_ip}</Typography.Text>
+                </Col>
+              </Row>
+              <Typography.Text type="danger" style={{ display: 'block', marginTop: 12 }}>
+                此操作不可恢复！此操作将永久删除该容器。
+              </Typography.Text>
+            </div>
+          ) : null
+        }
+        danger
+        iconColor="#ff4d4f"
+        onConfirm={handleDeleteContainerConfirm}
+        onCancel={() => { setContainerDeleteConfirmVisible(false); setDeleteTargetContainer(null); setDetailModalVisible(true); }}
+        loading={containerDeleteLoading}
+        confirmText="删除"
+      />
+
       {/* 容器详情弹窗 */}
       <ContainerDetailModal
         visible={detailModalVisible}
         container={selectedContainer}
         onClose={closeAllModals}
         onEdit={openEditModal}
+        onDelete={openDeleteContainerConfirm}
+        usersList={usersList}
+        currentUserName={localStorage.getItem('currentUserName')}
+        currentUserId={localStorage.getItem('currentUserId')}
+        forceSystemAdmin={true} // 此时currentUserName/id无意义
+      />
+
+      {/* 添加容器 确认弹窗（包含表单） */}
+      <ConfirmModal
+        visible={addContainerVisible}
+        title="添加容器"
+        message="请填写容器信息并确认添加"
+        onConfirm={handleAddContainerConfirm}
+        onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); }}
+        loading={addContainerLoading}
+        confirmText="添加"
+        content={
+          <Form
+            form={addContainerForm}
+            layout="vertical"
+            initialValues={{ CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [] }}
+          >
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }]}>
+                  <Input placeholder="容器名" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}>
+                  <Input placeholder="例如：nginx:latest" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="CPU_NUMBER" label="CPU 数量">
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="MEMORY" label="内存 (MB)">
+                  <InputNumber min={128} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="root_user" label="Root 用户" rules={[{ required: true, message: '请选择Root用户' }]}>
+                  <Select
+                    placeholder="选择Root用户"
+                    loading={usersLoading}
+                    showSearch
+                    optionFilterProp="children"
+                    filterOption={(input, option) => (option?.children ?? '').toLowerCase().includes(input.toLowerCase())}
+                  >
+                    {(usersList || []).map(u => (
+                      <Option key={u.id} value={u.username}>
+                        <span>{u.name} (@{u.username})</span>
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="machine_id" label="宿主机ID">
+                  <Input disabled value={addContainerMachineId || ''} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.Item name="public_key" label="公钥 (可选)">
+                  <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        }
       />
 
       {/* 编辑用户弹窗 */}
@@ -971,7 +1212,10 @@ const ManageMachine = () => {
         visible={editModalVisible}
         container={selectedContainer}
         onClose={closeAllModals}
-        onSave={handleSaveUserPermissions}
+        onBack={returnToDetail}
+        usersList={usersList}
+        usersLoading={usersLoading}
+        forceSystemAdmin={true}
       />
     </>
   );
