@@ -8,14 +8,15 @@ const layout = {
   labelCol: { span: 8 },
   wrapperCol: { span: 16 },
 };
+
 const validateMessages = {
-  required: '${label} is required!',
+  required: '${label}是必填项!',
   types: {
-    email: '${label} is not a valid email!',
-    number: '${label} is not a valid number!',
+    email: '${label}不是有效的邮箱地址!',
+    number: '${label}不是有效的数字!',
   },
   number: {
-    range: '${label} must be between ${min} and ${max}',
+    range: '${label}必须在${min}和${max}之间',
   },
 };
 /* onFinish is defined inside the component so it can access state setters */
