@@ -14,6 +14,8 @@ import { useNavigate } from 'react-router-dom';
 const { Column } = Table;
 const { Option } = Select;
 
+import { startContainerStatusHeartbeat } from '../utils/heartbeat';
+
 import { listAllUserBrefInformation } from '../api/user_api';
 
 // machines loaded from backend
@@ -285,8 +287,8 @@ const ManageMachine = () => {
 
   // 容器状态标签
   const renderContainerStatus = (status) => {
-    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
-    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : '维护中'}</Tag>;
+    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : 'orange';
+    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : '停止中'}</Tag>;
   };
 
   // 切换展开状态
@@ -406,6 +408,33 @@ const ManageMachine = () => {
           await fetchContainersForMachine(mid, 0);
         }
         message.success('容器添加成功');
+        // start heartbeat for this container (non-blocking) and update local container map when RUNNING
+        try {
+          startContainerStatusHeartbeat({
+            machine_id: machineId,
+            container_name: payload.container.NAME,
+            onRunning: () => {
+              try {
+                const mid = String(machineId);
+                setContainerMap(prev => {
+                  const entry = prev[mid] || {};
+                  const data = (entry.data || []).map(item => {
+                    if (item.container_name === payload.container.NAME) {
+                      return { ...item, container_status: 'online' };
+                    }
+                    return item;
+                  });
+                  return { ...prev, [mid]: { ...(entry || {}), data } };
+                });
+                message.success('容器已运行');
+              } catch (e) {
+                // ignore update errors
+              }
+            },
+          });
+        } catch (e) {
+          // ignore heartbeat start errors
+        }
         success = true;
       } catch (err) {
         console.error('createContainer failed', err);

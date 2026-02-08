@@ -57,7 +57,11 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
                 <SettingOutlined style={{ fontSize: 20, color: '#1890ff' }} />
                 <div>
                   <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>容器状态</Typography.Text>
-                  <Tag color={container.container_status === 'online' ? 'green' : 'orange'}>{container.container_status === 'online' ? '运行中' : '维护中'}</Tag>
+                  <Tag color={container.container_status === 'online' ? 'green' : container.container_status === 'offline' ? 'volcano' : container.container_status === 'creating' ? 'blue' : container.container_status === 'starting' ? 'cyan' : 'orange'}>
+                    {container.container_status === 'online' ? '运行中' : container.container_status === 'offline' ? '已停止' : container.container_status === 'creating' ? '创建中' : container.container_status === 'starting' ? '启动中' : '停止中'}
+                  </Tag>
+                
+                
                 </div>
               </Space>
             </Col>

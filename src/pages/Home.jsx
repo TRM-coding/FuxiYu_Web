@@ -8,6 +8,8 @@ import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator } from '../api/container_api';
+import { startContainerStatusHeartbeat } from '../utils/heartbeat';
+import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
 import ContainerDetailModal from '../components/ContainerDetailModal';
@@ -104,6 +106,51 @@ const Home = () => {
     load();
     return () => { mounted = false; };
   }, [currentUserId]);
+
+  // If navigated here with a startHeartbeat request (from Apply), start the heartbeat and refresh list when ONLINE
+  const location = useLocation();
+  useEffect(() => {
+    const req = location?.state?.startHeartbeat;
+    if (!req || !req.container_name) return;
+    let stop = null;
+    try {
+      stop = startContainerStatusHeartbeat({
+        machine_id: req.machine_id,
+        container_name: req.container_name,
+        onRunning: async () => {
+          message.success('容器已运行，刷新状态');
+          try {
+            // optimistically update local state for the specific container
+            setContainers(prev => prev.map(c => {
+              if (String(c.machine_id) === String(req.machine_id) && (c.container_name === req.container_name || c.container_name === req.container_name)) {
+                return { ...c, container_status: 'online' };
+              }
+              return c;
+            }));
+            // also refresh the list from server to ensure consistency
+            // const res = await listAllContainerBrefInformation({ machine_id: null, user_id: Number(currentUserId), page_number: 0, page_size: 100 });
+            // const items = (res && (res.containers_info || res.containers)) || [];
+            // const mapped = items.map((c, idx) => ({
+            //   key: c.container_id ? String(c.container_id) : `c-${idx}`,
+            //   container_name: c.container_name || c.name || `container-${idx}`,
+            //   container_image: c.container_image || '',
+            //   port: c.port ? String(c.port) : (c.port_str || ''),
+            //   container_status: (c.container_status || '').toLowerCase(),
+            //   machine_id: c.machine_id ? String(c.machine_id) : null,
+            //   accounts: c.accounts || [],
+            // }));
+            // setContainers(mapped);
+          } catch (e) {
+            // ignore reload errors
+          }
+        },
+      });
+    } catch (e) {
+      // ignore
+    }
+    return () => { if (typeof stop === 'function') stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location, currentUserId]);
 
   // Modal state
   const [modal, setModal] = useState({
@@ -441,8 +488,9 @@ const Home = () => {
               dataIndex="container_status"
               key="container_status"
               render={status => {
-                let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
-                return <Tag color={color}>{String(status).toUpperCase()}</Tag>;
+                let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : 'orange';
+                let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : '停止中';
+                return <Tag color={color}>{text}</Tag>;
               }}
             />
             <Column title="端口" dataIndex="port" key="port" />

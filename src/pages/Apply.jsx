@@ -15,6 +15,7 @@ const options = [
 
 import { listAllMachineBrefInformation, getDetailInformation } from '../api/machine_api';
 import { createContainer } from '../api/container_api';
+import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import ConfirmModal from '../components/ConfirmModal';
 
 // data will be fetched from backend; table will use mapped `tableData` built from API response.
@@ -139,9 +140,15 @@ const Apply = () => {
       };
 
       try {
-        await createContainer(payload);
+        const res = await createContainer(payload);
         message.success('容器创建请求已发送');
         setAddContainerVisible(false);
+        // navigate to Home and pass startHeartbeat request via location state
+        try {
+          navigate('/index', { state: { startHeartbeat: { machine_id: machineId, container_name: payload.container.NAME } } });
+        } catch (e) {
+          navigate('/index');
+        }
       } catch (err) {
         console.error('createContainer failed', err);
         await showErrorModal({ message: err?.body?.message || err?.message || '创建容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
