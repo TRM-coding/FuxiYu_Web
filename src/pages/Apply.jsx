@@ -398,8 +398,15 @@ const Apply = () => {
           >
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }]}>
-                  <Input placeholder="容器名" />
+                <Form.Item
+                  name="NAME"
+                  label="容器名"
+                  rules={[
+                    { required: true, message: '请输入容器名' },
+                    { pattern: /^[A-Za-z0-9_]+$/, message: '容器名仅允许英文、数字和下划线' }
+                  ]}
+                >
+                  <Input placeholder="容器名，允许英文/数字/下划线" />
                 </Form.Item>
               </Col>
               <Col span={12}>
