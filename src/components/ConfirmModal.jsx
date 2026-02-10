@@ -43,6 +43,7 @@ const ConfirmModal = ({
   onConfirm, 
   onCancel, 
   loading,
+  confirmDisabled = false,
   confirmText = '确认',
   cancelText = '取消',
   showCancel = true,
@@ -64,6 +65,7 @@ const ConfirmModal = ({
       danger={isDangerMode}
       loading={loading}
       onClick={onConfirm}
+      disabled={confirmDisabled || loading}
     >
       {confirmText}
     </Button>

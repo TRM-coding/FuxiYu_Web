@@ -80,6 +80,7 @@ const Apply = () => {
   const [addContainerLoading, setAddContainerLoading] = useState(false);
   const [addContainerForm] = Form.useForm();
   const [addContainerMachineId, setAddContainerMachineId] = useState(null);
+  const [addContainerUnsafe, setAddContainerUnsafe] = useState(false);
   
 
   const fetchMachines = async (p = page, ps = pageSize) => {
@@ -390,11 +391,27 @@ const Apply = () => {
         onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); }}
         loading={addContainerLoading}
         confirmText="添加"
+        confirmDisabled={addContainerUnsafe}
         content={
           <Form
             form={addContainerForm}
             layout="vertical"
             initialValues={{ CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [] }}
+            onValuesChange={() => {
+              try {
+                const vals = addContainerForm.getFieldsValue();
+                const name = vals.NAME || '';
+                const image = vals.image || '';
+                const pub = vals.public_key || '';
+                // lazy import to avoid bundler warnings
+                import('../utils/validateCmdArg').then(mod => {
+                  const unsafe = mod.anyUnsafe(name, image, pub);
+                  setAddContainerUnsafe(Boolean(unsafe));
+                }).catch(() => setAddContainerUnsafe(false));
+              } catch (e) {
+                setAddContainerUnsafe(false);
+              }
+            }}
           >
             <Row gutter={16}>
               <Col span={12}>

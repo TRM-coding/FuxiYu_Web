@@ -25,6 +25,15 @@ const ensureOk = async (res, action) => {
 		err.body = body;
 		if (res.status === 401 || res.status === 403) {
 			try { abortAll('auth'); } catch (e) {}
+			// clear local auth and redirect to login for 401
+			if (typeof window !== 'undefined' && res.status === 401) {
+				try {
+					localStorage.removeItem('authToken');
+					localStorage.removeItem('currentUserId');
+					localStorage.removeItem('currentUserName');
+				} catch (e) {}
+				try { window.location.href = '/'; } catch (e) {}
+			}
 		}
 		throw err;
 	}

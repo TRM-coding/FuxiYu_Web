@@ -139,6 +139,7 @@ const ManageMachine = () => {
   const [addContainerLoading, setAddContainerLoading] = useState(false);
   const [addContainerForm] = Form.useForm();
   const [addContainerMachineId, setAddContainerMachineId] = useState(null);
+  const [addContainerUnsafe, setAddContainerUnsafe] = useState(false);
   // 编辑模式
   const [isEditMode, setIsEditMode] = useState(false);
   const [editTargetMachine, setEditTargetMachine] = useState(null);
@@ -287,8 +288,8 @@ const ManageMachine = () => {
 
   // 容器状态标签
   const renderContainerStatus = (status) => {
-    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : 'orange';
-    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : '停止中'}</Tag>;
+    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
+    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '无限崩溃' : status}</Tag>;
   };
 
   // 切换展开状态
@@ -1168,11 +1169,25 @@ const ManageMachine = () => {
         onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); }}
         loading={addContainerLoading}
         confirmText="添加"
+        confirmDisabled={addContainerUnsafe}
         content={
           <Form
             form={addContainerForm}
             layout="vertical"
             initialValues={{ CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [] }}
+            onValuesChange={() => {
+              try {
+                const vals = addContainerForm.getFieldsValue();
+                const name = vals.NAME || '';
+                const image = vals.image || '';
+                const pub = vals.public_key || '';
+                import('../utils/validateCmdArg').then(mod => {
+                  setAddContainerUnsafe(Boolean(mod.anyUnsafe(name, image, pub)));
+                }).catch(() => setAddContainerUnsafe(false));
+              } catch (e) {
+                setAddContainerUnsafe(false);
+              }
+            }}
           >
             <Row gutter={16}>
               <Col span={12}>
