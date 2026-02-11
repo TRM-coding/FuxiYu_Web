@@ -1190,11 +1190,13 @@ const ManageMachine = () => {
             }}
           >
             <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }]}>
-                  <Input placeholder="容器名" />
-                </Form.Item>
-              </Col>
+                  <Col span={12}>
+                    <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }, { validator: (_, value) => {
+                      try { const mod = require('../utils/validateCmdArg'); return mod.isValidName(value) ? Promise.resolve() : Promise.reject(new Error('容器名仅允许英文、数字和下划线')); } catch (e) { return Promise.resolve(); }
+                    } }]}> 
+                      <Input placeholder="容器名" />
+                    </Form.Item>
+                  </Col>
               <Col span={12}>
                 <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}>
                   <Input placeholder="例如：nginx:latest" />

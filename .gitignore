@@ -1,1 +1,4 @@
 node_modules/
+# ignore local certs generated for HTTPS dev
+certs/*.pem
+certs/*-key.pem

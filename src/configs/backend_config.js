@@ -1,7 +1,15 @@
 // 单文件配置，移除对 config.js 的依赖
 
-// Use IPv4 loopback to avoid IPv6 (::1) connection issues in some browsers
-export const BACKEND_BASE_URL = 'http://192.168.5.230:5000';
+// Use Vite-provided environment variables when available (import.meta.env.VITE_*),
+// otherwise fall back to the hardcoded address. This lets you switch between
+// http/https without editing source.
+// Example (shell): VITE_BACKEND_BASE_URL=https://localhost:5000 npm run dev
+export const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL || 'https://192.168.5.230:5000';
+// Optional: front-end can know whether it should operate in HTTPS mode
+// (useful for building URLs or toggling secure cookies). Set VITE_ENABLE_SSL=true
+// when launching Vite to indicate HTTPS mode.
+// Default to true (HTTPS enabled) unless explicitly disabled by VITE_ENABLE_SSL='false'
+export const ENABLE_SSL = (import.meta.env.VITE_ENABLE_SSL === 'false') ? false : true;
 export const REQUEST_TIMEOUT = 5000;
 export const CREDENTIALS = 'include'; // 携带 cookies
 

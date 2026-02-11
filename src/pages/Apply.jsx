@@ -14,6 +14,7 @@ const options = [
 
 
 import { listAllMachineBrefInformation, getDetailInformation } from '../api/machine_api';
+import { isValidName, isValidImageName } from '../utils/validateCmdArg';
 import { createContainer } from '../api/container_api';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import ConfirmModal from '../components/ConfirmModal';
@@ -420,14 +421,14 @@ const Apply = () => {
                   label="容器名"
                   rules={[
                     { required: true, message: '请输入容器名' },
-                    { pattern: /^[A-Za-z0-9_]+$/, message: '容器名仅允许英文、数字和下划线' }
+                    { validator: (_, value) => isValidName(value) ? Promise.resolve() : Promise.reject(new Error('容器名仅允许英文、数字和下划线')) }
                   ]}
                 >
                   <Input placeholder="容器名，允许英文/数字/下划线" />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}>
+                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }, { validator: (_, value) => isValidImageName(value) ? Promise.resolve() : Promise.reject(new Error('镜像名格式不正确')) }]}>
                   <Input placeholder="例如：nginx:latest" />
                 </Form.Item>
               </Col>
