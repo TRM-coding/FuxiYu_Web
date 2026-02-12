@@ -39,6 +39,9 @@ export const API_ROUTES = {
 	CONTAINERS_UPDATE_ROLE: '/api/containers/update_role',
 	CONTAINERS_GET_DETAIL: '/api/containers/get_container_detail_information',
 	CONTAINERS_LIST: '/api/containers/list_all_container_bref_information',
+	CONTAINERS_START: '/api/containers/start_container',
+	CONTAINERS_STOP: '/api/containers/stop_container',
+	CONTAINERS_RESTART: '/api/containers/restart_container',
 	
 };
 

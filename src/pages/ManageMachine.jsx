@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
@@ -708,6 +708,151 @@ const ManageMachine = () => {
     setSelectedContainer(null);
   };
 
+  // 这里的容器操作函数（启动/停止/重启）有互锁的状态更新
+  const handleStartContainer = async (container) => {
+    if (!container) return;
+    const cid = container.key;
+    const mid = String(container.machine_id || container.machine_id || container.machine_ip || '');
+    try {
+      setContainerMap(prev => {
+        const copy = { ...prev };
+        if (copy[mid] && Array.isArray(copy[mid].data)) {
+          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'starting' } : c)) };
+        }
+        return copy;
+      });
+      message.loading({ content: `正在启动 ${container.container_name}...`, key: `start-${cid}` });
+      await startContainer(Number(cid));
+      try {
+        startContainerStatusHeartbeat({
+          machine_id: container.machine_id,
+          container_name: container.container_name,
+          terminalState: 'online',
+          onTerminal: () => {
+            setContainerMap(prev => {
+              const copy = { ...prev };
+              if (copy[mid] && Array.isArray(copy[mid].data)) {
+                copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)) };
+              }
+              return copy;
+            });
+            message.success({ content: `容器 ${container.container_name} 已启动`, key: `start-${cid}`, duration: 2 });
+          }
+        });
+      } catch (e) {
+        message.success({ content: `启动指令已发送`, key: `start-${cid}`, duration: 2 });
+      }
+    } catch (e) {
+      console.error('start container failed', e);
+      // revert
+      setContainerMap(prev => {
+        const copy = { ...prev };
+        if (copy[mid] && Array.isArray(copy[mid].data)) {
+          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)) };
+        }
+        return copy;
+      });
+      try { await showErrorModal({ message: e?.body?.message || e?.message || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      message.error('启动失败');
+    }
+  };
+
+  const handleStopContainer = async (container) => {
+    if (!container) return;
+    const cid = container.key;
+    const mid = String(container.machine_id || container.machine_id || container.machine_ip || '');
+    try {
+      setContainerMap(prev => {
+        const copy = { ...prev };
+        if (copy[mid] && Array.isArray(copy[mid].data)) {
+          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'stopping' } : c)) };
+        }
+        return copy;
+      });
+      message.loading({ content: `正在停止 ${container.container_name}...`, key: `stop-${cid}` });
+      await stopContainer(Number(cid));
+      try {
+        startContainerStatusHeartbeat({
+          machine_id: container.machine_id,
+          container_name: container.container_name,
+          terminalState: 'offline',
+          onTerminal: () => {
+            setContainerMap(prev => {
+              const copy = { ...prev };
+              if (copy[mid] && Array.isArray(copy[mid].data)) {
+                copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)) };
+              }
+              return copy;
+            });
+            message.success({ content: `容器 ${container.container_name} 已停止`, key: `stop-${cid}`, duration: 2 });
+          }
+        });
+      } catch (e) {
+        message.success({ content: `停止指令已发送`, key: `stop-${cid}`, duration: 2 });
+      }
+    } catch (e) {
+      console.error('stop container failed', e);
+      // revert
+      setContainerMap(prev => {
+        const copy = { ...prev };
+        if (copy[mid] && Array.isArray(copy[mid].data)) {
+          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)) };
+        }
+        return copy;
+      });
+      try { await showErrorModal({ message: e?.body?.message || e?.message || '停止失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      message.error('停止失败');
+    }
+  };
+
+  const handleRestartContainer = async (container) => {
+    if (!container) return;
+    const cid = container.key;
+    const mid = String(container.machine_id || container.machine_id || container.machine_ip || '');
+    try {
+      setContainerMap(prev => {
+        const copy = { ...prev };
+        if (copy[mid] && Array.isArray(copy[mid].data)) {
+          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'starting' } : c)) };
+        }
+        return copy;
+      });
+      message.loading({ content: `正在重启 ${container.container_name}...`, key: `restart-${cid}` });
+      await restartContainer(Number(cid));
+      try {
+        startContainerStatusHeartbeat({
+          machine_id: container.machine_id,
+          container_name: container.container_name,
+          terminalState: 'online',
+          onTerminal: () => {
+            setContainerMap(prev => {
+              const copy = { ...prev };
+              if (copy[mid] && Array.isArray(copy[mid].data)) {
+                copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)) };
+              }
+              return copy;
+            });
+            message.success({ content: `容器 ${container.container_name} 已重启`, key: `restart-${cid}`, duration: 2 });
+          }
+        });
+      } catch (e) {
+        message.success({ content: `重启指令已发送`, key: `restart-${cid}`, duration: 2 });
+      }
+    } catch (e) {
+      console.error('restart container failed', e);
+      // revert to online
+      setContainerMap(prev => {
+        const copy = { ...prev };
+        if (copy[mid] && Array.isArray(copy[mid].data)) {
+          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)) };
+        }
+        return copy;
+      });
+      try { await showErrorModal({ message: e?.body?.message || e?.message || '重启失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      message.error('重启失败');
+    }
+  };
+
 
   // 展开行的配置
   const expandable = {
@@ -764,19 +909,20 @@ const ManageMachine = () => {
               title="操作"
               key="action"
               render={(_, containerRecord) => {
-                const machineStatus = (record.machine_status || '').toLowerCase();
-                const actionsDisabled = machineStatus === 'offline' || machineStatus === 'maintenance';
+                const status = (containerRecord?.container_status || '').toLowerCase();
+                const startDisabled = status !== 'offline';
+                const restartDisabled = status !== 'online';
+                const stopDisabled = status !== 'online';
                 return (
                   <Space size="middle">
-                    <Button type="primary" size="small" disabled={actionsDisabled}>启动</Button>
-                    <Button danger size="small" disabled={actionsDisabled}>停止</Button>
-                    <Button size="small" disabled={actionsDisabled}>重启</Button>
+                    <Button type="primary" size="small" onClick={() => handleStartContainer(containerRecord)} disabled={startDisabled}>启动</Button>
+                    <Button danger size="small" onClick={() => handleStopContainer(containerRecord)} disabled={stopDisabled}>停止</Button>
+                    <Button size="small" onClick={() => handleRestartContainer(containerRecord)} disabled={restartDisabled}>重启</Button>
                     <Button 
                       size="small" 
                       type="primary"
                       ghost
                       onClick={() => openContainerDetail(containerRecord)}
-                      disabled={actionsDisabled}
                     >
                       详情
                     </Button>

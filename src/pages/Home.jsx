@@ -7,7 +7,7 @@ import { handleAuthError } from '../utils/authHelpers';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
-import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer } from '../api/container_api';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -215,6 +215,96 @@ const Home = () => {
     setContainers(prev => prev.map(c => (String(c.key) === String(updated.key) ? { ...c, ...updated } : c)));
     message.success('容器用户信息已保存');
     closeEditModal();
+  };
+
+  // 这里 start/stop/restart 的实现都只是前端模拟，实际应该调用对应的 API 来操作容器，并根据结果来更新状态和提示用户
+  const handleStartContainer = async (record) => {
+    const cid = record?.key;
+    if ((record?.container_status || '').toLowerCase() !== 'offline') return;
+    try {
+      // optimistic UI
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'starting' } : c)));
+      message.loading({ content: `正在启动 ${record.container_name}...`, key: `start-${cid}` });
+      await startContainer(Number(cid));
+      // start web-side heartbeat to wait until controller reports ONLINE
+      try {
+        startContainerStatusHeartbeat({
+          machine_id: record.machine_id,
+          container_name: record.container_name,
+          terminalState: 'online',
+          onTerminal: () => {
+            setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+            message.success({ content: `容器 ${record.container_name} 已启动`, key: `start-${cid}`, duration: 2 });
+          }
+        });
+      } catch (e) {
+        message.success({ content: `启动指令已发送`, key: `start-${cid}`, duration: 2 });
+      }
+    } catch (e) {
+      console.error('start container failed', e);
+      // revert state
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)));
+      try { await showErrorModal({ message: e?.body?.message || e?.message || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      message.error('启动失败');
+    }
+  };
+
+  const handleStopContainer = async (record) => {
+    const cid = record?.key;
+    if ((record?.container_status || '').toLowerCase() !== 'online') return;
+    try {
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'stopping' } : c)));
+      message.loading({ content: `正在停止 ${record.container_name}...`, key: `stop-${cid}` });
+      await stopContainer(Number(cid));
+      try {
+        startContainerStatusHeartbeat({
+          machine_id: record.machine_id,
+          container_name: record.container_name,
+          terminalState: 'offline',
+          onTerminal: () => {
+            setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)));
+            message.success({ content: `容器 ${record.container_name} 已停止`, key: `stop-${cid}`, duration: 2 });
+          }
+        });
+      } catch (e) {
+        message.success({ content: `停止指令已发送`, key: `stop-${cid}`, duration: 2 });
+      }
+    } catch (e) {
+      console.error('stop container failed', e);
+      // revert state
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+      try { await showErrorModal({ message: e?.body?.message || e?.message || '停止失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      message.error('停止失败');
+    }
+  };
+
+  const handleRestartContainer = async (record) => {
+    const cid = record?.key;
+    if ((record?.container_status || '').toLowerCase() !== 'online') return;
+    try {
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'starting' } : c)));
+      message.loading({ content: `正在重启 ${record.container_name}...`, key: `restart-${cid}` });
+      await restartContainer(Number(cid));
+      try {
+        startContainerStatusHeartbeat({
+          machine_id: record.machine_id,
+          container_name: record.container_name,
+          terminalState: 'online',
+          onTerminal: () => {
+            setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+            message.success({ content: `容器 ${record.container_name} 已重启`, key: `restart-${cid}`, duration: 2 });
+          }
+        });
+      } catch (e) {
+        message.success({ content: `重启指令已发送`, key: `restart-${cid}`, duration: 2 });
+      }
+    } catch (e) {
+      console.error('restart container failed', e);
+      // revert to online
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+      try { await showErrorModal({ message: e?.body?.message || e?.message || '重启失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      message.error('重启失败');
+    }
   };
 
   // helpers
@@ -499,25 +589,60 @@ const Home = () => {
               key="action"
               render={(_, record) => {
                 const myRole = getRoleForUser(record.accounts, currentUserName);
+                const status = (record?.container_status || '').toLowerCase();
+                const startDisabled = status !== 'offline';
+                const restartDisabled = status !== 'online';
+                const stopDisabled = status !== 'online';
+
+                const ActionButtons = (
+                  <Space size="small">
+                    <a
+                      onClick={() => { if (!startDisabled) handleStartContainer(record); }}
+                      style={{ padding: '0 6px', color: startDisabled ? '#bfbfbf' : undefined, cursor: startDisabled ? 'not-allowed' : 'pointer' }}
+                    >
+                      启动
+                    </a>
+                    <a
+                      onClick={() => { if (!restartDisabled) handleRestartContainer(record); }}
+                      style={{ padding: '0 6px', color: restartDisabled ? '#bfbfbf' : undefined, cursor: restartDisabled ? 'not-allowed' : 'pointer' }}
+                    >
+                      重启
+                    </a>
+                    <a
+                      onClick={() => { if (!stopDisabled) handleStopContainer(record); }}
+                      style={{ padding: '0 6px', color: stopDisabled ? '#bfbfbf' : 'rgba(255,0,0,0.85)', cursor: stopDisabled ? 'not-allowed' : 'pointer' }}
+                    >
+                      停止
+                    </a>
+                  </Space>
+                );
+
+                // Show 查看详情 first, then role-specific links, then the action buttons
+                const detailLink = <a onClick={() => openContainerDetail(record)}>查看详情</a>;
                 if (myRole === 'ADMIN') {
                   return (
                     <Space size="middle">
+                      {detailLink}
                       <a onClick={() => handleInvite(record)}>邀请</a>
                       <a onClick={() => handleDeleteContainer(record)}>删除容器</a>
+                      {ActionButtons}
                     </Space>
                   );
                 }
                 if (myRole === 'COLLABORATOR') {
                   return (
                     <Space size="middle">
+                      {detailLink}
                       <a onClick={() => handleLeave(record)}>退出</a>
+                      {ActionButtons}
                     </Space>
                   );
                 }
                 // default actions for others
                 return (
                   <Space size="middle">
-                    <a onClick={() => openContainerDetail(record)}>查看详情</a>
+                    {detailLink}
+                    {ActionButtons}
                   </Space>
                 );
               }}

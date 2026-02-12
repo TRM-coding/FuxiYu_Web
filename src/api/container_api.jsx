@@ -224,6 +224,81 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 	}
 };
 
+export const startContainer = async (container_id = 0, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_START}`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...getTokenHeader(),
+			},
+			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Start container');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Start container request timed out');
+		throw err;
+	}
+};
+
+export const stopContainer = async (container_id = 0, timeout = null, stopTimeout = 5) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_STOP}`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...getTokenHeader(),
+			},
+ 			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Stop container');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Stop container request timed out');
+		throw err;
+	}
+};
+
+export const restartContainer = async (container_id = 0, timeout = null, restartTimeout = 5) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_RESTART}`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...getTokenHeader(),
+			},
+			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Restart container');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Restart container request timed out');
+		throw err;
+	}
+};
+
 export default {
 	createContainer,
 	deleteContainer,
@@ -232,5 +307,8 @@ export default {
 	updateRole,
 	getContainerDetailInformation,
 	listAllContainerBrefInformation,
+	startContainer,
+	stopContainer,
+	restartContainer,
 };
 
