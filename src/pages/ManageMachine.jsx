@@ -414,18 +414,36 @@ const ManageMachine = () => {
           startContainerStatusHeartbeat({
             machine_id: machineId,
             container_name: payload.container.NAME,
-            onRunning: () => {
+            onRunning: (data) => {
+              const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+              if (st === 'failed') {
+                try {
+                  const mid = String(machineId);
+                  setContainerMap(prev => {
+                    const entry = prev[mid] || {};
+                    const data2 = (entry.data || []).map(item => {
+                      if (item.container_name === payload.container.NAME) {
+                        return { ...item, container_status: 'failed' };
+                      }
+                      return item;
+                    });
+                    return { ...prev, [mid]: { ...(entry || {}), data: data2 } };
+                  });
+                } catch (e) {}
+                message.error('容器创建失败');
+                return;
+              }
               try {
                 const mid = String(machineId);
                 setContainerMap(prev => {
                   const entry = prev[mid] || {};
-                  const data = (entry.data || []).map(item => {
+                  const data2 = (entry.data || []).map(item => {
                     if (item.container_name === payload.container.NAME) {
                       return { ...item, container_status: 'online' };
                     }
                     return item;
                   });
-                  return { ...prev, [mid]: { ...(entry || {}), data } };
+                  return { ...prev, [mid]: { ...(entry || {}), data: data2 } };
                 });
                 message.success('容器已运行');
               } catch (e) {
@@ -728,7 +746,19 @@ const ManageMachine = () => {
           machine_id: container.machine_id,
           container_name: container.container_name,
           terminalState: 'online',
-          onTerminal: () => {
+          onTerminal: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st === 'failed') {
+              setContainerMap(prev => {
+                const copy = { ...prev };
+                if (copy[mid] && Array.isArray(copy[mid].data)) {
+                  copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)) };
+                }
+                return copy;
+              });
+              message.error({ content: `容器 ${container.container_name} 创建失败`, key: `start-${cid}`, duration: 4 });
+              return;
+            }
             setContainerMap(prev => {
               const copy = { ...prev };
               if (copy[mid] && Array.isArray(copy[mid].data)) {
@@ -776,7 +806,19 @@ const ManageMachine = () => {
           machine_id: container.machine_id,
           container_name: container.container_name,
           terminalState: 'offline',
-          onTerminal: () => {
+          onTerminal: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st === 'failed') {
+              setContainerMap(prev => {
+                const copy = { ...prev };
+                if (copy[mid] && Array.isArray(copy[mid].data)) {
+                  copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)) };
+                }
+                return copy;
+              });
+              message.error({ content: `容器 ${container.container_name} 状态异常`, key: `stop-${cid}`, duration: 4 });
+              return;
+            }
             setContainerMap(prev => {
               const copy = { ...prev };
               if (copy[mid] && Array.isArray(copy[mid].data)) {
@@ -824,7 +866,19 @@ const ManageMachine = () => {
           machine_id: container.machine_id,
           container_name: container.container_name,
           terminalState: 'online',
-          onTerminal: () => {
+          onTerminal: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st === 'failed') {
+              setContainerMap(prev => {
+                const copy = { ...prev };
+                if (copy[mid] && Array.isArray(copy[mid].data)) {
+                  copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)) };
+                }
+                return copy;
+              });
+              message.error({ content: `容器 ${container.container_name} 重启失败`, key: `restart-${cid}`, duration: 4 });
+              return;
+            }
             setContainerMap(prev => {
               const copy = { ...prev };
               if (copy[mid] && Array.isArray(copy[mid].data)) {
@@ -1095,8 +1149,8 @@ const ManageMachine = () => {
           >
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }]}> 
-                  <Input placeholder="机器名" />
+                <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }, { max: 115, message: '机器名长度不得超过115个字符' }]}> 
+                  <Input placeholder="机器名" maxLength={115} />
                 </Form.Item>
               </Col>
 
@@ -1173,7 +1227,7 @@ const ManageMachine = () => {
                     <Row gutter={16}>
                       <Col span={12}>
                         <Form.Item name="gpu_type" label="GPU 型号">
-                          <Input placeholder="例如：NVIDIA Tesla V100" />
+                          <Input placeholder="例如：NVIDIA Tesla V100" maxLength={115} />
                         </Form.Item>
                       </Col>
                       <Col span={12} />
@@ -1200,7 +1254,7 @@ const ManageMachine = () => {
             <Row>
               <Col span={24}>
                 <Form.Item name="machine_description" label="描述">
-                  <Input.TextArea rows={3} placeholder="可选，机器描述" />
+                  <Input.TextArea rows={3} placeholder="可选，机器描述" maxLength={115} />
                 </Form.Item>
               </Col>
             </Row>
@@ -1337,15 +1391,15 @@ const ManageMachine = () => {
           >
             <Row gutter={16}>
                   <Col span={12}>
-                    <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }, { validator: (_, value) => {
+                    <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }, { max: 115, message: '容器名长度不得超过115个字符' }, { validator: (_, value) => {
                       try { const mod = require('../utils/validateCmdArg'); return mod.isValidName(value) ? Promise.resolve() : Promise.reject(new Error('容器名仅允许英文、数字和下划线')); } catch (e) { return Promise.resolve(); }
                     } }]}> 
-                      <Input placeholder="容器名" />
+                      <Input placeholder="容器名" maxLength={115} />
                     </Form.Item>
                   </Col>
               <Col span={12}>
-                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}>
-                  <Input placeholder="例如：nginx:latest" />
+                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }, { max: 195, message: '镜像名长度不得超过195个字符' }]}>
+                  <Input placeholder="例如：nginx:latest" maxLength={195} />
                 </Form.Item>
               </Col>
             </Row>
@@ -1390,8 +1444,8 @@ const ManageMachine = () => {
 
             <Row gutter={16}>
               <Col span={24}>
-                <Form.Item name="public_key" label="公钥 (可选)">
-                  <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" />
+                <Form.Item name="public_key" label="公钥 (可选)" rules={[{ max: 495, message: '公钥长度不得超过495个字符' }]}>
+                  <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" maxLength={495} />
                 </Form.Item>
               </Col>
             </Row>

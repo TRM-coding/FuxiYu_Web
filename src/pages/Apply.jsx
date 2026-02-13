@@ -421,15 +421,16 @@ const Apply = () => {
                   label="容器名"
                   rules={[
                     { required: true, message: '请输入容器名' },
+                    { max: 115, message: '容器名长度不得超过115个字符' },
                     { validator: (_, value) => isValidName(value) ? Promise.resolve() : Promise.reject(new Error('容器名仅允许英文、数字和下划线')) }
                   ]}
                 >
-                  <Input placeholder="容器名，允许英文/数字/下划线" />
+                  <Input placeholder="容器名，允许英文/数字/下划线" maxLength={115} />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }, { validator: (_, value) => isValidImageName(value) ? Promise.resolve() : Promise.reject(new Error('镜像名格式不正确')) }]}>
-                  <Input placeholder="例如：nginx:latest" />
+                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }, { max: 195, message: '镜像名长度不得超过195个字符' }, { validator: (_, value) => isValidImageName(value) ? Promise.resolve() : Promise.reject(new Error('镜像名格式不正确')) }]}>
+                  <Input placeholder="例如：nginx:latest" maxLength={195} />
                 </Form.Item>
               </Col>
             </Row>
@@ -458,8 +459,8 @@ const Apply = () => {
 
             <Row gutter={16}>
               <Col span={24}>
-                <Form.Item name="public_key" label="公钥 (可选)">
-                  <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" />
+                <Form.Item name="public_key" label="公钥 (可选)" rules={[{ max: 495, message: '公钥长度不得超过495个字符' }]}>
+                  <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" maxLength={495} />
                 </Form.Item>
               </Col>
             </Row>

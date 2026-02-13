@@ -142,7 +142,7 @@ const User = () => {
             <Form.Item label="用户名" name="username" style={{ marginBottom: 16 }}>
               <Space>
                 {/* 放大输入框宽度 - controlled to preserve auto-fill */}
-                <Input placeholder="请输入用户名" style={{ width: '300px' }} value={username} onChange={e => setUsername(e.target.value)} />
+                <Input placeholder="请输入用户名" style={{ width: '300px' }} maxLength={75} value={username} onChange={e => setUsername(e.target.value)} />
                 {String(username) === String(originalInfo.username) ? (
                   <Button type="text" disabled>无变化</Button>
                 ) : (
@@ -180,13 +180,13 @@ const User = () => {
               ) : null}
             </Form.Item>
             <Form.Item label="新密码" name="new_password" style={{ marginBottom: 16 }}>
-              <Input.Password placeholder="输入新密码" style={{ width: '300px' }} value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                <Input.Password placeholder="输入新密码" style={{ width: '300px' }} value={newPassword} onChange={e => setNewPassword(e.target.value)} />
             </Form.Item>
 
             {/* 邮箱 + 修改按钮 */}
             <Form.Item label="邮箱" name="email" style={{ marginBottom: 16 }}>
               <Space>
-                <Input placeholder="请输入邮箱" style={{ width: '300px' }} value={email} onChange={e => setEmail(e.target.value)} />
+                <Input placeholder="请输入邮箱" style={{ width: '300px' }} maxLength={115} value={email} onChange={e => setEmail(e.target.value)} />
                 {String(email) === String(originalInfo.email) ? (
                   <Button type="text" disabled>无变化</Button>
                 ) : (

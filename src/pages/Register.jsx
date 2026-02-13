@@ -71,11 +71,11 @@ const RegisterBlock = () => {
     validateMessages={validateMessages}
   >
     <Form.Item name="username" label="Username" rules={[{ required: true, message: 'Please input your username!' }]}>
-      <Input />
+      <Input maxLength={75} />
     </Form.Item>
 
     <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: 'Please input a valid email!' }]}>
-      <Input />
+      <Input maxLength={115} />
     </Form.Item>
 
     <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Please input your password!' }]}>

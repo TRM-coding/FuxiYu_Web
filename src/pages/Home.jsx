@@ -113,35 +113,38 @@ const Home = () => {
     const req = location?.state?.startHeartbeat;
     if (!req || !req.container_name) return;
     let stop = null;
-    try {
+      try {
       stop = startContainerStatusHeartbeat({
         machine_id: req.machine_id,
         container_name: req.container_name,
-        onRunning: async () => {
+        onRunning: async (data) => {
+          // heartbeat may return a payload with container_status; handle 'failed' explicitly
+          const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+          if (st === 'failed') {
+            message.error('容器创建失败');
+            try {
+              setContainers(prev => prev.map(c => {
+                if (String(c.machine_id) === String(req.machine_id) && (c.container_name === req.container_name || c.container_name === req.container_name)) {
+                  return { ...c, container_status: 'failed' };
+                }
+                return c;
+              }));
+            } catch (e) {
+              // ignore update errors
+            }
+            return;
+          }
+
           message.success('容器已运行，刷新状态');
           try {
-            // optimistically update local state for the specific container
             setContainers(prev => prev.map(c => {
               if (String(c.machine_id) === String(req.machine_id) && (c.container_name === req.container_name || c.container_name === req.container_name)) {
                 return { ...c, container_status: 'online' };
               }
               return c;
             }));
-            // also refresh the list from server to ensure consistency
-            // const res = await listAllContainerBrefInformation({ machine_id: null, user_id: Number(currentUserId), page_number: 0, page_size: 100 });
-            // const items = (res && (res.containers_info || res.containers)) || [];
-            // const mapped = items.map((c, idx) => ({
-            //   key: c.container_id ? String(c.container_id) : `c-${idx}`,
-            //   container_name: c.container_name || c.name || `container-${idx}`,
-            //   container_image: c.container_image || '',
-            //   port: c.port ? String(c.port) : (c.port_str || ''),
-            //   container_status: (c.container_status || '').toLowerCase(),
-            //   machine_id: c.machine_id ? String(c.machine_id) : null,
-            //   accounts: c.accounts || [],
-            // }));
-            // setContainers(mapped);
           } catch (e) {
-            // ignore reload errors
+            // ignore update errors
           }
         },
       });
@@ -232,7 +235,13 @@ const Home = () => {
           machine_id: record.machine_id,
           container_name: record.container_name,
           terminalState: 'online',
-          onTerminal: () => {
+          onTerminal: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st === 'failed') {
+              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)));
+              message.error({ content: `容器 ${record.container_name} 创建失败`, key: `start-${cid}`, duration: 4 });
+              return;
+            }
             setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
             message.success({ content: `容器 ${record.container_name} 已启动`, key: `start-${cid}`, duration: 2 });
           }
@@ -261,7 +270,13 @@ const Home = () => {
           machine_id: record.machine_id,
           container_name: record.container_name,
           terminalState: 'offline',
-          onTerminal: () => {
+          onTerminal: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st === 'failed') {
+              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)));
+              message.error({ content: `容器 ${record.container_name} 状态异常`, key: `stop-${cid}`, duration: 4 });
+              return;
+            }
             setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)));
             message.success({ content: `容器 ${record.container_name} 已停止`, key: `stop-${cid}`, duration: 2 });
           }
@@ -290,7 +305,13 @@ const Home = () => {
           machine_id: record.machine_id,
           container_name: record.container_name,
           terminalState: 'online',
-          onTerminal: () => {
+          onTerminal: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st === 'failed') {
+              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)));
+              message.error({ content: `容器 ${record.container_name} 重启失败`, key: `restart-${cid}`, duration: 4 });
+              return;
+            }
             setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
             message.success({ content: `容器 ${record.container_name} 已重启`, key: `restart-${cid}`, duration: 2 });
           }
@@ -556,8 +577,8 @@ const Home = () => {
             </Col>
             <Col xs={24} sm={12} md={6}>
               <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>维护中</Typography.Text>
-                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#faad14' }}>{containers.filter(c => c.container_status === 'maintenance').length}</Typography.Title>
+                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>异常</Typography.Text>
+                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#faad14' }}>{containers.filter(c => c.container_status === 'failed').length}</Typography.Title>
               </div>
             </Col>
             <Col xs={24} sm={12} md={6}>
