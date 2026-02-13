@@ -7,6 +7,8 @@ import { handleAuthError } from '../utils/authHelpers';
 const { Column } = Table;
 import './Apply.css';
 
+import TableComponent from '../components/TableComponent';
+
 const options = [
   { label: '任意', value: 'Any', className: 'label-1' },
   { label: 'CPU', value: 'CPU', title: 'CPU机器', className: 'label-2' },
@@ -226,7 +228,7 @@ const Apply = () => {
 
       {/* 表格区域，随内容自然伸展 */}
       <div className="apply-table-wrapper">
-        <Table
+        <TableComponent
           dataSource={filteredData}
           loading={loading}
           pagination={{
@@ -241,6 +243,7 @@ const Apply = () => {
           }}
           bordered
         >
+          
           <Column
             title="机器名称"
             dataIndex="machine_name"
@@ -330,7 +333,7 @@ const Apply = () => {
               )
             )}
           />
-        </Table>
+        </TableComponent>
       </div>
       <ConfirmModal
         visible={detailVisible}

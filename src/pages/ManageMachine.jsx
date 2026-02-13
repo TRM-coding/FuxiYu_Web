@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
+import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
+import TableComponent from '../components/TableComponent';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import ContainerDetailModal from '../components/ContainerDetailModal';
@@ -59,18 +60,22 @@ const ManageMachine = () => {
   // 机器搜索状态
   const [searchName, setSearchName] = useState('');
   const [searchIP, setSearchIP] = useState('');
-  const [searchType, setSearchType] = useState('');
+  const [searchContainerName, setSearchContainerName] = useState('');
 
   // 展开的行key
   const [expandedRowKeys, setExpandedRowKeys] = useState([]);
   // machines from backend
   const [machines, setMachines] = useState([]);
   const [machinesLoading, setMachinesLoading] = useState(false);
+  // 当前选中的行 key（用于高亮和关联展开面板）
+  const [selectedRowKey, setSelectedRowKey] = useState(null);
   
   // 容器搜索状态
   const [containerSearch, setContainerSearch] = useState({});
   // containers per machine cache: { [machineId]: { loading: bool, data: [] } }
   const [containerMap, setContainerMap] = useState({});
+  // cache machine's container names for top-level search: { [machineId]: string[] }
+  const [machineContainerNamesMap, setMachineContainerNamesMap] = useState({});
   // users fetched from backend (used for selecting when adding users to a container)
   const [usersList, setUsersList] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -241,12 +246,11 @@ const ManageMachine = () => {
     return () => { mounted = false; };
   }, []);
 
-  // 过滤机器数据
-  const filteredMachineData = machines.filter(machine => {
+  // 基础过滤（不含容器名）
+  const baseFilteredMachineData = machines.filter(machine => {
     const matchName = (machine.machine_name || '').toLowerCase().includes(searchName.toLowerCase());
     const matchIP = (machine.machine_ip || '').includes(searchIP);
-    const matchType = (machine.machine_type || '').toLowerCase().includes(searchType.toLowerCase());
-    return matchName && matchIP && matchType;
+    return matchName && matchIP;
   });
 
 
@@ -282,6 +286,45 @@ const ManageMachine = () => {
     }
   };
 
+  // 顶部“容器名”搜索：按机器维度缓存容器名
+  useEffect(() => {
+    const keyword = (searchContainerName || '').trim().toLowerCase();
+    if (!keyword) return;
+
+    let cancelled = false;
+    const missing = baseFilteredMachineData.filter(m => !machineContainerNamesMap[String(m.key)]);
+    if (missing.length === 0) return;
+
+    (async () => {
+      for (const m of missing) {
+        if (cancelled) break;
+        const mid = String(m.key);
+        try {
+          const res = await listAllContainerBrefInformation({ machine_id: mid, page_number: 0, page_size: 200 });
+          const items = (res && (res.containers_info || res.containers)) || [];
+          const names = items.map(c => String(c.container_name || c.name || '').toLowerCase()).filter(Boolean);
+          if (!cancelled) {
+            setMachineContainerNamesMap(prev => ({ ...prev, [mid]: names }));
+          }
+        } catch (e) {
+          if (!cancelled) {
+            setMachineContainerNamesMap(prev => ({ ...prev, [mid]: [] }));
+          }
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [searchContainerName, baseFilteredMachineData, machineContainerNamesMap]);
+
+  // 最终过滤（含容器名）
+  const filteredMachineData = baseFilteredMachineData.filter(machine => {
+    const keyword = (searchContainerName || '').trim().toLowerCase();
+    if (!keyword) return true;
+    const names = machineContainerNamesMap[String(machine.key)] || [];
+    return names.some(n => n.includes(keyword));
+  });
+
   // 机器状态标签
   const renderStatusTag = (status) => {
     const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
@@ -294,13 +337,20 @@ const ManageMachine = () => {
     return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '无限崩溃' : status}</Tag>;
   };
 
-  // 切换展开状态
+  // 切换展开状态并关联选中态
   const toggleExpand = (machineId) => {
     setExpandedRowKeys(prev => {
-      if (prev.includes(machineId)) {
-        return prev.filter(key => key !== machineId);
+      const mid = machineId;
+      const exists = prev.includes(mid);
+      if (exists) {
+        // collapse: remove from expanded list
+        // if collapsing the selected row, clear selection
+        setSelectedRowKey(prevSel => (String(prevSel) === String(mid) ? null : prevSel));
+        return prev.filter(key => key !== mid);
       } else {
-        return [...prev, machineId];
+        // expand: add and mark as selected
+        setSelectedRowKey(String(mid));
+        return [...prev, mid];
       }
     });
   };
@@ -922,7 +972,7 @@ const ManageMachine = () => {
       const containers = entry.data || [];
 
       return (
-        <div className="mm-expand-container">
+        <div className={`mm-expand-container ${String(record.key) === String(selectedRowKey) ? 'mm-expanded-selected' : ''}`}>
           <Row gutter={[16, 16]} className="mm-row-bottom">
             <Col flex="auto">
               <Input
@@ -944,9 +994,9 @@ const ManageMachine = () => {
             </Button>
             <Button size="small" icon={<ReloadOutlined />} onClick={() => fetchContainersForMachine(record.key)} className="mm-btn-ml" />
           </Typography.Title>
-          <Table
+          <TableComponent
             dataSource={containers}
-            rowKey="key" // 选择性展示翻页按钮 节省空间
+            rowKey="key"
             pagination={containers.length > 5 ? { pageSize: entry.page_size || 5 } : false}
             bordered
             size="middle"
@@ -986,7 +1036,7 @@ const ManageMachine = () => {
                 );
               }}
             />
-          </Table>
+          </TableComponent>
           {/* 内侧列表的分页 */}
           {(() => {
             const mid = String(record.key);
@@ -1015,116 +1065,112 @@ const ManageMachine = () => {
 
   return (
     <>
-      <Splitter layout="vertical" className="mm-splitter">
+      <div className="mm-root">
         {/* 1. 搜索区域 */}
-        <Splitter.Panel min="10%" max="10%" className="mm-splitter-panel">
-          <Flex justify="center" align="center" className="mm-flex-fullheight">
-            <Space direction="horizontal" size="middle">
-              <Row gutter={[16, 0]} align="middle">
-                <Col>
-                  <Typography.Text type="secondary">机器名：</Typography.Text>
-                    <Input 
-                    placeholder="输入机器名" 
-                    value={searchName} 
-                    onChange={e => setSearchName(e.target.value)} 
-                    allowClear 
-                    className="mm-input-120"
-                  />
-                </Col>
-                <Col>
-                  <Typography.Text type="secondary">IP：</Typography.Text>
-                  <Input 
-                    placeholder="输入IP" 
-                    value={searchIP} 
-                    onChange={e => setSearchIP(e.target.value)} 
-                    allowClear 
-                    className="mm-input-120"
-                  />
-                </Col>
-                <Col>
-                  <Typography.Text type="secondary">类型：</Typography.Text>
-                  <Input 
-                    placeholder="输入类型" 
-                    value={searchType} 
-                    onChange={e => setSearchType(e.target.value)} 
-                    allowClear 
-                    className="mm-input-120"
-                  />
-                </Col>
-                <Col>
-                  <Button type="primary" icon={<SearchOutlined />}>
-                    搜索
-                  </Button>
-                </Col>
-                <Col>
-                  <Button type="default" icon={<PlusOutlined />} onClick={openAddHostModal}>
-                    添加宿主机
-                  </Button>
-                </Col>
-              </Row>
-            </Space>
-          </Flex>
-        </Splitter.Panel>
+        <div className="mm-search-bar">
+          <Row gutter={[16, 0]} align="middle">
+            <Col>
+              <Typography.Text type="secondary">机器名：</Typography.Text>
+              <Input
+                placeholder="输入机器名"
+                value={searchName}
+                onChange={e => setSearchName(e.target.value)}
+                allowClear
+                className="mm-input-120"
+              />
+            </Col>
+            <Col>
+              <Typography.Text type="secondary">IP：</Typography.Text>
+              <Input
+                placeholder="输入IP"
+                value={searchIP}
+                onChange={e => setSearchIP(e.target.value)}
+                allowClear
+                className="mm-input-120"
+              />
+            </Col>
+            <Col>
+              <Typography.Text type="secondary">容器名：</Typography.Text>
+              <Input
+                placeholder="输入容器名"
+                value={searchContainerName}
+                onChange={e => setSearchContainerName(e.target.value)}
+                allowClear
+                className="mm-input-120"
+              />
+            </Col>
+            <Col>
+              <Button type="primary" icon={<SearchOutlined />}>
+                搜索
+              </Button>
+            </Col>
+            <Col>
+              <Button type="default" icon={<PlusOutlined />} onClick={openAddHostModal}>
+                添加宿主机
+              </Button>
+            </Col>
+          </Row>
+        </div>
 
         {/* 2. 下方区域：机器表格 */}
-        <Splitter.Panel>
-          <div className="mm-table-padding">
-            <Table 
-              dataSource={filteredMachineData} 
-              rowKey="key" 
-              pagination={{ pageSize: 5 }}
-              loading={machinesLoading}
-              bordered
-              scroll={{ x: true }}
-              expandable={expandable}
-            >
-              <Column title="机器ID" dataIndex="key" key="key" />
-              <Column title="机器名" dataIndex="machine_name" key="machine_name" />
-              <Column title="机器IP" dataIndex="machine_ip" key="machine_ip" />
-              <Column title="机器类型" dataIndex="machine_type" key="machine_type" />
-              <Column 
-                title="机器状态" 
-                dataIndex="machine_status" 
-                key="machine_status" 
-                render={renderStatusTag} 
-              />
-              <Column title="CPU核心数" dataIndex="cpu_core_number" key="cpu_core_number" />
-              <Column title="内存(GB)" dataIndex="memory_size_gb" key="memory_size_gb" />
-              <Column title="GPU数量" dataIndex="gpu_number" key="gpu_number" />
-              <Column title="GPU型号" dataIndex="gpu_type" key="gpu_type" />
-              <Column title="磁盘(GB)" dataIndex="disk_size_gb" key="disk_size_gb" />
-              <Column 
-                title="机器描述" 
-                dataIndex="machine_description" 
-                key="machine_description" 
-                ellipsis
-              />
-              <Column
-                title="操作"
-                key="action"
-                render={(_, record) => {
-                  const isExpanded = expandedRowKeys.includes(record.key);
-                  return (
-                    <Space size="small">
-                      <Button
-                        type="text"
-                        icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
-                        onClick={() => toggleExpand(record.key)}
-                        className="mm-btn-text-blue"
-                      >
-                        {isExpanded ? '收起容器' : '查看容器'}
-                      </Button>
-                              <Button onClick={() => openEditMachine(record)}><a>编辑</a></Button>
-                                    <Button onClick={() => openDeleteConfirm(record)}><a className="mm-link-danger">删除</a></Button>
-                                  <Button><a className="mm-link-warning">重启</a></Button>
-                    </Space>
-                  );
-                }}
-              />
-            </Table>
-          </div>
-        </Splitter.Panel>
-      </Splitter>
+        <div className="mm-table-padding">
+          <TableComponent
+            dataSource={filteredMachineData}
+            rowKey="key"
+            pagination={{ pageSize: 5 }}
+            loading={machinesLoading}
+            bordered
+            scroll={{ x: true }}
+            rowClassName={(record) => String(record.key) === String(selectedRowKey) ? 'mm-selected-row' : ''}
+            onRow={(record) => ({ onClick: () => setSelectedRowKey(record.key) })}
+            expandable={expandable}
+          >
+            <Column title="机器ID" dataIndex="key" key="key" />
+            <Column title="机器名" dataIndex="machine_name" key="machine_name" />
+            <Column title="机器IP" dataIndex="machine_ip" key="machine_ip" />
+            <Column title="机器类型" dataIndex="machine_type" key="machine_type" />
+            <Column
+              title="机器状态"
+              dataIndex="machine_status"
+              key="machine_status"
+              render={renderStatusTag}
+            />
+            <Column title="CPU核心数" dataIndex="cpu_core_number" key="cpu_core_number" />
+            <Column title="内存(GB)" dataIndex="memory_size_gb" key="memory_size_gb" />
+            <Column title="GPU数量" dataIndex="gpu_number" key="gpu_number" />
+            <Column title="GPU型号" dataIndex="gpu_type" key="gpu_type" />
+            <Column title="磁盘(GB)" dataIndex="disk_size_gb" key="disk_size_gb" />
+            <Column
+              title="机器描述"
+              dataIndex="machine_description"
+              key="machine_description"
+              ellipsis
+            />
+            <Column
+              title="操作"
+              key="action"
+              render={(_, record) => {
+                const isExpanded = expandedRowKeys.includes(record.key);
+                return (
+                  <Space size="small">
+                    <Button
+                      type="text"
+                      icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
+                      onClick={() => toggleExpand(record.key)}
+                      className="mm-btn-text-blue"
+                    >
+                      {isExpanded ? '收起容器' : '查看容器'}
+                    </Button>
+                    <Button onClick={() => openEditMachine(record)}><a>编辑</a></Button>
+                    <Button onClick={() => openDeleteConfirm(record)}><a className="mm-link-danger">删除</a></Button>
+                    <Button><a className="mm-link-warning">重启</a></Button>
+                  </Space>
+                );
+              }}
+            />
+          </TableComponent>
+        </div>
+      </div>
 
       {/* 添加宿主机 确认弹窗（包含表单） */}
       <ConfirmModal

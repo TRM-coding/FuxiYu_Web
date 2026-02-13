@@ -74,3 +74,37 @@
 .home-stat-number.home-green { color: #52c41a !important; }
 .home-stat-number.home-warning { color: #faad14 !important; }
 .home-stat-number.home-red { color: #ff4d4f !important; }
+
+@media (max-width: 768px) {
+  .home-hero {
+    position: sticky;
+    top: 56px;
+    z-index: 10;
+    padding: 10px;
+    border-bottom: 1px solid #f0f0f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    background: #fff;
+  }
+  .home-row-bottom {
+    margin-bottom: 10px;
+    width: 100%;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  .home-stat-card {
+    padding: 12px 8px;
+    border-radius: 6px;
+  }
+  .home-stat-label {
+    font-size: 12px;
+  }
+  .home-stat-number {
+    margin-top: 6px;
+    font-size: 22px !important;
+    line-height: 1.1;
+  }
+  .home-table-wrapper,
+  .home-table {
+    padding: 10px;
+  }
+}

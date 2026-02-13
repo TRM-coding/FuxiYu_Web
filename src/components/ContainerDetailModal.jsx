@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Button, Typography, Row, Col, Space, Tag, Avatar } from 'antd';
 import { SettingOutlined, GlobalOutlined, ClockCircleOutlined, TeamOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import './ContainerDetailModal.css';
 
 const ROLE = {
   ADMIN: 'ADMIN',
@@ -32,8 +33,28 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
   // 使用 user_id 精确判断当前用户是否为 ROOT（避免 username 修改导致匹配失败）
   const isRoot = forceSystemAdmin || (container.accounts || []).some(acc => acc.role === ROLE.ROOT && String(acc.user_id) === String(currentUserId));
 
+  const statusColor = container.container_status === 'online'
+    ? 'green'
+    : container.container_status === 'offline'
+      ? 'volcano'
+      : container.container_status === 'creating'
+        ? 'blue'
+        : container.container_status === 'starting'
+          ? 'cyan'
+          : 'orange';
+
+  const statusText = container.container_status === 'online'
+    ? '运行中'
+    : container.container_status === 'offline'
+      ? '已停止'
+      : container.container_status === 'creating'
+        ? '创建中'
+        : container.container_status === 'starting'
+          ? '启动中'
+          : '停止中';
+
   return (
-    <Modal title="容器详细信息" open={visible} onCancel={onClose} width={750} footer={[
+    <Modal title="容器详细信息" open={visible} onCancel={onClose} width="min(750px, calc(100vw - 24px))" className="cdm-modal" footer={[
       <Button key="close" onClick={onClose}>关闭</Button>,
       isRoot ? (
         <Button key="deleteContainer" danger icon={<DeleteOutlined />} onClick={() => onDelete && onDelete(container)}>删除容器</Button>
@@ -44,53 +65,51 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
         <Button key="edit" type="primary" icon={<EditOutlined />} disabled={container.container_status !== 'online'} onClick={() => { onEdit && onEdit(container); }}>编辑用户</Button>
       ) : null
     ]}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid #f0f0f0' }}>
-          <Typography.Title level={4} style={{ margin: 0 }}>{container.container_name}</Typography.Title>
+      <div className="cdm-body">
+        <div className="cdm-header">
+          <Typography.Title level={4} className="cdm-title">{container.container_name}</Typography.Title>
           <Typography.Text type="secondary">容器ID: {container.key}</Typography.Text>
         </div>
 
-        <div style={{ background: '#fafafa', padding: 20, borderRadius: 8, marginBottom: 24, border: '1px solid #f0f0f0' }}>
+        <div className="cdm-summary-card">
           <Row gutter={[24, 16]}>
-            <Col span={6}>
+            <Col xs={12} sm={12} md={6}>
               <Space align="start">
-                <SettingOutlined style={{ fontSize: 20, color: '#1890ff' }} />
+                <SettingOutlined className="cdm-icon" />
                 <div>
-                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>容器状态</Typography.Text>
-                  <Tag color={container.container_status === 'online' ? 'green' : container.container_status === 'offline' ? 'volcano' : container.container_status === 'creating' ? 'blue' : container.container_status === 'starting' ? 'cyan' : 'orange'}>
-                    {container.container_status === 'online' ? '运行中' : container.container_status === 'offline' ? '已停止' : container.container_status === 'creating' ? '创建中' : container.container_status === 'starting' ? '启动中' : '停止中'}
+                  <Typography.Text strong className="cdm-item-label">容器状态</Typography.Text>
+                  <Tag color={statusColor}>
+                    {statusText}
                   </Tag>
-                
-                
                 </div>
               </Space>
             </Col>
 
-            <Col span={6}>
+            <Col xs={12} sm={12} md={6}>
               <Space align="start">
-                <GlobalOutlined style={{ fontSize: 20, color: '#1890ff' }} />
+                <GlobalOutlined className="cdm-icon" />
                 <div>
-                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>所属机器ID</Typography.Text>
-                  <Typography.Text style={{ fontSize: '16px' }}>{container.machine_id || container.machine_ip}</Typography.Text>
+                  <Typography.Text strong className="cdm-item-label">所属机器ID</Typography.Text>
+                  <Typography.Text className="cdm-machine-text">{container.machine_id || container.machine_ip}</Typography.Text>
                 </div>
               </Space>
             </Col>
 
-            <Col span={6}>
+            <Col xs={12} sm={12} md={6}>
               <Space align="start">
-                <ClockCircleOutlined style={{ fontSize: 20, color: '#1890ff' }} />
+                <ClockCircleOutlined className="cdm-icon" />
                 <div>
-                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>镜像</Typography.Text>
-                  <Typography.Text style={{ fontSize: '14px' }} ellipsis={{ tooltip: container.container_image }}>{container.container_image}</Typography.Text>
+                  <Typography.Text strong className="cdm-item-label">镜像</Typography.Text>
+                  <Typography.Text className="cdm-image-text" ellipsis={{ tooltip: container.container_image }}>{container.container_image}</Typography.Text>
                 </div>
               </Space>
             </Col>
 
-            <Col span={6}>
+            <Col xs={12} sm={12} md={6}>
               <Space align="start">
-                <SettingOutlined style={{ fontSize: 20, color: '#1890ff' }} />
+                <SettingOutlined className="cdm-icon" />
                 <div>
-                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>端口映射</Typography.Text>
+                  <Typography.Text strong className="cdm-item-label">端口映射</Typography.Text>
                   <Tag color="purple">{container.port}</Tag>
                 </div>
               </Space>
@@ -98,30 +117,30 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
           </Row>
         </div>
 
-        <div style={{ marginBottom: 24 }}>
-          <Typography.Title level={5} style={{ marginBottom: 16 }}><TeamOutlined style={{ marginRight: 8 }} /> 用户权限 ({container.accounts?.length || 0}人)</Typography.Title>
+        <div className="cdm-roles-wrap">
+          <Typography.Title level={5} className="cdm-roles-title"><TeamOutlined className="cdm-roles-icon" /> 用户权限 ({container.accounts?.length || 0}人)</Typography.Title>
 
           {Object.entries(accountsByRole || {}).map(([role, accounts]) => (
-            <div key={role} style={{ marginBottom: 20 }}>
-              <div style={{ background: '#f6f8fa', padding: '12px 16px', borderRadius: '6px 6px 0 0', border: '1px solid #e1e4e8' }}>
+            <div key={role} className="cdm-role-group">
+              <div className="cdm-role-header">
                 <Space>
                   <Typography.Text strong>{formatRole(role)}</Typography.Text>
-                  <Tag color={getRoleColor(role)} style={{ marginLeft: 8 }}>{accounts.length}人</Tag>
+                  <Tag color={getRoleColor(role)} className="cdm-role-count">{accounts.length}人</Tag>
                 </Space>
-                <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: '12px' }}>{ROLE_CONFIG[role]?.description}</Typography.Text>
+                <Typography.Text type="secondary" className="cdm-role-desc">{ROLE_CONFIG[role]?.description}</Typography.Text>
               </div>
 
-              <div style={{ border: '1px solid #e1e4e8', borderTop: 'none', borderRadius: '0 0 6px 6px', padding: '16px' }}>
+              <div className="cdm-role-body">
                 <Row gutter={[16, 16]}>
                   {accounts.map((account, index) => (
-                    <Col span={12} key={index}>
-                      <Space align="center" style={{ width: '100%' }}>
+                    <Col xs={24} sm={24} md={12} key={index}>
+                      <Space align="center" className="cdm-account-item">
                         <Avatar src={getAvatarUrl(account.username)} size="large" />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div className="cdm-account-meta">
+                          <div className="cdm-account-row">
                             <Typography.Text strong>{account.ownerName}</Typography.Text>
                           </div>
-                          <Typography.Text type="secondary" style={{ display: 'block' }}>@{account.username}</Typography.Text>
+                          <Typography.Text type="secondary" className="cdm-account-username">@{account.username}</Typography.Text>
                         </div>
                       </Space>
                     </Col>

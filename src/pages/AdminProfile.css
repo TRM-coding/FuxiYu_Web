@@ -13,3 +13,30 @@
 .ap-info {
   margin-left: 20px;
 }
+
+@media (max-width: 768px) {
+  .ap-wrap {
+    padding: 8px;
+  }
+  .ap-card .ant-card-head,
+  .ap-card .ant-card-body {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .ap-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .ap-avatar {
+    width: 64px !important;
+    height: 64px !important;
+    line-height: 64px !important;
+  }
+  .ap-info {
+    margin-left: 0;
+  }
+  .ap-info .ant-typography {
+    margin-bottom: 0 !important;
+  }
+}

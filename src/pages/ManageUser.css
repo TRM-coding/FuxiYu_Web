@@ -1,0 +1,108 @@
+.manage-user-root{display:flex;flex-direction:column;gap:16px}
+.manage-user-search-bar{padding:16px;background:#fff;border-bottom:1px solid #f0f0f0;box-shadow:0 2px 8px rgba(0,0,0,0.06);position:sticky;top:64px;z-index:10}
+.manage-user-input-120{width:120px}
+.manage-user-input-150{width:150px}
+.manage-user-input-200{width:200px}
+.manage-user-edit-row{background:transparent}
+.manage-user-row{width:100%}
+.manage-user-form-item{margin-bottom:0}
+.manage-user-edit-card{background:#fff;padding:12px 16px;border-radius:4px;border:1px solid #f0f0f0;margin-bottom:16px}
+.manage-user-expanded{margin:16px 0;padding:16px;background:#fafafa;border-radius:4px}
+.manage-user-section-title{margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #f0f0f0}
+.manage-user-section-title-text{font-size:14px}
+.manage-user-card-title{display:flex;align-items:center;gap:8px}
+.manage-user-table-wrap{padding:16px}
+.manage-user-text-gap{margin-left:8px}
+.manage-user-modal-save{background:#fafafa;padding:16px;border-radius:4px;border:1px solid #f0f0f0}
+.manage-user-modal-delete{background:#fff2f0;padding:16px;border-radius:4px;border:1px solid #ffccc7}
+.manage-user-modal-reset{background:#fffbe6;padding:16px;border-radius:4px;border:1px solid #ffe58f}
+.manage-user-modal-remove{background:#fff2f0;padding:16px;border-radius:4px;border:1px solid #ffccc7}
+.manage-user-danger-text{display:block;margin-top:16px}
+.manage-user-action-edit{color:#1890ff}
+.manage-user-action-delete{color:#ff4d4f}
+.manage-user-action-reset{color:#faad14}
+.manage-user-action-edit{color:#1890ff !important}
+.manage-user-action-edit span, .manage-user-action-edit > span, .manage-user-action-edit .anticon {color:inherit !important}
+.manage-user-action-delete{color:#ff4d4f !important}
+.manage-user-action-delete a, .manage-user-action-delete > a {color:inherit !important}
+.manage-user-action-reset{color:#faad14 !important}
+.manage-user-action-reset a, .manage-user-action-reset > a {color:inherit !important}
+.manage-user-danger-text{display:block;margin-top:16px}
+/* Ensure danger text is visible */
+.manage-user-danger-text{color:#ff4d4f}
+
+/* Modal specific typography colors */
+.manage-user-modal-reset .ant-typography,
+.manage-user-modal-reset { color: #d48806 }
+.manage-user-modal-delete .ant-typography,
+.manage-user-modal-delete { color: #cf1322 }
+.manage-user-label-changed{font-weight:700;font-style:italic}
+.manage-user-stats{font-size:13px}
+.manage-user-stats-key{color:#8c8c8c}
+.manage-user-stats-value-blue{color:#1890ff;font-weight:500;margin-right:8px}
+.manage-user-stats-value-green{color:#52c41a;font-weight:500;margin-right:8px}
+.manage-user-stats-value-yellow{color:#faad14;font-weight:500}
+.manage-user-stats-sep{color:#8c8c8c;margin:0 8px}
+
+/* Selected row and expanded panel highlighting */
+.manage-user-selected-row > td {
+	box-shadow: inset 0 0 0 2px rgba(24,144,255,0.12);
+	border-radius: 6px;
+}
+.manage-user-selected-row > td:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+.manage-user-selected-row > td:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+
+.manage-user-expanded-selected {
+	box-shadow: 0 0 0 2px rgba(24,144,255,0.12);
+	border-radius: 6px;
+	margin-top: 8px;
+	padding: 16px;
+}
+
+/* When switching selection, make transition smooth */
+.manage-user-selected-row > td,
+.manage-user-expanded-selected {
+	transition: box-shadow 160ms ease, border-color 160ms ease;
+}
+
+@media (max-width: 768px) {
+	.manage-user-search-bar {
+		top: 56px;
+		padding: 12px;
+	}
+	.manage-user-search-bar .ant-space,
+	.manage-user-search-bar .ant-space-item {
+		width: 100%;
+	}
+	.manage-user-search-bar .ant-row {
+		width: 100%;
+		margin: 0 !important;
+		row-gap: 10px;
+	}
+	.manage-user-search-bar .ant-col {
+		flex: 0 0 100%;
+		max-width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.manage-user-search-bar .ant-col .ant-typography {
+		width: 66px;
+		margin: 0;
+		flex: 0 0 66px;
+	}
+	.manage-user-search-bar .ant-col .ant-input,
+	.manage-user-search-bar .ant-col .ant-input-affix-wrapper {
+		flex: 1;
+		min-width: 0;
+	}
+	.manage-user-search-bar .ant-col .ant-btn {
+		width: 100%;
+	}
+	.manage-user-input-120 {
+		width: 100%;
+	}
+	.manage-user-table-wrap {
+		padding: 10px;
+	}
+}

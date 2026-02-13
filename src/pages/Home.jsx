@@ -4,6 +4,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Table, Tag, message } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
+import TableComponent from '../components/TableComponent';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
@@ -564,25 +565,25 @@ const Home = () => {
       <div className="home-root">
         <div className="home-hero">
           <Row gutter={16} className="home-row-bottom">
-            <Col xs={24} sm={12} md={6}>
+            <Col xs={12} sm={12} md={6}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">总容器数</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-blue">{containers.length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={24} sm={12} md={6}>
+            <Col xs={12} sm={12} md={6}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">运行中</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-green">{containers.filter(c => c.container_status === 'online').length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={24} sm={12} md={6}>
+            <Col xs={12} sm={12} md={6}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">异常</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-warning">{containers.filter(c => c.container_status === 'failed').length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={24} sm={12} md={6}>
+            <Col xs={12} sm={12} md={6}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">离线</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-red">{containers.filter(c => c.container_status === 'offline').length}</Typography.Title>
@@ -591,7 +592,7 @@ const Home = () => {
           </Row>
         </div>
         <div className="home-table-wrapper">
-          <Table dataSource={containers} loading={loadingContainers} className="home-table">
+          <TableComponent dataSource={containers} loading={loadingContainers} className="home-table">
             <Column title="容器名称" dataIndex="container_name" key="container_name" render={(text, record) => <a onClick={() => openContainerDetail(record)}>{text}</a>} />
             <Column title="容器ID" dataIndex="key" key="key" />
             <Column title="机器ID" dataIndex="machine_id" key="machine_id" />
@@ -669,7 +670,7 @@ const Home = () => {
                 );
               }}
             />
-          </Table>
+          </TableComponent>
 
           <ContainerDetailModal
             visible={detailVisible}

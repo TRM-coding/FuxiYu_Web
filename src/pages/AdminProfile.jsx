@@ -66,7 +66,8 @@ const AdminProfile = () => {
       <Card
         title="管理员信息"
         bordered={false}
-        extra={<Button onClick={() => navigate('/index')}>返回首页</Button>}
+        className="ap-card"
+        extra={<Button onClick={() => navigate('/index')}>退出管理员页面</Button>}
       >
         <div className="ap-header">
           <Avatar size={80} icon={<UserOutlined />} className="ap-avatar" />
@@ -75,7 +76,7 @@ const AdminProfile = () => {
             <Typography.Text type="secondary">用户编码：{userInfo?.user_id || userInfo?.id || ''}</Typography.Text>
           </div>
         </div>
-        <Descriptions column={2} bordered>
+        <Descriptions column={{ xs: 1, sm: 1, md: 2 }} bordered>
           <Descriptions.Item label="邮箱">{userInfo?.email || '未知'}</Descriptions.Item>
           <Descriptions.Item label="毕业年份">{userInfo?.graduation_year || '未知'}</Descriptions.Item>
           <Descriptions.Item label="拥有容器">{userInfo?.amount_of_container || ''}</Descriptions.Item>

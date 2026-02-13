@@ -1,22 +1,18 @@
 /* 整个导航栏容器 */
 .navbar {
-  text-align: center;            /* 让内部 inline-block 居中 */
-  background-color: #f0f0f0;     /* 背景色 */
-  padding: 10px 20px;            /* 内边距 */
-  background: transparent;   /* 去掉背景色 */
-  padding: 0;                /* 去掉内边距 */
-  position: fixed;               /* 固定定位 */
-  top: 0;                        /* 距离顶部 0 */
-  left: 0;                       /* 距离左侧 0 */
-  right: 0;                      /* 距离右侧 0 */
-  z-index: 1000;                 /* 高层级，确保在内容之上 */
-  width: 100%;                   /* 占满整个宽度 */
-  /*box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);  /* 阴影效果 */
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  background: transparent;
+  padding: 0;
+  position: static;
+  width: auto;
 }
 
 /* 让 antd 的菜单整体居中 */
 .navbar .ant-menu {
-  display: inline-block;         /* 让菜单在父元素中可被 text-align 控制 */
+  display: flex;
+  justify-content: center;
   border-bottom: none;           /* 去掉默认下边框 */
 }
 
@@ -54,4 +50,28 @@
 
 .navbarAdmin .ant-menu-item {
   font-size: 16px;               /* 字号 */
+}
+
+/* Avatar (user/admin) */
+.navbar-avatar {
+  cursor: pointer;
+  z-index: 1001;
+  margin-left: 12px;
+  margin-right: 0;
+}
+
+@media (max-width: 768px) {
+  .navbar .ant-menu-item,
+  .navbarAdmin .ant-menu-item {
+    font-size: 14px;
+    padding: 0 8px;
+  }
+
+  .navbar-avatar {
+    margin-left: 8px;
+  }
+
+  .navbar-avatar .ant-typography {
+    display: none;
+  }
 }

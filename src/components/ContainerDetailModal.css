@@ -1,0 +1,129 @@
+.cdm-modal .ant-modal-body {
+  padding-top: 16px;
+}
+
+.cdm-body {
+  margin-bottom: 24px;
+}
+
+.cdm-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.cdm-title {
+  margin: 0 !important;
+}
+
+.cdm-summary-card {
+  background: #fafafa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  border: 1px solid #f0f0f0;
+}
+
+.cdm-icon {
+  font-size: 20px;
+  color: #1890ff;
+}
+
+.cdm-item-label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.cdm-machine-text {
+  font-size: 16px;
+}
+
+.cdm-image-text {
+  font-size: 14px;
+}
+
+.cdm-roles-wrap {
+  margin-bottom: 24px;
+}
+
+.cdm-roles-title {
+  margin-bottom: 16px !important;
+}
+
+.cdm-roles-icon {
+  margin-right: 8px;
+}
+
+.cdm-role-group {
+  margin-bottom: 20px;
+}
+
+.cdm-role-header {
+  background: #f6f8fa;
+  padding: 12px 16px;
+  border-radius: 6px 6px 0 0;
+  border: 1px solid #e1e4e8;
+}
+
+.cdm-role-count {
+  margin-left: 8px;
+}
+
+.cdm-role-desc {
+  margin-left: 8px;
+  font-size: 12px;
+}
+
+.cdm-role-body {
+  border: 1px solid #e1e4e8;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 16px;
+}
+
+.cdm-account-item {
+  width: 100%;
+}
+
+.cdm-account-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.cdm-account-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cdm-account-username {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .cdm-summary-card {
+    padding: 12px;
+  }
+
+  .cdm-role-header,
+  .cdm-role-body {
+    padding: 10px;
+  }
+
+  .cdm-role-desc {
+    display: block;
+    margin-left: 0;
+    margin-top: 6px;
+  }
+
+  .cdm-modal .ant-modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .cdm-modal .ant-modal-footer .ant-btn {
+    margin: 0 !important;
+  }
+}

@@ -131,7 +131,7 @@ const User = () => {
       className="user-root-row"
     >
       {/* 增加span数值，让列更宽 */}
-      <Col span={14} offset={0}>
+      <Col xs={24} sm={22} md={18} lg={14} offset={0}>
         <Card
           title="用户信息"
           bordered
@@ -234,8 +234,8 @@ const User = () => {
                 )}
               </Space>
               {yearMsg ? (
-                <div style={{ marginTop: 8 }}>
-                  <Typography.Text style={{ color: '#14532d' }}>{yearMsg}</Typography.Text>
+                <div className="user-msg-wrapper">
+                  <Typography.Text className="user-msg-success">{yearMsg}</Typography.Text>
                 </div>
               ) : null}
             </Form.Item>

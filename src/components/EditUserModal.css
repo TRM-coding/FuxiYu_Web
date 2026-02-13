@@ -1,0 +1,82 @@
+.eum-body {
+  margin-bottom: 24px;
+}
+
+.eum-subtitle {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.eum-add-card {
+  background: #fafafa;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  border: 1px dashed #d9d9d9;
+}
+
+.eum-section-title {
+  margin-bottom: 16px !important;
+}
+
+.eum-full-width {
+  width: 100%;
+}
+
+.eum-role-select {
+  width: 120px;
+}
+
+.eum-list-item {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 12px 0;
+}
+
+.eum-tip-box {
+  margin-top: 24px;
+  padding: 16px;
+  background: #fff7e6;
+  border-radius: 6px;
+  border: 1px solid #ffd591;
+}
+
+.eum-tip-title {
+  display: block;
+  margin-bottom: 8px;
+  color: #fa8c16;
+}
+
+.eum-tip-list {
+  margin: 0;
+  padding-left: 16px;
+}
+
+@media (max-width: 768px) {
+  .eum-add-card,
+  .eum-tip-box {
+    padding: 12px;
+  }
+
+  .eum-role-select {
+    width: 100px;
+  }
+
+  .eum-modal .ant-modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .eum-modal .ant-modal-footer .ant-btn {
+    margin: 0 !important;
+  }
+
+  .eum-modal .ant-list-item {
+    align-items: flex-start;
+  }
+
+  .eum-modal .ant-list-item-action {
+    margin-left: 0;
+  }
+}

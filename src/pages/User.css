@@ -5,3 +5,40 @@
 .user-msg-wrapper { margin-top: 8px; }
 .user-msg-success { color: #14532d; }
 .user-msg-error { color: #a8071a; }
+
+@media (max-width: 768px) {
+	.user-root-row {
+		min-height: auto;
+		padding: 8px;
+		align-items: flex-start;
+	}
+	.user-card {
+		padding: 0;
+		border-radius: 8px;
+	}
+	.user-card .ant-card-head,
+	.user-card .ant-card-body {
+		padding-left: 12px;
+		padding-right: 12px;
+	}
+	.user-card .ant-card-head-title {
+		font-size: 16px;
+	}
+	.user-input-300 {
+		width: 100% !important;
+	}
+	.user-form-item .ant-space {
+		width: 100%;
+		display: flex;
+		flex-wrap: wrap;
+		row-gap: 8px;
+	}
+	.user-form-item .ant-space .ant-space-item:first-child {
+		flex: 1 1 100%;
+	}
+	.user-form-item .ant-input,
+	.user-form-item .ant-input-password,
+	.user-form-item .ant-input-number {
+		width: 100% !important;
+	}
+}
