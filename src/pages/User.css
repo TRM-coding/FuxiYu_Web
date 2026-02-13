@@ -1,0 +1,7 @@
+.user-root-row { min-height: calc(100vh - 100px); }
+.user-card { width: 100%; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.user-form-item { margin-bottom: 16px; }
+.user-input-300 { width: 300px; }
+.user-msg-wrapper { margin-top: 8px; }
+.user-msg-success { color: #14532d; }
+.user-msg-error { color: #a8071a; }

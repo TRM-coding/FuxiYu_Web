@@ -1,0 +1,15 @@
+/* AdminProfile page styles */
+.ap-wrap {
+  padding: 20px;
+}
+.ap-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.ap-avatar {
+  background-color: #1890ff !important;
+}
+.ap-info {
+  margin-left: 20px;
+}

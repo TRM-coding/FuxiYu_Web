@@ -1,0 +1,16 @@
+.login-form {
+	max-width: 600px;
+	width: 100%;
+}
+
+@media (max-width: 768px) {
+  .login-form { max-width: 100%; }
+}
+
+/* Align small form labels and spacing with post-login styles */
+.login-form .ant-form-item-label > label {
+	color: #222;
+}
+.login-form .ant-form-item {
+	margin-bottom: 12px;
+}

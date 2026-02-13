@@ -6,6 +6,7 @@ import { UserOutlined } from '@ant-design/icons'; // 管理员默认图标
 import showErrorModal from '../utils/showErrorModal';
 import { getUserDetailInformation } from '../api/user_api';
 import { handleAuthError } from '../utils/authHelpers';
+import './AdminProfile.css';
 
 const AdminProfile = () => {
   const navigate = useNavigate();
@@ -61,15 +62,15 @@ const AdminProfile = () => {
   }, [navigate]);
 
   return (
-    <div style={{ padding: '20px' }}>
+    <div className="ap-wrap">
       <Card
         title="管理员信息"
         bordered={false}
         extra={<Button onClick={() => navigate('/index')}>返回首页</Button>}
       >
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px' }}>
-          <Avatar size={80} icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />
-          <div style={{ marginLeft: '20px' }}>
+        <div className="ap-header">
+          <Avatar size={80} icon={<UserOutlined />} className="ap-avatar" />
+          <div className="ap-info">
             <Typography.Title level={3}>{userInfo?.username || userInfo?.display_name || userInfo?.name || '管理员'}</Typography.Title>
             <Typography.Text type="secondary">用户编码：{userInfo?.user_id || userInfo?.id || ''}</Typography.Text>
           </div>

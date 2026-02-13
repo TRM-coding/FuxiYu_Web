@@ -1,0 +1,65 @@
+
+/* ManageMachine page styles */
+.mm-expand-container {
+  margin: 16px 0;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 4px;
+}
+.mm-row-bottom {
+  margin-bottom: 16px;
+}
+.mm-typography-title {
+  margin: 0 0 16px 0 !important;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+.mm-btn-ml {
+  margin-left: 8px !important;
+}
+.mm-pagination-wrapper {
+  margin-top: 12px;
+  text-align: right;
+}
+.mm-splitter {
+  height: 100vh;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+.mm-splitter-panel {
+  padding: 10px;
+}
+.mm-flex-fullheight {
+  height: 100%;
+}
+.mm-input-120 {
+  width: 120px !important;
+}
+.mm-table-padding {
+  padding: 16px;
+}
+.mm-btn-text-blue {
+  color: #1890ff !important;
+}
+.mm-link-danger {
+  color: #ff4d4f !important;
+}
+.mm-link-warning {
+  color: #faad14 !important;
+}
+.mm-width-100 {
+  width: 100% !important;
+}
+.mm-danger-box {
+  background: #fff2f0;
+  padding: 16px;
+  border-radius: 4px;
+  border: 1px solid #ffccc7;
+}
+.mm-ml-8 {
+  margin-left: 8px;
+}
+.mm-danger-text {
+  display: block;
+  margin-top: 12px;
+}

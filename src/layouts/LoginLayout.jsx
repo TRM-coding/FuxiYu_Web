@@ -30,6 +30,9 @@ export default function LoginLayout() {
 
           {/* 表单区 */}
           <div className="login-box">
+            <div className="login-box-header">
+              <h2 className="login-title">{active === 'login' ? '登录' : '注册'}</h2>
+            </div>
             <Outlet />
           </div>
         </div>
@@ -37,9 +40,9 @@ export default function LoginLayout() {
 
       {/* 右半部分 LOGO 或空白 */}
       <div className="login-right">
-        {/* <div className="logo-placeholder">LOGO</div> */}
-        {/* <ModelViewer modelPath="/glb.glb" /> */}
-        <ModelViewer modelPath="/glb.glb" />
+        <div className="model-stage">
+          <ModelViewer modelPath="/glb.opt.glb" />
+        </div>
       </div>
     </div>
   )

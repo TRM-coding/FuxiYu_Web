@@ -14,10 +14,11 @@ import { listAllUserBrefInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 const { Column, ColumnGroup } = Table;
+import './Home.css';
 
 const Desc = props => (
-  <Flex justify="center" align="center" style={{ height: '100%' }}>
-    <Typography.Title type="secondary" level={5} style={{ whiteSpace: 'nowrap' }}>
+  <Flex justify="center" align="center" className="home-desc-flex">
+    <Typography.Title type="secondary" level={5} className="home-desc-title">
       {props.text}
     </Typography.Title>
   </Flex>
@@ -488,7 +489,7 @@ const Home = () => {
         title: '确认删除容器',
         message: `确定要删除容器 ${data?.record?.container_name} 吗？`,
         content: (
-          <div style={{ background: '#fff2f0', padding: 16, borderRadius: 4, border: '1px solid #ffccc7' }}>
+          <div className="home-modal-danger">
             <Typography.Text type="danger">此操作不可恢复！容器内所有数据将被永久删除。</Typography.Text>
           </div>
         ),
@@ -500,7 +501,7 @@ const Home = () => {
         title: '确认退出容器',
         message: `确定要退出容器 ${data?.record?.container_name} 吗？`,
         content: (
-          <div style={{ background: '#fffbe6', padding: 16, borderRadius: 4, border: '1px solid #ffe58f' }}>
+          <div className="home-modal-warning">
             <Typography.Text>退出后需要管理员重新邀请才能加入。</Typography.Text>
           </div>
         ),
@@ -512,7 +513,7 @@ const Home = () => {
         title: '确认移除用户',
         message: `确定要将 ${data?.username} 从容器中移除吗？`,
         content: (
-          <div style={{ background: '#fff2f0', padding: 16, borderRadius: 4, border: '1px solid #ffccc7' }}>
+          <div className="home-modal-danger">
             <Typography.Text>该用户将无法访问此容器。</Typography.Text>
           </div>
         ),
@@ -524,7 +525,7 @@ const Home = () => {
         title: '确认变更角色',
         message: `确定要变更 ${data?.username} 的角色吗？`,
         content: (
-          <div style={{ background: '#e6f7ff', padding: 16, borderRadius: 4, border: '1px solid #91d5ff' }}>
+          <div className="home-modal-info">
             <Typography.Text>角色变更将影响该用户的权限。</Typography.Text>
           </div>
         ),
@@ -560,37 +561,37 @@ const Home = () => {
         loading={modal.loading}
       />
       
-      <div style={{ minHeight: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
-        <div style={{ padding: '16px', background: '#fafafa' }}>
-          <Row gutter={16} style={{ marginBottom: 16 }}>
+      <div className="home-root">
+        <div className="home-hero">
+          <Row gutter={16} className="home-row-bottom">
             <Col xs={24} sm={12} md={6}>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>总容器数</Typography.Text>
-                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#1890ff' }}>{containers.length}</Typography.Title>
+              <div className="home-stat-card">
+                <Typography.Text type="secondary" className="home-stat-label">总容器数</Typography.Text>
+                <Typography.Title level={2} className="home-stat-number home-blue">{containers.length}</Typography.Title>
               </div>
             </Col>
             <Col xs={24} sm={12} md={6}>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>运行中</Typography.Text>
-                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#52c41a' }}>{containers.filter(c => c.container_status === 'online').length}</Typography.Title>
+              <div className="home-stat-card">
+                <Typography.Text type="secondary" className="home-stat-label">运行中</Typography.Text>
+                <Typography.Title level={2} className="home-stat-number home-green">{containers.filter(c => c.container_status === 'online').length}</Typography.Title>
               </div>
             </Col>
             <Col xs={24} sm={12} md={6}>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>异常</Typography.Text>
-                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#faad14' }}>{containers.filter(c => c.container_status === 'failed').length}</Typography.Title>
+              <div className="home-stat-card">
+                <Typography.Text type="secondary" className="home-stat-label">异常</Typography.Text>
+                <Typography.Title level={2} className="home-stat-number home-warning">{containers.filter(c => c.container_status === 'failed').length}</Typography.Title>
               </div>
             </Col>
             <Col xs={24} sm={12} md={6}>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>离线</Typography.Text>
-                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#ff4d4f' }}>{containers.filter(c => c.container_status === 'offline').length}</Typography.Title>
+              <div className="home-stat-card">
+                <Typography.Text type="secondary" className="home-stat-label">离线</Typography.Text>
+                <Typography.Title level={2} className="home-stat-number home-red">{containers.filter(c => c.container_status === 'offline').length}</Typography.Title>
               </div>
             </Col>
           </Row>
         </div>
-        <div style={{ padding: '16px' }}>
-          <Table dataSource={containers} loading={loadingContainers} style={{ padding: '16px' }}>
+        <div className="home-table-wrapper">
+          <Table dataSource={containers} loading={loadingContainers} className="home-table">
             <Column title="容器名称" dataIndex="container_name" key="container_name" render={(text, record) => <a onClick={() => openContainerDetail(record)}>{text}</a>} />
             <Column title="容器ID" dataIndex="key" key="key" />
             <Column title="机器ID" dataIndex="machine_id" key="machine_id" />
@@ -617,25 +618,25 @@ const Home = () => {
 
                 const ActionButtons = (
                   <Space size="small">
-                    <a
-                      onClick={() => { if (!startDisabled) handleStartContainer(record); }}
-                      style={{ padding: '0 6px', color: startDisabled ? '#bfbfbf' : undefined, cursor: startDisabled ? 'not-allowed' : 'pointer' }}
-                    >
-                      启动
-                    </a>
-                    <a
-                      onClick={() => { if (!restartDisabled) handleRestartContainer(record); }}
-                      style={{ padding: '0 6px', color: restartDisabled ? '#bfbfbf' : undefined, cursor: restartDisabled ? 'not-allowed' : 'pointer' }}
-                    >
-                      重启
-                    </a>
-                    <a
-                      onClick={() => { if (!stopDisabled) handleStopContainer(record); }}
-                      style={{ padding: '0 6px', color: stopDisabled ? '#bfbfbf' : 'rgba(255,0,0,0.85)', cursor: stopDisabled ? 'not-allowed' : 'pointer' }}
-                    >
-                      停止
-                    </a>
-                  </Space>
+                      <a
+                        onClick={() => { if (!startDisabled) handleStartContainer(record); }}
+                        className={startDisabled ? 'home-action-link home-action-disabled' : 'home-action-link'}
+                      >
+                        启动
+                      </a>
+                      <a
+                        onClick={() => { if (!restartDisabled) handleRestartContainer(record); }}
+                        className={restartDisabled ? 'home-action-link home-action-disabled' : 'home-action-link'}
+                      >
+                        重启
+                      </a>
+                      <a
+                        onClick={() => { if (!stopDisabled) handleStopContainer(record); }}
+                        className={stopDisabled ? 'home-action-link home-action-disabled' : 'home-action-link home-action-stop'}
+                      >
+                        停止
+                      </a>
+                    </Space>
                 );
 
                 // Show 查看详情 first, then role-specific links, then the action buttons

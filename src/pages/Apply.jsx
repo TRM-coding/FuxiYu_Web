@@ -5,6 +5,7 @@ import { Typography, Row, Col, Button, Input, Table, Tag, Radio, Space, Form, In
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 const { Column } = Table;
+import './Apply.css';
 
 const options = [
   { label: '任意', value: 'Any', className: 'label-1' },
@@ -180,22 +181,12 @@ const Apply = () => {
     });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div className="apply-page">
       {/* 顶部筛选区域，贴在导航栏下方 */}
-      <div
-        style={{
-          padding: '16px',
-          background: '#fff',
-          borderBottom: '1px solid #f0f0f0',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-          position: 'sticky',
-          top: 64,
-          zIndex: 10,
-        }}
-      >
+      <div className="apply-filter-bar">
         <Row gutter={[16, 16]} justify="center" align="middle">
-          <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>设备类型</Typography.Text>
+          <Col xs={24} sm={12} md={6} className="apply-filter-col-compact">
+            <Typography.Text type="secondary" className="apply-filter-label">设备类型</Typography.Text>
             <Radio.Group 
               options={options} 
               onChange={({ target: { value } }) => setValue3(value)} 
@@ -204,28 +195,28 @@ const Apply = () => {
             />
           </Col>
 
-          <Col xs={24} sm={12} md={6} style={{ minWidth: 200, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>IP地址</Typography.Text>
+          <Col xs={24} sm={12} md={6} className="apply-filter-col-wide">
+            <Typography.Text type="secondary" className="apply-filter-label">IP地址</Typography.Text>
             <Input 
               placeholder="xxx.xxx.xxx.xxx" 
               allowClear 
               value={searchIp}
               onChange={e => setSearchIp(e.target.value)}
-              style={{ width: '80%', minWidth: 160 }} 
+              className="apply-input-ip" 
             />
           </Col>
 
-          <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>机器ID</Typography.Text>
+          <Col xs={24} sm={12} md={6} className="apply-filter-col-compact">
+            <Typography.Text type="secondary" className="apply-filter-label">机器ID</Typography.Text>
             <Input 
               placeholder="机器ID" 
               value={searchId}
               onChange={e => setSearchId(e.target.value)}
-              style={{ width: '80%', minWidth: 80 }} 
+              className="apply-input-machine-id" 
             />
           </Col>
 
-          <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', justifyContent: 'center' }}>
+          <Col xs={24} sm={12} md={6} className="apply-filter-col-actions">
             <Button type="primary" icon={<SearchOutlined />} onClick={() => {}}>
               Search
             </Button>
@@ -234,7 +225,7 @@ const Apply = () => {
       </div>
 
       {/* 表格区域，随内容自然伸展 */}
-      <div style={{ padding: '16px' }}>
+      <div className="apply-table-wrapper">
         <Table
           dataSource={filteredData}
           loading={loading}
@@ -335,7 +326,7 @@ const Apply = () => {
                   {/* 此处直接用创建容器的方法 */}
                 </Space>
               ) : (
-                <span style={{ color: '#999' }}>不可用</span>
+                <span className="apply-unavailable">不可用</span>
               )
             )}
           />
@@ -347,7 +338,7 @@ const Apply = () => {
         message={detailError || ''}
         content={
           detailInfo ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="apply-detail-body">
               <div>
                 <b>IP:</b> {detailInfo.machine_ip}
               </div>
@@ -368,15 +359,15 @@ const Apply = () => {
               </div>
               <div>
                 <b>描述:</b>
-                <div style={{ whiteSpace: 'pre-wrap', marginTop: 6 }}>{detailInfo.machine_description}</div>
+                <div className="apply-prewrap">{detailInfo.machine_description}</div>
               </div>
               <div>
                 <b>容器:</b> {Array.isArray(detailInfo.containers) ? detailInfo.containers.join(', ') : ''}
               </div>
             </div>
-          ) : (
-            <div>{detailError || '加载中...'}</div>
-          )
+              ) : (
+                <div>{detailError || '加载中...'}</div>
+              )
         }
         onConfirm={() => setDetailVisible(false)}
         onCancel={() => setDetailVisible(false)}

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { registerUser } from '../api/user_api';
 import ConfirmModal from '../components/ConfirmModal';
 import showErrorModal from '../utils/showErrorModal';
+import './Register.css';
 const layout = {
   labelCol: { span: 8 },
   wrapperCol: { span: 16 },
@@ -67,28 +68,28 @@ const RegisterBlock = () => {
     {...layout}
     name="register"
     onFinish={onFinish}
-    style={{ maxWidth: 600 }}
+    className="register-form"
     validateMessages={validateMessages}
   >
-    <Form.Item name="username" label="Username" rules={[{ required: true, message: 'Please input your username!' }]}>
-      <Input maxLength={75} />
+    <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
+      <Input placeholder="请输入用户名（最多75字符）" maxLength={75} />
     </Form.Item>
 
-    <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: 'Please input a valid email!' }]}>
-      <Input maxLength={115} />
+    <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入有效邮箱' }]}>
+      <Input placeholder="请输入邮箱" maxLength={115} />
     </Form.Item>
 
-    <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Please input your password!' }]}>
-      <Input.Password />
+    <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
+      <Input.Password placeholder="请输入密码" />
     </Form.Item>
 
-    <Form.Item name="graduation_year" label="Graduation Year" rules={[{ type: 'number', min: 1900, max: 2100 }]}>
-      <InputNumber style={{ width: '100%' }} />
+    <Form.Item name="graduation_year" label="毕业年份" rules={[{ type: 'number', min: 1900, max: 2100 }]}>
+      <InputNumber className="register-input-full" placeholder="如：2024" />
     </Form.Item>
 
     <Form.Item label={null}>
       <Button type="primary" htmlType="submit">
-        Submit
+        注册
       </Button>
     </Form.Item>
   </Form>

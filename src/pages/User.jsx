@@ -5,6 +5,7 @@ import { Card, Form, Input, DatePicker, Button, Row, Col, Space, message, InputN
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { getUserDetailInformation, updateUser, changePasswordUser } from '../api/user_api';
+import './User.css';
 
 const User = () => {
   const navigate = useNavigate();
@@ -127,7 +128,7 @@ const User = () => {
     <Row 
       justify="center" 
       align="middle"  
-      style={{ minHeight: 'calc(100vh - 100px)' }} 
+      className="user-root-row"
     >
       {/* 增加span数值，让列更宽 */}
       <Col span={14} offset={0}>
@@ -135,14 +136,14 @@ const User = () => {
           title="用户信息"
           bordered
           extra={isOperator ? <Button type="primary" onClick={() => navigate('/admin')}>管理后台</Button> : null}
-          style={{ width: '100%', padding: '24px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)' }}
+          className="user-card"
         >
           <Form form={form} layout="vertical" initialValues={{}}>
             {/* 用户名 + 修改按钮 */}
-            <Form.Item label="用户名" name="username" style={{ marginBottom: 16 }}>
+            <Form.Item label="用户名" name="username" className="user-form-item">
               <Space>
                 {/* 放大输入框宽度 - controlled to preserve auto-fill */}
-                <Input placeholder="请输入用户名" style={{ width: '300px' }} maxLength={75} value={username} onChange={e => setUsername(e.target.value)} />
+                <Input placeholder="请输入用户名" className="user-input-300" maxLength={75} value={username} onChange={e => setUsername(e.target.value)} />
                 {String(username) === String(originalInfo.username) ? (
                   <Button type="text" disabled>无变化</Button>
                 ) : (
@@ -161,32 +162,32 @@ const User = () => {
                 )}
               </Space>
               {usernameMsg ? (
-                <div style={{ marginTop: 8 }}>
-                  <Typography.Text style={{ color: '#14532d' }}>{usernameMsg}</Typography.Text>
+                <div className="user-msg-wrapper">
+                  <Typography.Text className="user-msg-success">{usernameMsg}</Typography.Text>
                 </div>
               ) : null}
             </Form.Item>
 
             {/* 当前密码（留空） + 新密码 */}
-            <Form.Item label="当前密码" name="current_password" style={{ marginBottom: 16 }}>
+            <Form.Item label="当前密码" name="current_password" className="user-form-item">
               <Space>
-                <Input.Password placeholder="留空以不修改" style={{ width: '300px' }} value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
+                <Input.Password placeholder="留空以不修改" className="user-input-300" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
                 <Button type="text" onClick={handleChangePassword}>修改密码</Button>
               </Space>
               {passwordMsg ? (
-                <div style={{ marginTop: 8 }}>
-                  <Typography.Text style={{ color: passwordMsgType === 'error' ? '#a8071a' : '#14532d' }}>{passwordMsg}</Typography.Text>
+                <div className="user-msg-wrapper">
+                  <Typography.Text className={passwordMsgType === 'error' ? 'user-msg-error' : 'user-msg-success'}>{passwordMsg}</Typography.Text>
                 </div>
               ) : null}
             </Form.Item>
-            <Form.Item label="新密码" name="new_password" style={{ marginBottom: 16 }}>
-                <Input.Password placeholder="输入新密码" style={{ width: '300px' }} value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+            <Form.Item label="新密码" name="new_password" className="user-form-item">
+                <Input.Password placeholder="输入新密码" className="user-input-300" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
             </Form.Item>
 
             {/* 邮箱 + 修改按钮 */}
-            <Form.Item label="邮箱" name="email" style={{ marginBottom: 16 }}>
+            <Form.Item label="邮箱" name="email" className="user-form-item">
               <Space>
-                <Input placeholder="请输入邮箱" style={{ width: '300px' }} maxLength={115} value={email} onChange={e => setEmail(e.target.value)} />
+                <Input placeholder="请输入邮箱" className="user-input-300" maxLength={115} value={email} onChange={e => setEmail(e.target.value)} />
                 {String(email) === String(originalInfo.email) ? (
                   <Button type="text" disabled>无变化</Button>
                 ) : (
@@ -205,8 +206,8 @@ const User = () => {
                 )}
               </Space>
               {emailMsg ? (
-                <div style={{ marginTop: 8 }}>
-                  <Typography.Text style={{ color: '#14532d' }}>{emailMsg}</Typography.Text>
+                <div className="user-msg-wrapper">
+                  <Typography.Text className="user-msg-success">{emailMsg}</Typography.Text>
                 </div>
               ) : null}
             </Form.Item>
@@ -214,7 +215,7 @@ const User = () => {
             {/* 毕业时间 + 修改按钮 */}
             <Form.Item label="毕业时间" name="graduation_year">
               <Space>
-                <InputNumber placeholder="选择毕业年份" style={{ width: '300px' }} value={graduation_year} onChange={v => setGraduationYear(v)} />
+                <InputNumber placeholder="选择毕业年份" className="user-input-300" value={graduation_year} onChange={v => setGraduationYear(v)} />
                 {String(graduation_year) === String(originalInfo.graduation_year) ? (
                   <Button type="text" disabled>无变化</Button>
                 ) : (

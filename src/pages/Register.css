@@ -1,0 +1,6 @@
+.register-form { max-width: 600px; width: 100%; }
+.register-input-full { width: 100%; }
+
+@media (max-width: 768px) {
+	.register-form { max-width: 100%; padding: 0 8px; }
+}

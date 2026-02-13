@@ -18,6 +18,8 @@ import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 
 import { listAllUserBrefInformation } from '../api/user_api';
 
+import './ManageMachine.css';
+
 // machines loaded from backend
 const defaultPageSize = 100;
 
@@ -920,8 +922,8 @@ const ManageMachine = () => {
       const containers = entry.data || [];
 
       return (
-        <div style={{ margin: '16px 0', padding: '16px', background: '#fafafa', borderRadius: '4px' }}>
-          <Row gutter={[16, 16]} style={{ marginBottom: '16px' }}>
+        <div className="mm-expand-container">
+          <Row gutter={[16, 16]} className="mm-row-bottom">
             <Col flex="auto">
               <Input
                 placeholder={`在 ${record.machine_name} 中搜索容器`}
@@ -935,12 +937,12 @@ const ManageMachine = () => {
               <Button type="primary" icon={<SearchOutlined />}>搜索</Button>
             </Col>
           </Row>
-          <Typography.Title level={5} style={{ margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Typography.Title level={5} className="mm-typography-title">
             <span>容器列表 - {record.machine_name}</span>
-            <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openAddContainerModal(record)} style={{ marginLeft: 8 }}>
+            <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openAddContainerModal(record)} className="mm-btn-ml">
               添加
             </Button>
-            <Button size="small" icon={<ReloadOutlined />} onClick={() => fetchContainersForMachine(record.key)} style={{ marginLeft: 8 }} />
+            <Button size="small" icon={<ReloadOutlined />} onClick={() => fetchContainersForMachine(record.key)} className="mm-btn-ml" />
           </Typography.Title>
           <Table
             dataSource={containers}
@@ -992,7 +994,7 @@ const ManageMachine = () => {
             const pages = entry?.total_page || 0;
             if (pages > 1) {
               return (
-                <div style={{ marginTop: 12, textAlign: 'right' }}>
+                  <div className="mm-pagination-wrapper">
                   <Pagination
                     current={(entry?.page || 0) + 1}
                     total={pages * (entry?.page_size || 5)}
@@ -1013,20 +1015,20 @@ const ManageMachine = () => {
 
   return (
     <>
-      <Splitter layout="vertical" style={{ height: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
+      <Splitter layout="vertical" className="mm-splitter">
         {/* 1. 搜索区域 */}
-        <Splitter.Panel min="10%" max="10%" style={{ padding: '10px' }}>
-          <Flex justify="center" align="center" style={{ height: '100%' }}>
+        <Splitter.Panel min="10%" max="10%" className="mm-splitter-panel">
+          <Flex justify="center" align="center" className="mm-flex-fullheight">
             <Space direction="horizontal" size="middle">
               <Row gutter={[16, 0]} align="middle">
                 <Col>
                   <Typography.Text type="secondary">机器名：</Typography.Text>
-                  <Input 
+                    <Input 
                     placeholder="输入机器名" 
                     value={searchName} 
                     onChange={e => setSearchName(e.target.value)} 
                     allowClear 
-                    style={{ width: 120 }} 
+                    className="mm-input-120"
                   />
                 </Col>
                 <Col>
@@ -1036,7 +1038,7 @@ const ManageMachine = () => {
                     value={searchIP} 
                     onChange={e => setSearchIP(e.target.value)} 
                     allowClear 
-                    style={{ width: 120 }} 
+                    className="mm-input-120"
                   />
                 </Col>
                 <Col>
@@ -1046,7 +1048,7 @@ const ManageMachine = () => {
                     value={searchType} 
                     onChange={e => setSearchType(e.target.value)} 
                     allowClear 
-                    style={{ width: 120 }} 
+                    className="mm-input-120"
                   />
                 </Col>
                 <Col>
@@ -1066,7 +1068,7 @@ const ManageMachine = () => {
 
         {/* 2. 下方区域：机器表格 */}
         <Splitter.Panel>
-          <div style={{ padding: '16px' }}>
+          <div className="mm-table-padding">
             <Table 
               dataSource={filteredMachineData} 
               rowKey="key" 
@@ -1108,13 +1110,13 @@ const ManageMachine = () => {
                         type="text"
                         icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
                         onClick={() => toggleExpand(record.key)}
-                        style={{ color: '#1890ff' }}
+                        className="mm-btn-text-blue"
                       >
                         {isExpanded ? '收起容器' : '查看容器'}
                       </Button>
                               <Button onClick={() => openEditMachine(record)}><a>编辑</a></Button>
-                              <Button onClick={() => openDeleteConfirm(record)}><a style={{ color: '#ff4d4f' }}>删除</a></Button>
-                      <Button><a style={{ color: '#faad14' }}>重启</a></Button>
+                                    <Button onClick={() => openDeleteConfirm(record)}><a className="mm-link-danger">删除</a></Button>
+                                  <Button><a className="mm-link-warning">重启</a></Button>
                     </Space>
                   );
                 }}
@@ -1201,7 +1203,7 @@ const ManageMachine = () => {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item name="cpu_core_number" label="CPU 核心数">
-                  <InputNumber min={1} style={{ width: '100%' }} />
+                  <InputNumber min={1} className="mm-width-100" />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -1209,8 +1211,8 @@ const ManageMachine = () => {
                   {() => {
                     const mt = addHostForm.getFieldValue('machine_type');
                     return (
-                      <Form.Item name="gpu_number" label="GPU 数量">
-                        <InputNumber min={0} style={{ width: '100%' }} disabled={mt !== 'GPU'} />
+                        <Form.Item name="gpu_number" label="GPU 数量">
+                        <InputNumber min={0} className="mm-width-100" disabled={mt !== 'GPU'} />
                       </Form.Item>
                     );
                   }}
@@ -1241,12 +1243,12 @@ const ManageMachine = () => {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item name="memory_size" label="内存 (GB)">
-                  <InputNumber min={1} style={{ width: '100%' }} />
+                  <InputNumber min={1} className="mm-width-100" />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item name="disk_size" label="磁盘 (GB)">
-                  <InputNumber min={1} style={{ width: '100%' }} />
+                  <InputNumber min={1} className="mm-width-100" />
                 </Form.Item>
               </Col>
             </Row>
@@ -1269,35 +1271,30 @@ const ManageMachine = () => {
         message={deleteTargetMachine ? `请确认以下信息并删除宿主机 ${deleteTargetMachine.machine_name || deleteTargetMachine.key}` : '确认删除该宿主机？'}
         content={
           deleteTargetMachine ? (
-            <div style={{ 
-              background: '#fff2f0', 
-              padding: 16, 
-              borderRadius: 4,
-              border: '1px solid #ffccc7'
-            }}>
+            <div className="mm-danger-box">
               <Row gutter={[0, 8]}>
                 <Col span={24}>
                   <Typography.Text type="secondary">机器ID：</Typography.Text>
-                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetMachine.machine_id || deleteTargetMachine.key}</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{deleteTargetMachine.machine_id || deleteTargetMachine.key}</Typography.Text>
                 </Col>
                 <Col span={24}>
                   <Typography.Text type="secondary">机器名：</Typography.Text>
-                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetMachine.machine_name}</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{deleteTargetMachine.machine_name}</Typography.Text>
                 </Col>
                 <Col span={24}>
                   <Typography.Text type="secondary">IP：</Typography.Text>
-                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetMachine.machine_ip}</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{deleteTargetMachine.machine_ip}</Typography.Text>
                 </Col>
                 <Col span={24}>
                   <Typography.Text type="secondary">类型：</Typography.Text>
-                  <Tag style={{ marginLeft: 8 }}>{(deleteTargetMachine.machine_type || '').toUpperCase()}</Tag>
+                  <Tag className="mm-ml-8">{(deleteTargetMachine.machine_type || '').toUpperCase()}</Tag>
                 </Col>
                 <Col span={24}>
                   <Typography.Text type="secondary">状态：</Typography.Text>
-                  <Typography.Text style={{ marginLeft: 8 }}>{(deleteTargetMachine.machine_status || '').toLowerCase()}</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{(deleteTargetMachine.machine_status || '').toLowerCase()}</Typography.Text>
                 </Col>
               </Row>
-              <Typography.Text type="danger" style={{ display: 'block', marginTop: 12 }}>
+              <Typography.Text type="danger" className="mm-danger-text">
                 此操作不可恢复！此操作将移除该机器及其所有容器。
               </Typography.Text>
             </div>
@@ -1318,22 +1315,22 @@ const ManageMachine = () => {
         message={deleteTargetContainer ? `请确认以下信息并删除容器 ${deleteTargetContainer.container_name || deleteTargetContainer.key}` : '确认删除该容器？'}
         content={
           deleteTargetContainer ? (
-            <div style={{ background: '#fff2f0', padding: 16, borderRadius: 4, border: '1px solid #ffccc7' }}>
+            <div className="mm-danger-box">
               <Row gutter={[0, 8]}>
                 <Col span={24}>
                   <Typography.Text type="secondary">容器ID：</Typography.Text>
-                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetContainer.key || deleteTargetContainer.container_id}</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{deleteTargetContainer.key || deleteTargetContainer.container_id}</Typography.Text>
                 </Col>
                 <Col span={24}>
                   <Typography.Text type="secondary">容器名：</Typography.Text>
-                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetContainer.container_name}</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{deleteTargetContainer.container_name}</Typography.Text>
                 </Col>
                 <Col span={24}>
                   <Typography.Text type="secondary">所属机器：</Typography.Text>
-                  <Typography.Text style={{ marginLeft: 8 }}>{deleteTargetContainer.machine_id || deleteTargetContainer.machine_ip}</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{deleteTargetContainer.machine_id || deleteTargetContainer.machine_ip}</Typography.Text>
                 </Col>
               </Row>
-              <Typography.Text type="danger" style={{ display: 'block', marginTop: 12 }}>
+              <Typography.Text type="danger" className="mm-danger-text">
                 此操作不可恢复！此操作将永久删除该容器。
               </Typography.Text>
             </div>
@@ -1407,12 +1404,12 @@ const ManageMachine = () => {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item name="CPU_NUMBER" label="CPU 数量">
-                  <InputNumber min={1} style={{ width: '100%' }} />
+                  <InputNumber min={1} className="mm-width-100" />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item name="MEMORY" label="内存 (MB)">
-                  <InputNumber min={128} style={{ width: '100%' }} />
+                  <InputNumber min={128} className="mm-width-100" />
                 </Form.Item>
               </Col>
             </Row>

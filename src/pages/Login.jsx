@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { loginUser } from '../api/user_api';
 import ConfirmModal from '../components/ConfirmModal';
 import showErrorModal from '../utils/showErrorModal';
+import './Login.css';
 
 const LoginBlock = () => {
 	const [confirmVisible, setConfirmVisible] = useState(false);
@@ -58,35 +59,35 @@ const LoginBlock = () => {
 				name="basic"
 				labelCol={{ span: 8 }}
 				wrapperCol={{ span: 16 }}
-				style={{ maxWidth: 600 }}
+				className="login-form"
 				initialValues={{ remember: true }}
 				onFinish={onFinish}
 				onFinishFailed={onFinishFailed}
 				autoComplete="off"
 			>
 				<Form.Item
-					label="Username"
+					label="用户名"
 					name="username"
 					rules={[{ required: true, message: 'Please input your username!' }]}
 				>
-					<Input />
+					<Input placeholder="请输入用户名" />
 				</Form.Item>
 
 				<Form.Item
-					label="Password"
+					label="密码"
 					name="password"
 					rules={[{ required: true, message: 'Please input your password!' }]}
 				>
-					<Input.Password />
+					<Input.Password placeholder="请输入密码" />
 				</Form.Item>
 
 				<Form.Item name="remember" valuePropName="checked" label={null}>
-					<Checkbox>Remember me</Checkbox>
+					<Checkbox>记住我</Checkbox>
 				</Form.Item>
 
 				<Form.Item label={null}>
 					<Button type="primary" htmlType="submit">
-						Submit
+						登录
 					</Button>
 				</Form.Item>
 			</Form>
