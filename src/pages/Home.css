@@ -92,16 +92,17 @@
     margin-right: 0 !important;
   }
   .home-stat-card {
-    padding: 12px 8px;
+    padding: 8px 8px;
     border-radius: 6px;
   }
   .home-stat-label {
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 1.1;
   }
   .home-stat-number {
-    margin-top: 6px;
-    font-size: 22px !important;
-    line-height: 1.1;
+    margin-top: 3px;
+    font-size: 20px !important;
+    line-height: 1;
   }
   .home-table-wrapper,
   .home-table {
