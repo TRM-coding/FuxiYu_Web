@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeOutlined, InfoCircleOutlined, FormOutlined, UserOutlined } from '@ant-design/icons';
+import { HomeOutlined, InfoCircleOutlined, FormOutlined } from '@ant-design/icons';
 import { Menu } from 'antd';
 import './Navbar.css';
 
@@ -27,7 +27,7 @@ const items = [
   }
 ];
 
-export default function Navbar() {
+export default function Navbar({ menuResetToken = 0 }) {
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -47,6 +47,7 @@ export default function Navbar() {
   return (
     <div className="navbar">
       <Menu
+        key={`${menuResetToken}-${location.pathname}`}
         onClick={onClick}
         selectedKeys={getSelectedKeys()}
         mode="horizontal"

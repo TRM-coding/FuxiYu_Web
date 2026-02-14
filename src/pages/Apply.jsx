@@ -202,7 +202,7 @@ const Apply = () => {
           <Col xs={24} sm={12} md={6} className="apply-filter-col-wide">
             <Typography.Text type="secondary" className="apply-filter-label">IP地址</Typography.Text>
             <Input 
-              placeholder="xxx.xxx.xxx.xxx" 
+              placeholder="XXX.XXX.XXX.XXX" 
               allowClear 
               value={searchIp}
               onChange={e => setSearchIp(e.target.value)}

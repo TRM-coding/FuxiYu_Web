@@ -98,7 +98,7 @@
   .mm-search-bar .ant-row {
     width: 100%;
     margin: 0 !important;
-    row-gap: 6px;
+    row-gap: 12px;
   }
   .mm-search-bar .ant-col {
     flex: 0 0 100%;
@@ -107,6 +107,7 @@
     align-items: center;
     gap: 8px;
     flex-direction: row;
+    margin-bottom: 8px; /* 增加垂直间距，防止输入框粘连 */
   }
   .mm-search-bar .ant-col .ant-typography {
     width: 66px;
@@ -117,7 +118,6 @@
   .mm-search-bar .ant-col .ant-input-affix-wrapper {
     flex: 1;
     min-width: 0;
-    height: 34px;
   }
   .mm-search-bar .ant-col .ant-btn {
     width: 100%;

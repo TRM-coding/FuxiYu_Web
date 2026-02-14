@@ -1,5 +1,6 @@
 .manage-user-root{display:flex;flex-direction:column;gap:16px}
 .manage-user-search-bar{padding:16px;background:#fff;border-bottom:1px solid #f0f0f0;box-shadow:0 2px 8px rgba(0,0,0,0.06);position:sticky;top:64px;z-index:10}
+/* use default row/typography spacing */
 .manage-user-input-120{width:120px}
 .manage-user-input-150{width:150px}
 .manage-user-input-200{width:200px}
@@ -82,7 +83,7 @@
 	.manage-user-search-bar .ant-row {
 		width: 100%;
 		margin: 0 !important;
-		row-gap: 10px;
+		row-gap: 12px;
 	}
 	.manage-user-search-bar .ant-col {
 		flex: 0 0 100%;
@@ -90,6 +91,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		margin-bottom: 8px; /* 增加垂直间距，防止输入框粘连 */
 	}
 	.manage-user-search-bar .ant-col .ant-typography {
 		width: 66px;

@@ -1,13 +1,55 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import NavbarAdmin from '../components/NavbarAdmin';
 import AdminAvatar from '../components/AdminAvatar';
 
 export default function AdminLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const touchStartXRef = useRef(0);
+  const [menuResetToken, setMenuResetToken] = useState(0);
+  const swipePaths = useMemo(() => ['/admin/users', '/admin/machines'], []);
+
+  const normalizePath = (pathname) => {
+    if (pathname.startsWith('/admin/users')) return '/admin/users';
+    if (pathname.startsWith('/admin/machines')) return '/admin/machines';
+    if (pathname.startsWith('/admin/profile')) return '/admin/profile';
+    return pathname;
+  };
 
   // 点击导航菜单或头像时的路由跳转逻辑
   const handleNavigate = (path) => {
     navigate(path);
+  };
+
+
+  const handleTouchStart = (e) => {
+    if (window.innerWidth > 768) return;
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    touchStartXRef.current = touch.clientX;
+  };
+
+  const handleTouchEnd = (e) => {
+    if (window.innerWidth > 768) return;
+    const touch = e.changedTouches?.[0];
+    if (!touch) return;
+
+    const dx = touch.clientX - touchStartXRef.current;
+    if (dx === 0) return;
+
+    const currentPath = normalizePath(location.pathname);
+    const currentIndex = swipePaths.indexOf(currentPath);
+    if (currentIndex < 0) return;
+
+    const nextIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1;
+    if (nextIndex < 0 || nextIndex >= swipePaths.length) return;
+
+    if (document?.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+    setMenuResetToken((v) => v + 1);
+    navigate(swipePaths[nextIndex]);
   };
 
   return (
@@ -26,11 +68,15 @@ export default function AdminLayout() {
         backgroundColor: '#ffffff',
         height: '64px'
       }}>
-        <NavbarAdmin />
+        <NavbarAdmin menuResetToken={menuResetToken} />
         <AdminAvatar onNavigate={handleNavigate} />
       </div>
 
-      <main style={{ padding: '20px', marginTop: '64px' }}>
+      <main
+        style={{ padding: '20px', marginTop: '64px', position: 'relative' }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <Outlet />
       </main>
     </div>
