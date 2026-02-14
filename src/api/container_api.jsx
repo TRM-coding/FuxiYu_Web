@@ -1,5 +1,6 @@
 import { BACKEND_BASE_URL, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
+import { getAuthTokenHeader } from '../utils/authToken';
 
 
 const createTimeoutController = (timeout) => {
@@ -29,8 +30,10 @@ const ensureOk = async (res, action) => {
 			if (typeof window !== 'undefined' && res.status === 401) {
 				try {
 					localStorage.removeItem('authToken');
+					sessionStorage.removeItem('authToken');
 					localStorage.removeItem('currentUserId');
 					localStorage.removeItem('currentUserName');
+					document.cookie = 'auth_token=; Max-Age=0; path=/';
 				} catch (e) {}
 				try { window.location.href = '/'; } catch (e) {}
 			}
@@ -40,15 +43,6 @@ const ensureOk = async (res, action) => {
 	return res.json();
 };
 
-const getTokenHeader = () => {
-	try {
-		const token = localStorage.getItem('authToken');
-		return token ? { token } : {};
-	} catch (e) {
-		return {};
-	}
-};
-
 export const createContainer = async (payload = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
@@ -56,7 +50,7 @@ export const createContainer = async (payload = {}, timeout = null) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify(payload),
 			signal: controller.signal,
@@ -81,7 +75,7 @@ export const deleteContainer = async (container_id = 0, timeout = null) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -106,7 +100,7 @@ export const addCollaborator = async ({ user_id = '', container_id = 0, role = '
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ user_id, container_id, role }),
 			signal: controller.signal,
@@ -131,7 +125,7 @@ export const removeCollaborator = async ({ user_id = '', container_id = 0 } = {}
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ user_id, container_id }),
 			signal: controller.signal,
@@ -156,7 +150,7 @@ export const updateRole = async ({ container_id = 0, user_id = '', updated_role 
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id, user_id, updated_role }),
 			signal: controller.signal,
@@ -181,7 +175,7 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -206,7 +200,7 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ machine_id, user_id, page_number, page_size }),
 			signal: controller.signal,
@@ -231,7 +225,7 @@ export const startContainer = async (container_id = 0, timeout = null) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -256,7 +250,7 @@ export const stopContainer = async (container_id = 0, timeout = null, stopTimeou
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
  			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -281,7 +275,7 @@ export const restartContainer = async (container_id = 0, timeout = null, restart
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,

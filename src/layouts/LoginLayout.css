@@ -1,11 +1,18 @@
 .login-layout {
   display: flex;
-  width: 100vw;
+  width: 100%;
+  max-width: 100%;
   height: 100vh;
+  overflow-x: hidden;
   background:
     radial-gradient(1200px 700px at 82% 18%, rgba(170, 198, 255, 0.22) 0%, rgba(170, 198, 255, 0) 58%),
     radial-gradient(1000px 620px at 90% 80%, rgba(255, 245, 220, 0.16) 0%, rgba(255, 245, 220, 0) 60%),
     linear-gradient(135deg, #f7fbff 0%, #f2f7ff 45%, #fdfefe 100%);
+}
+
+.login-layout,
+.login-layout * {
+  box-sizing: border-box;
 }
 
 /* 左半边布局 */
@@ -24,7 +31,8 @@
   align-items: center;
   gap: 20px;
   margin-top: 0;
-  padding: 24px 0;
+  padding: 24px 12px;
+  width: 100%;
 }
 
 /* 登录注册按钮 */
@@ -123,8 +131,11 @@
 @media (max-width: 768px) {
   .login-layout {
     flex-direction: column;
+    width: 100%;
+    max-width: 100%;
     min-height: 100vh;
     height: auto;
+    overflow-x: hidden;
   }
   .login-left, .login-right {
     width: 100%;
@@ -138,9 +149,10 @@
   }
   .login-content {
     margin-top: 0;
+    padding: 12px;
   }
   .login-box {
-    width: 92%;
+    width: min(92vw, 420px);
     max-width: 420px;
     padding: 18px;
   }

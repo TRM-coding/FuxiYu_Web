@@ -1,5 +1,6 @@
 // Web heartbeat utility: poll Ctrl for container status until RUNNING
 import { BACKEND_BASE_URL, REQUEST_TIMEOUT } from '../configs/backend_config';
+import { getAuthToken } from './authToken';
 
 export function startContainerStatusHeartbeat({ machine_id, container_name, onRunning, onTerminal, terminalState = 'online', timeout = 180000, interval = 3000 }) {
   let stopped = false;
@@ -19,9 +20,7 @@ export function startContainerStatusHeartbeat({ machine_id, container_name, onRu
       const controller = new AbortController();
       const to = setTimeout(() => controller.abort(), REQUEST_TIMEOUT || 5000);
       // include token header if present so backend auth passes
-      const token = (() => {
-        try { return localStorage.getItem('authToken'); } catch (e) { return null; }
-      })();
+      const token = getAuthToken();
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers.token = token;
       const res = await fetch(`${BACKEND_BASE_URL}/api/containers/container_status`, {

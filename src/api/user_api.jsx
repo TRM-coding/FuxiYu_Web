@@ -1,5 +1,6 @@
 import { BACKEND_BASE_URL, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
+import { getAuthTokenHeader } from '../utils/authToken';
 
 
 const createTimeoutController = (timeout) => {
@@ -28,8 +29,10 @@ const ensureOk = async (res, action) => {
       if (typeof window !== 'undefined' && res.status === 401) {
         try {
           localStorage.removeItem('authToken');
+          sessionStorage.removeItem('authToken');
           localStorage.removeItem('currentUserId');
           localStorage.removeItem('currentUserName');
+          document.cookie = 'auth_token=; Max-Age=0; path=/';
         } catch (e) {}
         try { window.location.href = '/'; } catch (e) {}
       }
@@ -87,15 +90,6 @@ export const registerUser = async ({ username, email, password, graduation_year 
   }
 };
 
-const getTokenHeader = () => {
-  try {
-    const token = localStorage.getItem('authToken');
-    return token ? { token } : {};
-  } catch (e) {
-    return {};
-  }
-};
-
 export const changePasswordUser = async ({ user_id, old_password, new_password } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
@@ -103,7 +97,7 @@ export const changePasswordUser = async ({ user_id, old_password, new_password }
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getTokenHeader(),
+        ...getAuthTokenHeader(),
       },
       body: JSON.stringify({ user_id, old_password, new_password }),
       signal: controller.signal,
@@ -128,7 +122,7 @@ export const updateUser = async ({ user_id, fields } = {}, timeout = null) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getTokenHeader(),
+        ...getAuthTokenHeader(),
       },
       body: JSON.stringify({ user_id, fields }),
       signal: controller.signal,
@@ -153,7 +147,7 @@ export const resetPassword = async ({ user_id } = {}, timeout = null) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getTokenHeader(),
+        ...getAuthTokenHeader(),
       },
       body: JSON.stringify({ user_id }),
       signal: controller.signal,
@@ -178,7 +172,7 @@ export const deleteUser = async (user_id = 0, timeout = null) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getTokenHeader(),
+        ...getAuthTokenHeader(),
       },
       body: JSON.stringify({ user_id }),
       signal: controller.signal,
@@ -204,7 +198,7 @@ export const getUserDetailInformation = async (user_id = 0, timeout = null) => {
     const res = await fetch(url.toString(), {
       method: 'GET',
       headers: {
-        ...getTokenHeader(),
+        ...getAuthTokenHeader(),
       },
       signal: controller.signal,
       credentials: CREDENTIALS,
@@ -230,7 +224,7 @@ export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 
     const res = await fetch(url.toString(), {
       method: 'GET',
       headers: {
-        ...getTokenHeader(),
+        ...getAuthTokenHeader(),
       },
       signal: controller.signal,
       credentials: CREDENTIALS,

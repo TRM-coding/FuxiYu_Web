@@ -70,7 +70,16 @@ const ManageUser = () => {
             </Col>
             <Col flex="auto">
               <Form.Item label={<span className={labelClass('graduation_year')}>毕业年份</span>} className="manage-user-form-item">
-                <InputNumber value={values.graduation_year === '' || values.graduation_year === null ? undefined : Number(values.graduation_year)} onChange={v => setValues(val => ({ ...val, graduation_year: v }))} className="manage-user-input-120" />
+                <InputNumber
+                  value={values.graduation_year === '' || values.graduation_year === null ? undefined : Number(values.graduation_year)}
+                  onChange={v => setValues(val => ({ ...val, graduation_year: v }))}
+                  className="manage-user-input-120"
+                  min={1900}
+                  max={2100}
+                  precision={0}
+                  step={1}
+                  parser={(val) => String(val || '').replace(/[^\d]/g, '')}
+                />
               </Form.Item>
             </Col>
             <Col>

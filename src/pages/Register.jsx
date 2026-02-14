@@ -34,7 +34,7 @@ const RegisterBlock = () => {
         username: values.username,
         email: values.email,
         password: values.password,
-        graduation_year: values.graduation_year || null,
+        graduation_year: values.graduation_year ? Number(values.graduation_year) : null,
       };
       const res = await registerUser(payload);
       console.log('register result', res);
@@ -83,8 +83,28 @@ const RegisterBlock = () => {
       <Input.Password placeholder="请输入密码" />
     </Form.Item>
 
-    <Form.Item name="graduation_year" label="毕业年份" rules={[{ type: 'number', min: 1900, max: 2100 }]}>
-      <InputNumber className="register-input-full" placeholder="如：2024" />
+    <Form.Item
+      name="graduation_year"
+      label="毕业年份"
+      rules={[
+        { type: 'number', min: 1900, max: 2100, required: true, message: '毕业年份必须在1900到2100之间' },
+        {
+          validator: (_, value) => {
+            if (value === undefined || value === null || value === '') return Promise.resolve();
+            return Number.isInteger(Number(value)) ? Promise.resolve() : Promise.reject(new Error('毕业年份只能为数字'));
+          }
+        }
+      ]}
+    >
+      <InputNumber
+        className="register-input-full"
+        placeholder="如：2024"
+        precision={0}
+        step={1}
+        min={1900}
+        max={2100}
+        parser={(val) => String(val || '').replace(/[^\d]/g, '')}
+      />
     </Form.Item>
 
     <Form.Item label={null}>
