@@ -76,6 +76,11 @@
 .home-stat-number.home-red { color: #ff4d4f !important; }
 
 @media (max-width: 768px) {
+  .home-auto-hide-bar {
+    will-change: transform;
+    transform: translate3d(0, calc(-1 * var(--auto-hide-offset, 0px)), 0);
+    pointer-events: auto;
+  }
   .home-hero {
     position: sticky;
     top: 56px;

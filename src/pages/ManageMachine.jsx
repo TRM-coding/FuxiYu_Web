@@ -12,6 +12,7 @@ import { handleAuthError } from '../utils/authHelpers';
 import { getUserDetailInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
 import { useNavigate } from 'react-router-dom';
+import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 const { Column } = Table;
 const { Option } = Select;
 
@@ -80,6 +81,7 @@ const ManageMachine = () => {
   const [usersList, setUsersList] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const navigate = useNavigate();
+  const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
 
   // auth + permission check: ensure logged in and operator permission
   useEffect(() => {
@@ -1067,7 +1069,7 @@ const ManageMachine = () => {
     <>
       <div className="mm-root">
         {/* 1. 搜索区域 */}
-        <div className="mm-search-bar">
+        <div ref={searchBarRef} style={searchBarStyle} className="mm-search-bar mm-auto-hide-bar">
           <Row gutter={[16, 0]} align="middle">
             <Col>
               <Typography.Text type="secondary">机器名：</Typography.Text>

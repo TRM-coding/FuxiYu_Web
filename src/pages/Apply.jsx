@@ -21,11 +21,13 @@ import { isValidName, isValidImageName } from '../utils/validateCmdArg';
 import { createContainer } from '../api/container_api';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import ConfirmModal from '../components/ConfirmModal';
+import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 
 // data will be fetched from backend; table will use mapped `tableData` built from API response.
 
 const Apply = () => {
   const navigate = useNavigate();
+  const { barRef: filterBarRef, barStyle: filterBarStyle } = useAutoHideTopBar();
   const [value3, setValue3] = useState('Any');
   const [searchIp, setSearchIp] = useState('');
   const [searchId, setSearchId] = useState('');
@@ -185,7 +187,7 @@ const Apply = () => {
   return (
     <div className="apply-page">
       {/* 顶部筛选区域，贴在导航栏下方 */}
-      <div className="apply-filter-bar">
+      <div ref={filterBarRef} style={filterBarStyle} className="apply-filter-bar apply-auto-hide-bar">
         <Row gutter={[16, 16]} justify="center" align="middle">
           <Col xs={24} sm={12} md={6} className="apply-filter-col-compact">
             <Typography.Text type="secondary" className="apply-filter-label">设备类型</Typography.Text>

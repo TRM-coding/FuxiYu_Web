@@ -14,6 +14,7 @@ import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
 import ContainerDetailModal from '../components/ContainerDetailModal';
+import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 const { Column, ColumnGroup } = Table;
 import './Home.css';
 
@@ -32,6 +33,7 @@ const initialContainers = [];
 const Home = () => {
   const [value3, setValue3] = useState('Any');
   const [position, setPosition] = useState('end');
+  const { barRef: statsBarRef, barStyle: statsBarStyle } = useAutoHideTopBar();
   const navigate = useNavigate();
 
   // read current user name from localStorage; if missing or error, clear auth and redirect to login
@@ -563,7 +565,7 @@ const Home = () => {
       />
       
       <div className="home-root">
-        <div className="home-hero">
+        <div ref={statsBarRef} style={statsBarStyle} className="home-hero home-auto-hide-bar">
           <Row gutter={16} className="home-row-bottom">
             <Col xs={12} sm={12} md={6}>
               <div className="home-stat-card">

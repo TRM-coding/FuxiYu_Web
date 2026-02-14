@@ -10,6 +10,7 @@ import { listAllContainerBrefInformation, getContainerDetailInformation, removeC
 const { Column } = Table;
 import './ManageUser.css';
 import TableComponent from '../components/TableComponent';
+import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 
 // users and containers will be fetched from backend
 const initialUsers = [];
@@ -110,6 +111,7 @@ const ManageUser = () => {
 
   // container cache per user id: { [userId]: { loading, data } }
   const [containerMap, setContainerMap] = useState({});
+  const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
 
   const navigate = useNavigate();
 
@@ -646,7 +648,7 @@ const ManageUser = () => {
 
       <div className="manage-user-root">
         {/* 1. 搜索区域（固定顶部） */}
-        <div className="manage-user-search-bar">
+        <div ref={searchBarRef} style={searchBarStyle} className="manage-user-search-bar manage-user-auto-hide-bar">
           <Flex justify="center" align="center">
             <Space direction="horizontal" size="middle">
               <Row gutter={[16, 0]} align="middle">
