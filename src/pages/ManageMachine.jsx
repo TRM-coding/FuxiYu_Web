@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
@@ -77,6 +77,45 @@ const ManageMachine = () => {
   const [containerMap, setContainerMap] = useState({});
   // cache machine's container names for top-level search: { [machineId]: string[] }
   const [machineContainerNamesMap, setMachineContainerNamesMap] = useState({});
+  // top-level container-name search loading
+  const [containerSearchLoading, setContainerSearchLoading] = useState(false);
+  const containerSearchTimerRef = useRef(null);
+
+  const performMachineContainerSearch = async (keyword) => {
+    const k = (keyword || '').trim().toLowerCase();
+    if (!k) return;
+    // cancel any pending timer
+    if (containerSearchTimerRef.current) {
+      clearTimeout(containerSearchTimerRef.current);
+      containerSearchTimerRef.current = null;
+    }
+    setContainerSearchLoading(true);
+    try {
+      const pageSize = 1000;
+      const res = await listAllContainerBrefInformation({ machine_id: '', page_number: 0, page_size: pageSize });
+      const items = (res && (res.containers_info || res.containers)) || [];
+      const map = {};
+      for (const c of items) {
+        const name = String(c.container_name || c.name || '').toLowerCase();
+        if (!name) continue;
+        if (!name.includes(k)) continue;
+        const mid = String(c.machine_id || c.machine || c.machine_id || '');
+        if (!mid) continue;
+        map[mid] = map[mid] || [];
+        map[mid].push(name);
+      }
+      const updates = {};
+      machines.forEach(m => {
+        const midKey = String(m.key);
+        updates[midKey] = map[midKey] || [];
+      });
+      setMachineContainerNamesMap(prev => ({ ...prev, ...updates }));
+    } catch (e) {
+      console.warn('container name global search failed', e);
+    } finally {
+      setContainerSearchLoading(false);
+    }
+  };
   // users fetched from backend (used for selecting when adding users to a container)
   const [usersList, setUsersList] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -291,33 +330,27 @@ const ManageMachine = () => {
   // 顶部“容器名”搜索：按机器维度缓存容器名
   useEffect(() => {
     const keyword = (searchContainerName || '').trim().toLowerCase();
-    if (!keyword) return;
+    if (!keyword) {
+      // clear previous per-machine matches when search cleared
+      return;
+    }
 
     let cancelled = false;
-    const missing = baseFilteredMachineData.filter(m => !machineContainerNamesMap[String(m.key)]);
-    if (missing.length === 0) return;
+    // debounce via ref timer
+    if (containerSearchTimerRef.current) clearTimeout(containerSearchTimerRef.current);
+    containerSearchTimerRef.current = setTimeout(() => {
+      performMachineContainerSearch(keyword);
+      containerSearchTimerRef.current = null;
+    }, 300);
 
-    (async () => {
-      for (const m of missing) {
-        if (cancelled) break;
-        const mid = String(m.key);
-        try {
-          const res = await listAllContainerBrefInformation({ machine_id: mid, page_number: 0, page_size: 200 });
-          const items = (res && (res.containers_info || res.containers)) || [];
-          const names = items.map(c => String(c.container_name || c.name || '').toLowerCase()).filter(Boolean);
-          if (!cancelled) {
-            setMachineContainerNamesMap(prev => ({ ...prev, [mid]: names }));
-          }
-        } catch (e) {
-          if (!cancelled) {
-            setMachineContainerNamesMap(prev => ({ ...prev, [mid]: [] }));
-          }
-        }
+    return () => {
+      cancelled = true;
+      if (containerSearchTimerRef.current) {
+        clearTimeout(containerSearchTimerRef.current);
+        containerSearchTimerRef.current = null;
       }
-    })();
-
-    return () => { cancelled = true; };
-  }, [searchContainerName, baseFilteredMachineData, machineContainerNamesMap]);
+    };
+  }, [searchContainerName, machines]);
 
   // 最终过滤（含容器名）
   const filteredMachineData = baseFilteredMachineData.filter(machine => {
@@ -1102,7 +1135,7 @@ const ManageMachine = () => {
               />
             </Col>
             <Col>
-              <Button type="primary" icon={<SearchOutlined />}>
+              <Button type="primary" icon={<SearchOutlined />} loading={containerSearchLoading} onClick={() => performMachineContainerSearch(searchContainerName)}>
                 搜索
               </Button>
             </Col>

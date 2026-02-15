@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message, InputNumber } from 'antd';
@@ -111,6 +111,10 @@ const ManageUser = () => {
 
   // container cache per user id: { [userId]: { loading, data } }
   const [containerMap, setContainerMap] = useState({});
+  // matched user ids from top-level container name search
+  const [matchedUserIds, setMatchedUserIds] = useState(null);
+  // top-level container-name search loading
+  const [containerSearchLoading, setContainerSearchLoading] = useState(false);
   const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
 
   const navigate = useNavigate();
@@ -434,37 +438,68 @@ const ManageUser = () => {
     return data; // `userRole` is provided by detail fetch and stored in cache
   };
 
-  // 顶部“容器名”搜索：自动补齐目标用户的容器缓存
-  React.useEffect(() => {
-    const keyword = (searchContainerName || '').trim().toLowerCase();
-    if (!keyword) return;
-    const missingUsers = baseFilteredUserData.filter(u => !containerMap[String(u.key)]);
-    if (missingUsers.length === 0) return;
-
-    let cancelled = false;
-    (async () => {
-      for (const u of missingUsers) {
-        if (cancelled) break;
+  // 顶部“容器名”搜索：全局查找容器 -> 获取 container_id -> 获取 detail -> 收集 accounts 中的 user_id
+  const userContainerSearchTokenRef = useRef(0);
+  const performUserContainerSearch = async (keywordRaw) => {
+    const keyword = (keywordRaw || '').trim().toLowerCase();
+    if (!keyword) {
+      setMatchedUserIds(null);
+      return;
+    }
+    const myToken = ++userContainerSearchTokenRef.current;
+    setContainerSearchLoading(true);
+    try {
+      const pageSize = 1000;
+      const res = await listAllContainerBrefInformation({ machine_id: '', page_number: 0, page_size: pageSize });
+      const items = (res && (res.containers_info || res.containers)) || [];
+      const matched = items.filter(c => {
+        const name = String(c.container_name || c.name || '').toLowerCase();
+        return name && name.includes(keyword);
+      });
+      const limit = 200;
+      const toInspect = matched.slice(0, limit);
+      const foundUserIds = new Set();
+      for (const c of toInspect) {
+        if (userContainerSearchTokenRef.current !== myToken) break; // cancelled
+        const cid = c.container_id || c.id || c.containerId || c.key;
+        if (!cid) continue;
         try {
-          // sequential fetch avoids burst pressure
           // eslint-disable-next-line no-await-in-loop
-          await fetchContainersForUser(u.key);
+          const detailRes = await getContainerDetailInformation(cid);
+          const detail = (detailRes && (detailRes.container_info || detailRes.container || detailRes.data || detailRes.container_detail)) || detailRes || null;
+          const accounts = detail?.accounts || detail?.account_list || c.accounts || [];
+          for (const a of accounts) {
+            const uid = a?.user_id || a?.userId || a?.id || a?.uid || null;
+            if (uid !== null && uid !== undefined && String(uid) !== '') foundUserIds.add(String(uid));
+          }
         } catch (e) {
-          // ignore single-user fetch failure
+          // ignore per-container detail failure
         }
       }
-    })();
+      if (userContainerSearchTokenRef.current === myToken) {
+        setMatchedUserIds(foundUserIds.size ? foundUserIds : new Set());
+      }
+    } catch (e) {
+      console.warn('global container name search failed', e);
+      if (userContainerSearchTokenRef.current === myToken) setMatchedUserIds(new Set());
+    } finally {
+      if (userContainerSearchTokenRef.current === myToken) setContainerSearchLoading(false);
+    }
+  };
 
-    return () => { cancelled = true; };
-  }, [searchContainerName, baseFilteredUserData, containerMap]);
+  React.useEffect(() => {
+    performUserContainerSearch(searchContainerName);
+    return () => { userContainerSearchTokenRef.current += 1; };
+  }, [searchContainerName]);
 
-  // 最终过滤（含容器名）
+  // 最终过滤（含容器名)
   const filteredUserData = baseFilteredUserData.filter(user => {
     const keyword = (searchContainerName || '').trim().toLowerCase();
     if (!keyword) return true;
+    // if matchedUserIds is null, we haven't finished global search yet -> optimistically include user (or you may choose to exclude)
+    if (matchedUserIds === null) return true;
     const id = String(user.key);
-    const names = (containerMap[id]?.data || []).map(c => String(c.container_name || '').toLowerCase());
-    return names.some(n => n.includes(keyword));
+    return matchedUserIds.has(id);
   });
 
   // 切换展开状态
@@ -683,7 +718,7 @@ const ManageUser = () => {
                 />
               </Col>
               <Col>
-                <Button type="primary" icon={<SearchOutlined />}>
+                <Button type="primary" icon={<SearchOutlined />} loading={containerSearchLoading} onClick={() => performUserContainerSearch(searchContainerName)}>
                   搜索
                 </Button>
               </Col>
