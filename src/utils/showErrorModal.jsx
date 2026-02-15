@@ -159,13 +159,26 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
     // 机器相关
     '/machines/add_machine': { duplicate_entry: '机器已存在', internal_error: '内部错误，添加失败', create_failed: '添加机器失败' },
     '/machines/remove_machine': { remove_failed: '删除机器失败' },
-    '/machines/update_machine': { update_failed: '更新机器失败' },
-    '/machines/get_detail_information': { machine_not_found: '机器不存在' },
-    '/machines/list_all_machine_bref_information': { list_failed: '获取机器列表失败' },
+    '/machines/update_machine': { update_failed: '更新机器失败', machine_not_found: '机器不存在', machine_maintenance: '机器正在维护中', machine_offline: '机器离线' },
+    '/machines/get_detail_information': { machine_not_found: '机器不存在', machine_offline: '机器离线', machine_maintenance: '机器正在维护中' },
+    '/machines/list_all_machine_bref_information': { list_failed: '获取机器列表失败', machine_offline: '机器离线' },
 
     // 通用/鉴权
-    '': { invalid_token: '身份验证失败，请重新登录', insufficient_permission: '权限不足' },
-    '*': { create_failed: '创建失败', list_failed: '获取列表失败', duplicate_entry: '重复项导致失败', internal_error: '服务器内部错误' }
+    '': { invalid_token: '身份验证失败，请重新登录', insufficient_permission: '权限不足', unexpected_response: '远端返回意外响应', NODE_error: '节点错误' },
+    '*': {
+      create_failed: '创建失败',
+      list_failed: '获取列表失败',
+      duplicate_entry: '重复项导致失败',
+      internal_error: '服务器内部错误',
+      start_failed: '启动失败',
+      stop_failed: '停止失败',
+      restart_failed: '重启失败',
+      unexpected_response: '远端返回意外响应',
+      NODE_error: '节点错误',
+      machine_maintenance: '机器正在维护中',
+      machine_offline: '机器离线',
+      machine_not_found: '机器不存在'
+    }
   };
 
   // If an explicit error_reason exists, prefer it for display

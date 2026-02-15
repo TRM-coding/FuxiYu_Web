@@ -91,7 +91,7 @@ const User = () => {
         setNewPassword('');
       } catch (err) {
         console.error('Failed to load user detail', err);
-        await showErrorModal({ message: err?.body?.message || '加载用户信息失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        await showErrorModal({ message: err?.body || err || '加载用户信息失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       }
     };
     load();
@@ -156,7 +156,7 @@ const User = () => {
                       setTimeout(() => setUsernameMsg(null), 3000);
                     } catch (err) {
                       console.error('update username failed', err);
-                      await showErrorModal({ message: err?.body?.message || '更新用户名失败', status: err?.status });
+                      await showErrorModal({ message: err?.body || err || '更新用户名失败', status: err?.status });
                     }
                   }}>修改</Button>
                 )}
@@ -200,7 +200,7 @@ const User = () => {
                       setTimeout(() => setEmailMsg(null), 3000);
                     } catch (err) {
                       console.error('update email failed', err);
-                      await showErrorModal({ message: err?.body?.message || '更新邮箱失败', status: err?.status });
+                      await showErrorModal({ message: err?.body || err || '更新邮箱失败', status: err?.status });
                     }
                   }}>修改</Button>
                 )}
@@ -228,7 +228,7 @@ const User = () => {
                       setTimeout(() => setYearMsg(null), 3000);
                     } catch (err) {
                       console.error('update graduation_year failed', err);
-                      await showErrorModal({ message: err?.body?.message || '更新毕业年份失败', status: err?.status });
+                      await showErrorModal({ message: err?.body || err || '更新毕业年份失败', status: err?.status });
                     }
                   }}>修改</Button>
                 )}

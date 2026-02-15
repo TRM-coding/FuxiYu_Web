@@ -16,7 +16,7 @@ import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 const { Column } = Table;
 const { Option } = Select;
 
-import { startContainerStatusHeartbeat } from '../utils/heartbeat';
+import { startContainerStatusHeartbeat, startMachineStatusHeartbeat } from '../utils/heartbeat';
 
 import { listAllUserBrefInformation } from '../api/user_api';
 
@@ -68,6 +68,8 @@ const ManageMachine = () => {
   // machines from backend
   const [machines, setMachines] = useState([]);
   const [machinesLoading, setMachinesLoading] = useState(false);
+  // machine status transition loading flags: { [machineId]: boolean }
+  const [machineStatusLoadingMap, setMachineStatusLoadingMap] = useState({});
   // 当前选中的行 key（用于高亮和关联展开面板）
   const [selectedRowKey, setSelectedRowKey] = useState(null);
   
@@ -361,7 +363,11 @@ const ManageMachine = () => {
   });
 
   // 机器状态标签
-  const renderStatusTag = (status) => {
+  const renderStatusTag = (status, record) => {
+    const mid = String(record?.machine_id || record?.key || '');
+    if (mid && machineStatusLoadingMap[mid]) {
+      return <Tag color="processing">处理中</Tag>;
+    }
     const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
     return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : '维护中'}</Tag>;
   };
@@ -437,7 +443,7 @@ const ManageMachine = () => {
     } catch (err) {
       console.error('getContainerDetailInformation failed', err);
       const status = err?.response?.status || err?.status;
-      await showErrorModal({ message: err?.body?.message || err?.message || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       if (status === 403) {
         handleAuthError(403, navigate);
       }
@@ -545,7 +551,7 @@ const ManageMachine = () => {
       } catch (err) {
         console.error('createContainer failed', err);
         const status = err?.response?.status || err?.status;
-        await showErrorModal({ message: err?.body?.message || err?.message || '添加容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        await showErrorModal({ message: err?.body || err || '添加容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
         if (status === 403) {
           handleAuthError(403, navigate);
         }
@@ -607,12 +613,16 @@ const ManageMachine = () => {
         try {
           const mid = editTargetMachine.machine_id || editTargetMachine.key;
           await updateMachine(mid, payload);
+          const oldStatus = String(editTargetMachine.machine_status || '').toLowerCase();
+          const requestedStatus = String(values.machine_status || editTargetMachine.machine_status || 'online').toLowerCase();
+          const isOnlineToMaintenance = oldStatus === 'online' && requestedStatus === 'maintenance';
           const updatedMachine = {
             ...editTargetMachine,
             machine_name: payload.machine_name,
             machine_ip: payload.machine_ip,
             machine_type: (payload.machine_type || '').toUpperCase(),
-            machine_status: (values.machine_status || editTargetMachine.machine_status || 'online').toLowerCase(),
+            // ONLINE -> MAINTENANCE is async on Ctrl; keep current UI status until heartbeat confirms terminal status.
+            machine_status: isOnlineToMaintenance ? oldStatus : requestedStatus,
             cpu_core_number: payload.cpu_core_number,
             memory_size_gb: payload.memory_size,
             gpu_number: payload.gpu_number,
@@ -621,40 +631,53 @@ const ManageMachine = () => {
             machine_description: payload.machine_description || ''
           };
           setMachines(prev => prev.map(m => (m.key === editTargetMachine.key ? updatedMachine : m)));
-          // 之后，这里 关闭宿主机 前，会先对容器进行关闭。
-          // TODO
+          // ONLINE -> MAINTENANCE transition is handled by Ctrl; web only starts machine-status heartbeat.
           try {
-            const oldStatus = String(editTargetMachine.machine_status || '').toLowerCase();
-            const newStatus = String(updatedMachine.machine_status || '').toLowerCase();
-            if (newStatus === 'maintenance' && oldStatus !== 'maintenance') {
+            if (isOnlineToMaintenance) {
               const midStr = String(mid);
-              const entry = containerMap[midStr] || {};
-              const conts = entry.data || [];
-              conts.forEach(c => {
-                // placeholder for actual stop API call
-                // e.g. await stopContainer(c.key)
-                // for now just log intention
-                // eslint-disable-next-line no-console
-                console.log('stop_container (placeholder) for container', c.key);
-              });
-              // update UI: mark containers as offline
-              setContainerMap(prev => {
-                const copy = { ...(prev || {}) };
-                if (copy[midStr] && Array.isArray(copy[midStr].data)) {
-                  copy[midStr] = { ...copy[midStr], data: copy[midStr].data.map(cc => ({ ...cc, container_status: 'offline' })) };
+              setMachineStatusLoadingMap(prev => ({ ...prev, [midStr]: true }));
+              // safety timeout: clear loading even if heartbeat times out silently
+              setTimeout(() => {
+                setMachineStatusLoadingMap(prev => {
+                  if (!prev[midStr]) return prev;
+                  const copy = { ...prev };
+                  delete copy[midStr];
+                  return copy;
+                });
+              }, 250000);
+              startMachineStatusHeartbeat({
+                machine_id: mid,
+                terminalState: 'maintenance',
+                onTerminal: async (m) => {
+                  try {
+                    const finalStatus = String(m?.machine_status || 'maintenance').toLowerCase();
+                    setMachineStatusLoadingMap(prev => {
+                      const copy = { ...prev };
+                      delete copy[String(mid)];
+                      return copy;
+                    });
+                    setMachines(prev => prev.map(item => (
+                      String(item.machine_id || item.key) === String(mid)
+                        ? { ...item, machine_status: finalStatus }
+                        : item
+                    )));
+                    // also refresh this machine's containers after transition converges
+                    await fetchContainersForMachine(String(mid), 0);
+                  } catch (e) {
+                    // ignore
+                  }
                 }
-                return copy;
               });
             }
           } catch (e) {
-            // ignore logging errors
+            // ignore heartbeat start errors
           }
           message.success('宿主机已更新');
           success = true;
           } catch (err) {
           console.error('updateMachine failed', err);
           const status = err?.response?.status || err?.status;
-          await showErrorModal({ message: err?.body?.message || ('更新宿主机失败：' + (err?.message || '未知错误')), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+          await showErrorModal({ message: err?.body || err || ('更新宿主机失败：' + (err?.message || '未知错误')), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
           if (status === 403) {
             handleAuthError(403, navigate);
           }
@@ -677,7 +700,7 @@ const ManageMachine = () => {
         } catch (err) {
           console.error('addMachine failed', err);
           const status = err?.response?.status || err?.status;
-          await showErrorModal({ message: err?.body?.message || err?.message || '添加宿主机失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+          await showErrorModal({ message: err?.body || err || '添加宿主机失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
           if (status === 403) {
             handleAuthError(403, navigate);
           }
@@ -723,7 +746,7 @@ const ManageMachine = () => {
         const bodyMsg = err?.body?.message || err?.body || null;
         const messageText = bodyMsg ? `删除宿主机失败: ${bodyMsg}` : '删除宿主机失败，请重试';
         const status = err?.status || err?.response?.status || err?.status;
-        await showErrorModal({ message: err?.body?.message || messageText, status: status, route: err?.route || err?.response?.url });
+        await showErrorModal({ message: err?.body || err || messageText, status: status, route: err?.route || err?.response?.url });
         if (status === 403) {
           handleAuthError(403, navigate);
         }
@@ -769,7 +792,7 @@ const ManageMachine = () => {
     } catch (err) {
       console.error('deleteContainer failed', err);
       const status = err?.response?.status || err?.status;
-      await showErrorModal({ message: err?.body?.message || err?.message || '删除容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.body || err || '删除容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       if (status === 403) {
         handleAuthError(403, navigate);
       }
@@ -869,7 +892,7 @@ const ManageMachine = () => {
         }
         return copy;
       });
-      try { await showErrorModal({ message: e?.body?.message || e?.message || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      try { await showErrorModal({ message: e?.body || e || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('启动失败');
     }
   };
@@ -929,7 +952,7 @@ const ManageMachine = () => {
         }
         return copy;
       });
-      try { await showErrorModal({ message: e?.body?.message || e?.message || '停止失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      try { await showErrorModal({ message: e?.body || e || '停止失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('停止失败');
     }
   };
@@ -989,7 +1012,7 @@ const ManageMachine = () => {
         }
         return copy;
       });
-      try { await showErrorModal({ message: e?.body?.message || e?.message || '重启失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      try { await showErrorModal({ message: e?.body || e || '重启失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('重启失败');
     }
   };
@@ -1168,7 +1191,7 @@ const ManageMachine = () => {
               title="机器状态"
               dataIndex="machine_status"
               key="machine_status"
-              render={renderStatusTag}
+              render={(status, record) => renderStatusTag(status, record)}
             />
             <Column title="CPU核心数" dataIndex="cpu_core_number" key="cpu_core_number" />
             <Column title="内存(GB)" dataIndex="memory_size_gb" key="memory_size_gb" />
@@ -1198,7 +1221,6 @@ const ManageMachine = () => {
                     </Button>
                     <Button onClick={() => openEditMachine(record)}><a>编辑</a></Button>
                     <Button onClick={() => openDeleteConfirm(record)}><a className="mm-link-danger">删除</a></Button>
-                    <Button><a className="mm-link-warning">重启</a></Button>
                   </Space>
                 );
               }}

@@ -57,7 +57,7 @@ const LoginBlock = () => {
 				userMsg = '请求超时，请稍后重试。';
 			}
 			// use showErrorModal to display exceptions
-			await showErrorModal({ title: '登录出错', message: err?.body?.message || userMsg, status: err?.status || undefined, route: err?.route || err?.response?.url });
+			await showErrorModal({ title: '登录出错', message: err?.body || err || userMsg, status: err?.status || undefined, route: err?.route || err?.response?.url });
 		}
 	};
 

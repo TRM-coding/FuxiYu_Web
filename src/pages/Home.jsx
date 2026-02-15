@@ -102,7 +102,7 @@ const Home = () => {
         if (mounted) setContainers(mapped);
       } catch (err) {
         console.error('load containers failed', err);
-        await showErrorModal({ message: err?.body?.message || err?.message || '加载容器列表失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        await showErrorModal({ message: err?.body || err || '加载容器列表失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       } finally {
         if (mounted) setLoadingContainers(false);
       }
@@ -257,7 +257,7 @@ const Home = () => {
       console.error('start container failed', e);
       // revert state
       setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)));
-      try { await showErrorModal({ message: e?.body?.message || e?.message || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      try { await showErrorModal({ message: e?.body || e || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('启动失败');
     }
   };
@@ -292,7 +292,7 @@ const Home = () => {
       console.error('stop container failed', e);
       // revert state
       setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
-      try { await showErrorModal({ message: e?.body?.message || e?.message || '停止失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      try { await showErrorModal({ message: e?.body || e || '停止失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('停止失败');
     }
   };
@@ -327,7 +327,7 @@ const Home = () => {
       console.error('restart container failed', e);
       // revert to online
       setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
-      try { await showErrorModal({ message: e?.body?.message || e?.message || '重启失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      try { await showErrorModal({ message: e?.body || e || '重启失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('重启失败');
     }
   };
@@ -413,7 +413,7 @@ const Home = () => {
       }
     } catch (err) {
       console.error('modal action failed', err);
-      await showErrorModal({ message: err?.body?.message || err?.message || '操作失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.body || err || '操作失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
     } finally {
       setModal({ visible: false, type: '', loading: false, data: null });
     }
@@ -464,7 +464,7 @@ const Home = () => {
     } catch (err) {
       console.error('getContainerDetailInformation failed', err);
       const status = err?.response?.status || err?.status;
-      await showErrorModal({ message: err?.body?.message || err?.message || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       if (status === 403) {
         handleAuthError(403, navigate);
       }

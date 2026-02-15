@@ -158,7 +158,7 @@ const Apply = () => {
         }
       } catch (err) {
         console.error('createContainer failed', err);
-        await showErrorModal({ message: err?.body?.message || err?.message || '创建容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        await showErrorModal({ message: err?.body || err || '创建容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       } finally {
         setAddContainerLoading(false);
       }

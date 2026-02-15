@@ -200,7 +200,7 @@ const ManageUser = () => {
           handleAuthError(401, navigate);
           return;
         }
-        await showErrorModal({ message: err?.body?.message || (msg ? `加载用户列表失败: ${msg}` : '加载用户列表失败'), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        await showErrorModal({ message: err?.body || err || (msg ? `加载用户列表失败: ${msg}` : '加载用户列表失败'), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       } finally {
         if (mounted) setUsersLoading(false);
       }
