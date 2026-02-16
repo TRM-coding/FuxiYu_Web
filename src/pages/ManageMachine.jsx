@@ -375,7 +375,7 @@ const ManageMachine = () => {
   // 容器状态标签
   const renderContainerStatus = (status) => {
     const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
-    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '无限崩溃' : status}</Tag>;
+    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status}</Tag>;
   };
 
   // 切换展开状态并关联选中态
@@ -1498,8 +1498,10 @@ const ManageMachine = () => {
                     </Form.Item>
                   </Col>
               <Col span={12}>
-                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }, { max: 195, message: '镜像名长度不得超过195个字符' }]}>
-                  <Input placeholder="例如：nginx:latest" maxLength={195} />
+                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}> 
+                  <Select placeholder="选择镜像" defaultValue="ubuntu:24.04" style={{ width: '100%' }}>
+                    <Select.Option value="ubuntu:24.04">ubuntu:24.04</Select.Option>
+                  </Select>
                 </Form.Item>
               </Col>
             </Row>

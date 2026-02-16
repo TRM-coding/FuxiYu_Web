@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
-import { Typography, Row, Col, Button, Input, Table, Tag, Radio, Space, Form, InputNumber, message } from 'antd';
+import { Typography, Row, Col, Button, Input, Table, Tag, Radio, Space, Form, InputNumber, message, Select } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 const { Column } = Table;
@@ -425,8 +425,10 @@ const Apply = () => {
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }, { max: 195, message: '镜像名长度不得超过195个字符' }, { validator: (_, value) => isValidImageName(value) ? Promise.resolve() : Promise.reject(new Error('镜像名格式不正确')) }]}>
-                  <Input placeholder="例如：nginx:latest" maxLength={195} />
+                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}> 
+                  <Select placeholder="选择镜像" defaultValue="ubuntu:24.04" style={{ width: '100%' }}>
+                    <Select.Option value="ubuntu:24.04">ubuntu:24.04</Select.Option>
+                  </Select>
                 </Form.Item>
               </Col>
             </Row>
