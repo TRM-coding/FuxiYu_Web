@@ -87,6 +87,7 @@ const Apply = () => {
   const [addContainerForm] = Form.useForm();
   const [addContainerMachineId, setAddContainerMachineId] = useState(null);
   const [addContainerUnsafe, setAddContainerUnsafe] = useState(false);
+  const [addContainerMachineType, setAddContainerMachineType] = useState('CPU');
   
 
   const fetchMachines = async (p = page, ps = pageSize) => {
@@ -122,7 +123,9 @@ const Apply = () => {
     const mid = machine?.machine_id ?? machine?.key ?? null;
     setAddContainerMachineId(mid);
     addContainerForm.resetFields();
-    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [] });
+    const mtype = (machine && (machine.machine_type || machine.machine_type === 0) ? (machine.machine_type || 'CPU') : 'CPU');
+    setAddContainerMachineType((mtype || 'CPU').toUpperCase());
+    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SWAP_MEM: 0, GPU_LIST: [], gpu_number: 0 });
     setAddContainerVisible(true);
   };
 
@@ -132,16 +135,31 @@ const Apply = () => {
       setAddContainerLoading(true);
       const machineId = values.machine_id || addContainerMachineId;
       // 使用状态中的 currentUserName 和 currentUserId
+      // build GPU_LIST per machine type
+      let gpuList = [];
+      try {
+        if ((addContainerMachineType || '').toUpperCase() === 'GPU') {
+          const gnum = Number(values.gpu_number || 0);
+          if (Number.isInteger(gnum) && gnum > 0) gpuList = Array.from({ length: gnum }, (_, i) => i);
+          else gpuList = values.GPU_LIST || [];
+        } else {
+          gpuList = [];
+        }
+      } catch (e) {
+        gpuList = values.GPU_LIST || [];
+      }
+
       const payload = {
         user_name: currentUserName || '',
         user_id: currentUserId || null,
         machine_id: machineId,
         container: {
-          GPU_LIST: values.GPU_LIST || [],
+          GPU_LIST: gpuList,
           CPU_NUMBER: values.CPU_NUMBER || 1,
-          MEMORY: values.MEMORY || 512,
+          MEMORY: values.MEMORY || 1,
           NAME: values.NAME || `container-${Date.now()}`,
-          image: values.image || ''
+          image: values.image || '',
+          swap_memory: values.SWAP_MEM || 0
         },
         public_key: values.public_key || ''
       };
@@ -363,6 +381,9 @@ const Apply = () => {
                 <b>磁盘:</b> {detailInfo.disk_size_gb} GB
               </div>
               <div>
+                <b>交换分区:</b> {detailInfo.max_swap_gb} GB
+              </div>
+              <div>
                 <b>描述:</b>
                 <div className="apply-prewrap">{detailInfo.machine_description}</div>
               </div>
@@ -410,6 +431,9 @@ const Apply = () => {
               }
             }}
           >
+            <Typography.Text type="secondary">请不要超过宿主机算力/内存/交换空间上限，系统会在提交时进行校验。</Typography.Text>
+            <br />
+            <br />
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
@@ -440,11 +464,37 @@ const Apply = () => {
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="MEMORY" label="内存 (MB)">
-                  <InputNumber min={128} style={{ width: '100%' }} />
+                <Form.Item name="MEMORY" label="内存 (GB)">
+                  <InputNumber min={1} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
             </Row>
+
+            {addContainerMachineType === 'GPU' && (
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="gpu_number" label="请求 GPU 数量">
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="SWAP_MEM" label="交换空间 (GB)">
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+            )}
+
+            {addContainerMachineType !== 'GPU' && (
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="SWAP_MEM" label="交换空间 (GB)">
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12} />
+              </Row>
+            )}
 
             <Row gutter={16}>
               <Col span={12}>

@@ -190,6 +190,7 @@ const ManageMachine = () => {
   const [addContainerForm] = Form.useForm();
   const [addContainerMachineId, setAddContainerMachineId] = useState(null);
   const [addContainerUnsafe, setAddContainerUnsafe] = useState(false);
+  const [addContainerMachineType, setAddContainerMachineType] = useState('CPU');
   // 编辑模式
   const [isEditMode, setIsEditMode] = useState(false);
   const [editTargetMachine, setEditTargetMachine] = useState(null);
@@ -218,6 +219,7 @@ const ManageMachine = () => {
         machine_status: (m.machine_status || '').toLowerCase(),
         cpu_core_number: null,
         memory_size_gb: null,
+        max_swap_gb: null,
         gpu_number: null,
         gpu_type: null,
         disk_size_gb: null,
@@ -239,6 +241,7 @@ const ManageMachine = () => {
             ...it,
             cpu_core_number: d.cpu_core_number ?? it.cpu_core_number,
             memory_size_gb: d.memory_size_gb ?? it.memory_size_gb,
+            max_swap_gb: d.max_swap_gb ?? it.max_swap_gb,
             gpu_number: d.gpu_number ?? it.gpu_number,
             gpu_type: d.gpu_type ?? it.gpu_type,
             disk_size_gb: d.disk_size_gb ?? it.disk_size_gb,
@@ -455,7 +458,7 @@ const ManageMachine = () => {
   const openAddHostModal = () => {
     addHostForm.resetFields();
     // set defaults for add mode: default status = maintenance
-    addHostForm.setFieldsValue({ machine_status: 'maintenance', machine_type: 'CPU', gpu_number: 0 });
+    addHostForm.setFieldsValue({ machine_status: 'maintenance', machine_type: 'CPU', gpu_number: 0, max_swap_gb: 0 });
     setIsEditMode(false);
     setEditTargetMachine(null);
     setAddHostVisible(true);
@@ -469,7 +472,9 @@ const ManageMachine = () => {
     addContainerForm.resetFields();
     // prefill machine id and defaults
     const defaultUser = localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
-    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [], root_user: defaultUser });
+    const mtype = (machine && (machine.machine_type || machine.machine_type === 0) ? (machine.machine_type || 'CPU') : 'CPU');
+    setAddContainerMachineType((mtype || 'CPU').toUpperCase());
+    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SWAP_MEM: 0, GPU_LIST: [], gpu_number: 0, root_user: defaultUser });
     setAddContainerVisible(true);
   };
 
@@ -480,18 +485,36 @@ const ManageMachine = () => {
       setAddContainerLoading(true);
       const machineId = values.machine_id || addContainerMachineId;
       const toAddUserName = values.root_user || localStorage.getItem('currentUserName') || '';
-      const payload = {
-        user_name: toAddUserName,
-        machine_id: machineId,
-        container: {
-          GPU_LIST: values.GPU_LIST || [],
-          CPU_NUMBER: values.CPU_NUMBER || 1,
-          MEMORY: values.MEMORY || 512,
-          NAME: values.NAME || `container-${Date.now()}`,
-          image: values.image || ''
-        },
-        public_key: values.public_key || ''
-      };
+        // build GPU_LIST according to host type and requested gpu_number
+        let gpuList = [];
+        try {
+          if ((addContainerMachineType || '').toUpperCase() === 'GPU') {
+            const gnum = Number(values.gpu_number || 0);
+            if (Number.isInteger(gnum) && gnum > 0) {
+              gpuList = Array.from({ length: gnum }, (_, i) => i);
+            } else {
+              gpuList = values.GPU_LIST || [];
+            }
+          } else {
+            gpuList = [];
+          }
+        } catch (e) {
+          gpuList = values.GPU_LIST || [];
+        }
+
+        const payload = {
+          user_name: toAddUserName,
+          machine_id: machineId,
+          container: {
+            GPU_LIST: gpuList,
+            CPU_NUMBER: values.CPU_NUMBER || 1,
+            MEMORY: values.MEMORY || 1,
+            NAME: values.NAME || `container-${Date.now()}`,
+            image: values.image || '',
+            swap_memory: values.SWAP_MEM || 0
+          },
+          public_key: values.public_key || ''
+        };
       let success = false;
       try {
         const res = await createContainer(payload);
@@ -581,6 +604,7 @@ const ManageMachine = () => {
       gpu_number: machine.gpu_number ?? 0,
       gpu_type: machine.gpu_type || '',
       memory_size: machine.memory_size_gb || null,
+      max_swap_gb: machine.max_swap_gb || null,
       disk_size: machine.disk_size_gb || null,
       machine_description: machine.machine_description || ''
     });
@@ -604,6 +628,7 @@ const ManageMachine = () => {
         gpu_number: values.gpu_number || 0,
         gpu_type: values.gpu_type || null,
         memory_size: values.memory_size || null,
+        max_swap_gb: values.max_swap_gb || null,
         disk_size: values.disk_size || null,
       };
 
@@ -625,6 +650,7 @@ const ManageMachine = () => {
             machine_status: isOnlineToMaintenance ? oldStatus : requestedStatus,
             cpu_core_number: payload.cpu_core_number,
             memory_size_gb: payload.memory_size,
+            max_swap_gb: payload.max_swap_gb,
             gpu_number: payload.gpu_number,
             gpu_type: payload.gpu_type,
             disk_size_gb: payload.disk_size,
@@ -1195,6 +1221,7 @@ const ManageMachine = () => {
             />
             <Column title="CPU核心数" dataIndex="cpu_core_number" key="cpu_core_number" />
             <Column title="内存(GB)" dataIndex="memory_size_gb" key="memory_size_gb" />
+            <Column title="最大Swap(GB)" dataIndex="max_swap_gb" key="max_swap_gb" />
             <Column title="GPU数量" dataIndex="gpu_number" key="gpu_number" />
             <Column title="GPU型号" dataIndex="gpu_type" key="gpu_type" />
             <Column title="磁盘(GB)" dataIndex="disk_size_gb" key="disk_size_gb" />
@@ -1252,6 +1279,7 @@ const ManageMachine = () => {
                 }
               }}
           >
+            <Typography.Text type="secondary">这些机器参数用于上限控制，请谨慎填写（系统会在创建容器时校验上限）。</Typography.Text>
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }, { max: 115, message: '机器名长度不得超过115个字符' }]}> 
@@ -1355,6 +1383,15 @@ const ManageMachine = () => {
                 </Form.Item>
               </Col>
             </Row>
+
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="max_swap_gb" label="交换空间 (GB)">
+                    <InputNumber min={0} className="mm-width-100" />
+                  </Form.Item>
+                </Col>
+                <Col span={12} />
+              </Row>
 
             <Row>
               <Col span={24}>
@@ -1474,7 +1511,7 @@ const ManageMachine = () => {
           <Form
             form={addContainerForm}
             layout="vertical"
-            initialValues={{ CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [] }}
+            initialValues={{ CPU_NUMBER: 1, MEMORY: 1, SWAP_MEM: 0, GPU_LIST: [], gpu_number: 0 }}
             onValuesChange={() => {
               try {
                 const vals = addContainerForm.getFieldsValue();
@@ -1506,6 +1543,10 @@ const ManageMachine = () => {
               </Col>
             </Row>
 
+            <Typography.Text type="secondary">请注意：下面的资源参数用于校验并限制容器申请，请不要超过宿主机的算力/内存/交换空间上限。</Typography.Text>
+            <br />
+            <br />
+
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item name="CPU_NUMBER" label="CPU 数量">
@@ -1513,11 +1554,38 @@ const ManageMachine = () => {
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="MEMORY" label="内存 (MB)">
-                  <InputNumber min={128} className="mm-width-100" />
+                <Form.Item name="MEMORY" label="内存 (GB)">
+                  <InputNumber min={1} className="mm-width-100" />
                 </Form.Item>
               </Col>
             </Row>
+
+            {/* GPU count: shown only when the selected machine is a GPU machine */}
+            {addContainerMachineType === 'GPU' && (
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="gpu_number" label="请求 GPU 数量">
+                    <InputNumber min={0} className="mm-width-100" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="SWAP_MEM" label="交换空间 (GB)">
+                    <InputNumber min={0} className="mm-width-100" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            )}
+
+            {addContainerMachineType !== 'GPU' && (
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="SWAP_MEM" label="交换空间 (GB)">
+                    <InputNumber min={0} className="mm-width-100" />
+                  </Form.Item>
+                </Col>
+                <Col span={12} />
+              </Row>
+            )}
 
             <Row gutter={16}>
               <Col span={12}>

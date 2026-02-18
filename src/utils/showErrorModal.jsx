@@ -148,7 +148,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
     '/users/reset_password': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
 
     // 容器相关
-    '/containers/create_container': { duplicate_entry: '创建容器失败：重复项', invalid_payload: '无效的容器数据', create_failed: '创建容器失败' },
+    '/containers/create_container': { duplicate_entry: '创建容器失败：重复项', invalid_payload: '无效的容器数据', invalid_config: '容器配置无效或超出宿主机上限', create_failed: '创建容器失败' },
     '/containers/delete_container': { delete_failed: '删除容器失败', not_found: '容器不存在' },
     '/containers/add_collaborator': { add_collaborator_failed: '添加协作者失败', container_offline: '容器未在线，无法添加协作者' },
     '/containers/remove_collaborator': { remove_collaborator_failed: '移除协作者失败', container_offline: '容器未在线，无法移除协作者' },
