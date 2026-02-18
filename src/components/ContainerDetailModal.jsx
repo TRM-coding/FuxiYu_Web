@@ -41,7 +41,11 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
         ? 'blue'
         : container.container_status === 'starting'
           ? 'cyan'
-          : 'orange';
+          : container.container_status === 'stopping'
+            ? 'orange'
+            : container.container_status === 'deleting'
+              ? 'red'
+              : 'default';
 
   const statusText = container.container_status === 'online'
     ? '运行中'
@@ -51,7 +55,11 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
         ? '创建中'
         : container.container_status === 'starting'
           ? '启动中'
-          : '停止中';
+          : container.container_status === 'stopping'
+            ? '停止中'
+            : container.container_status === 'deleting'
+              ? '异常'
+              : container.container_status;
 
   return (
     <Modal title="容器详细信息" open={visible} onCancel={onClose} width="min(750px, calc(100vw - 24px))" className="cdm-modal" footer={[
