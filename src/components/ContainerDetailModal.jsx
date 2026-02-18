@@ -43,11 +43,10 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
           ? 'cyan'
           : container.container_status === 'stopping'
             ? 'orange'
-            : container.container_status === 'deleting'
+            : container.container_status === 'failed'
               ? 'red'
               : 'default';
-
-  const statusText = container.container_status === 'online'
+   const statusText = container.container_status === 'online'
     ? '运行中'
     : container.container_status === 'offline'
       ? '已停止'
@@ -57,7 +56,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
           ? '启动中'
           : container.container_status === 'stopping'
             ? '停止中'
-            : container.container_status === 'deleting'
+            : container.container_status === 'failed'
               ? '异常'
               : container.container_status;
 
