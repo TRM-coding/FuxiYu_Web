@@ -96,8 +96,8 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
               <Space align="start">
                 <GlobalOutlined className="cdm-icon" />
                 <div>
-                  <Typography.Text strong className="cdm-item-label">所属机器ID</Typography.Text>
-                  <Typography.Text className="cdm-machine-text">{container.machine_id || container.machine_ip}</Typography.Text>
+                  <Typography.Text strong className="cdm-item-label">所属机器 IP</Typography.Text>
+                  <Typography.Text className="cdm-machine-text">{container.machine_ip || container.machine_id}</Typography.Text>
                 </div>
               </Space>
             </Col>
@@ -118,6 +118,50 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
                 <div>
                   <Typography.Text strong className="cdm-item-label">端口映射</Typography.Text>
                   <Tag color="purple">{container.port}</Tag>
+                </div>
+              </Space>
+            </Col>
+          </Row>
+        </div>
+
+        <div className="cdm-resources-card">
+          <Row gutter={[24, 16]}>
+            <Col xs={12} sm={12} md={6}>
+              <Space align="start">
+                <SettingOutlined className="cdm-icon" />
+                <div>
+                  <Typography.Text strong className="cdm-item-label">CPU 核数</Typography.Text>
+                  <Typography.Text className="cdm-machine-text">{container.cpu_number ?? container.cpu_number === 0 ? String(container.cpu_number) : '-'}</Typography.Text>
+                </div>
+              </Space>
+            </Col>
+
+            <Col xs={12} sm={12} md={6}>
+              <Space align="start">
+                <SettingOutlined className="cdm-icon" />
+                <div>
+                  <Typography.Text strong className="cdm-item-label">GPU 数量</Typography.Text>
+                  <Typography.Text className="cdm-machine-text">{container.gpu_number ?? container.gpu_number === 0 ? String(container.gpu_number) : '-'}</Typography.Text>
+                </div>
+              </Space>
+            </Col>
+
+            <Col xs={12} sm={12} md={6}>
+              <Space align="start">
+                <ClockCircleOutlined className="cdm-icon" />
+                <div>
+                  <Typography.Text strong className="cdm-item-label">内存 (GB)</Typography.Text>
+                  <Typography.Text className="cdm-machine-text">{container.memory_gb ?? container.memory_gb === 0 ? String(container.memory_gb) : '-'}</Typography.Text>
+                </div>
+              </Space>
+            </Col>
+
+            <Col xs={12} sm={12} md={6}>
+              <Space align="start">
+                <GlobalOutlined className="cdm-icon" />
+                <div>
+                  <Typography.Text strong className="cdm-item-label">Swap (GB)</Typography.Text>
+                  <Typography.Text className="cdm-machine-text">{container.swap_gb ?? container.swap_gb === 0 ? String(container.swap_gb) : '-'}</Typography.Text>
                 </div>
               </Space>
             </Col>

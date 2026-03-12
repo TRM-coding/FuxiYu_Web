@@ -227,6 +227,9 @@ const ManageMachine = () => {
         machine_status: (m.machine_status || '').toLowerCase(),
         cpu_core_number: null,
         memory_size_gb: null,
+        max_memory_gb: null,
+        max_gpu_number: null,
+        max_cpu_core_number: null,
         max_swap_gb: null,
         gpu_number: null,
         gpu_type: null,
@@ -249,6 +252,9 @@ const ManageMachine = () => {
             ...it,
             cpu_core_number: d.cpu_core_number ?? it.cpu_core_number,
             memory_size_gb: d.memory_size_gb ?? it.memory_size_gb,
+            max_memory_gb: d.max_memory_gb ?? it.max_memory_gb,
+            max_gpu_number: d.max_gpu_number ?? it.max_gpu_number,
+            max_cpu_core_number: d.max_cpu_core_number ?? it.max_cpu_core_number,
             max_swap_gb: d.max_swap_gb ?? it.max_swap_gb,
             gpu_number: d.gpu_number ?? it.gpu_number,
             gpu_type: d.gpu_type ?? it.gpu_type,
@@ -916,6 +922,7 @@ const ManageMachine = () => {
       try {
         startContainerStatusHeartbeat({
           machine_id: container.machine_id,
+          machine_ip: container.machine_ip,
           container_name: container.container_name,
           terminalState: 'online',
           onTerminal: (data) => {
@@ -976,6 +983,7 @@ const ManageMachine = () => {
       try {
         startContainerStatusHeartbeat({
           machine_id: container.machine_id,
+          machine_ip: container.machine_ip,
           container_name: container.container_name,
           terminalState: 'offline',
           onTerminal: (data) => {
@@ -1036,6 +1044,7 @@ const ManageMachine = () => {
       try {
         startContainerStatusHeartbeat({
           machine_id: container.machine_id,
+          machine_ip: container.machine_ip,
           container_name: container.container_name,
           terminalState: 'online',
           onTerminal: (data) => {
@@ -1255,10 +1264,58 @@ const ManageMachine = () => {
               key="machine_status"
               render={(status, record) => renderStatusTag(status, record)}
             />
-            <Column title="CPU核心数" dataIndex="cpu_core_number" key="cpu_core_number" />
-            <Column title="内存(GB)" dataIndex="memory_size_gb" key="memory_size_gb" />
+            <Column
+              title="CPU核心数"
+              dataIndex="cpu_core_number"
+              key="cpu_core_number"
+              render={(num, record) => {
+                const cur = (num === null || num === undefined) ? '-' : String(num);
+                const max = (record?.max_cpu_core_number === null || record?.max_cpu_core_number === undefined) ? '-' : String(record.max_cpu_core_number);
+                const ratio = (Number(num) && Number(record?.max_cpu_core_number)) ? (Number(num) / Number(record.max_cpu_core_number)) : 0;
+                const warn = ratio > 0.8;
+                return (
+                  <span style={{ display: 'flex', flexDirection: 'column'}}>
+                    <span>{cur}</span>
+                    <Typography.Text type="secondary" style={{ fontSize: 13, color: warn ? '#ff4d4f' : undefined }}>(限: {max})</Typography.Text>
+                  </span>
+                );
+              }}
+            />
+            <Column
+              title="内存(GB)"
+              dataIndex="memory_size_gb"
+              key="memory_size_gb"
+              render={(num, record) => {
+                const cur = (num === null || num === undefined) ? '-' : String(num);
+                const max = (record?.max_memory_gb === null || record?.max_memory_gb === undefined) ? '-' : String(record.max_memory_gb);
+                const ratio = (Number(num) && Number(record?.max_memory_gb)) ? (Number(num) / Number(record.max_memory_gb)) : 0;
+                const warn = ratio > 0.8;
+                return (
+                  <span style={{ display: 'flex', flexDirection: 'column'}}>
+                    <span>{cur}</span>
+                    <Typography.Text type="secondary" style={{ fontSize: 13, color: warn ? '#ff4d4f' : undefined }}>(限: {max})</Typography.Text>
+                  </span>
+                );
+              }}
+            />
             <Column title="最大Swap(GB)" dataIndex="max_swap_gb" key="max_swap_gb" />
-            <Column title="GPU数量" dataIndex="gpu_number" key="gpu_number" />
+            <Column
+              title="GPU数量"
+              dataIndex="gpu_number"
+              key="gpu_number"
+              render={(num, record) => {
+                const cur = (num === null || num === undefined) ? '-' : String(num);
+                const max = (record?.max_gpu_number === null || record?.max_gpu_number === undefined) ? '-' : String(record.max_gpu_number);
+                const ratio = (Number(num) && Number(record?.max_gpu_number)) ? (Number(num) / Number(record.max_gpu_number)) : 0;
+                const warn = ratio > 0.8;
+                return (
+                  <span style={{ display: 'flex', flexDirection: 'column'}}>
+                    <span>{cur}</span>
+                    <Typography.Text type="secondary" style={{ fontSize: 13, color: warn ? '#ff4d4f' : undefined }}>(限: {max})</Typography.Text>
+                  </span>
+                );
+              }}
+            />
             <Column title="GPU型号" dataIndex="gpu_type" key="gpu_type" />
             <Column title="磁盘(GB)" dataIndex="disk_size_gb" key="disk_size_gb" />
             <Column
@@ -1380,7 +1437,7 @@ const ManageMachine = () => {
                     return (
                           <Form.Item name="max_cpu_core_number" label={`CPU 最大允许分配（整数，单位：核）`}>
                             <>
-                              <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation} style={{ touchAction: 'pan-y' }}>
+                              <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                                 <div style={{ minHeight: 22, marginBottom: 8 }}>
                                   {(cpuMax > 0 && val > Math.floor(cpuMax * 0.8)) ? (
                                     <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
@@ -1429,7 +1486,7 @@ const ManageMachine = () => {
                     return (
                       <Form.Item name="max_memory_gb" label={`内存 最大允许分配（GB，整数）`}>
                         <>
-                          <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation} style={{ touchAction: 'pan-y' }}>
+                          <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                             <div style={{ minHeight: 22, marginBottom: 8 }}>
                               {(memMax > 0 && val > Math.floor(memMax * 0.8)) ? (
                                 <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
@@ -1468,7 +1525,7 @@ const ManageMachine = () => {
                     return (
                       <Form.Item name="max_gpu_number" label={`GPU 最大允许分配（整数）`}>
                         <>
-                          <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation} style={{ touchAction: 'pan-y' }}>
+                          <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                             <div style={{ minHeight: 22, marginBottom: 8 }}>
                               {(mt === 'GPU' && gpuMax > 0 && val > Math.floor(gpuMax * 0.8)) ? (
                                 <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>

@@ -21,6 +21,7 @@ import { isValidName, isValidImageName } from '../utils/validateCmdArg';
 import { createContainer } from '../api/container_api';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import ConfirmModal from '../components/ConfirmModal';
+import MachineDetailModal from '../components/MachineDetailModal';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 
 // data will be fetched from backend; table will use mapped `tableData` built from API response.
@@ -271,22 +272,26 @@ const Apply = () => {
             render={(text, record) => (
               <a
                 onClick={async () => {
-                  const id = record.machine_id || 0;
-                  setDetailError('');
-                  setDetailInfo(null);
-                  setDetailLoading(true);
-                  try {
-                    const res = await getDetailInformation(id);
-                    setDetailInfo(res);
-                    setDetailVisible(true);
-                  } catch (err) {
-                    console.error('Failed to get detail', err);
-                    setDetailError(err.message || 'Failed to load details');
-                    setDetailVisible(true);
-                  } finally {
-                    setDetailLoading(false);
-                  }
-                }}
+                      const id = record.machine_id || 0;
+                      setDetailError('');
+                      // show immediate info from the list data (use list status)
+                      setDetailInfo(record);
+                      setDetailVisible(true);
+                      setDetailLoading(true);
+                      try {
+                        const res = await getDetailInformation(id);
+                        // merge detail but keep machine_status from list data
+                        const merged = { ...(res || {}), ...record, machine_status: record.machine_status };
+                        // ensure fields from detail override when present except machine_status
+                        const final = { ...merged, machine_status: record.machine_status };
+                        setDetailInfo(final);
+                      } catch (err) {
+                        console.error('Failed to get detail', err);
+                        setDetailError(err.message || 'Failed to load details');
+                      } finally {
+                        setDetailLoading(false);
+                      }
+                    }}
               >
                 {text}
               </a>
@@ -320,16 +325,18 @@ const Apply = () => {
                 onClick={async () => {
                   const id = record.machine_id || 0;
                   setDetailError('');
-                  setDetailInfo(null);
+                  // show immediate info from the list data (use list status)
+                  setDetailInfo(record);
+                  setDetailVisible(true);
                   setDetailLoading(true);
                   try {
                     const res = await getDetailInformation(id);
-                    setDetailInfo(res);
-                    setDetailVisible(true);
+                    const merged = { ...(res || {}), ...record, machine_status: record.machine_status };
+                    const final = { ...merged, machine_status: record.machine_status };
+                    setDetailInfo(final);
                   } catch (err) {
                     console.error('Failed to get detail', err);
                     setDetailError(err.message || 'Failed to load details');
-                    setDetailVisible(true);
                   } finally {
                     setDetailLoading(false);
                   }
@@ -355,51 +362,11 @@ const Apply = () => {
           />
         </TableComponent>
       </div>
-      <ConfirmModal
+      <MachineDetailModal
         visible={detailVisible}
-        title={detailInfo ? detailInfo.machine_name || '机器详情' : '机器详情'}
-        message={detailError || ''}
-        content={
-          detailInfo ? (
-            <div className="apply-detail-body">
-              <div>
-                <b>IP:</b> {detailInfo.machine_ip}
-              </div>
-              <div>
-                <b>类型:</b> <Tag color={detailInfo.machine_type === 'GPU' ? 'volcano' : 'green'}>{detailInfo.machine_type}</Tag>
-              </div>
-              <div>
-                <b>CPU core 数:</b> {detailInfo.cpu_core_number}
-              </div>
-              <div>
-                <b>GPU 数:</b> {detailInfo.gpu_number} {detailInfo.gpu_type ? `(${detailInfo.gpu_type})` : ''}
-              </div>
-              <div>
-                <b>内存:</b> {detailInfo.memory_size_gb} GB
-              </div>
-              <div>
-                <b>磁盘:</b> {detailInfo.disk_size_gb} GB
-              </div>
-              <div>
-                <b>交换分区:</b> {detailInfo.max_swap_gb} GB
-              </div>
-              <div>
-                <b>描述:</b>
-                <div className="apply-prewrap">{detailInfo.machine_description}</div>
-              </div>
-              <div>
-                <b>容器:</b> {Array.isArray(detailInfo.containers) ? detailInfo.containers.join(', ') : ''}
-              </div>
-            </div>
-              ) : (
-                <div>{detailError || '加载中...'}</div>
-              )
-        }
-        onConfirm={() => setDetailVisible(false)}
-        onCancel={() => setDetailVisible(false)}
+        machine={detailInfo}
+        onClose={() => setDetailVisible(false)}
         loading={detailLoading}
-        confirmText="关闭"
-        showCancel={false}
       />
       <ConfirmModal
         visible={addContainerVisible}

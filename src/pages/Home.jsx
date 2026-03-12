@@ -597,7 +597,7 @@ const Home = () => {
           <TableComponent dataSource={containers} loading={loadingContainers} className="home-table">
             <Column title="容器名称" dataIndex="container_name" key="container_name" render={(text, record) => <a onClick={() => openContainerDetail(record)}>{text}</a>} />
             <Column title="容器ID" dataIndex="key" key="key" />
-            <Column title="机器ID" dataIndex="machine_id" key="machine_id" />
+            <Column title="机器 IP" dataIndex="machine_ip" key="machine_ip" render={(text, record) => (record.machine_ip || record.machine_id || '-')} />
             <Column
               title="容器状态"
               dataIndex="container_status"
