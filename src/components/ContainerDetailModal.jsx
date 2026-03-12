@@ -161,7 +161,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
                 <GlobalOutlined className="cdm-icon" />
                 <div>
                   <Typography.Text strong className="cdm-item-label">Swap (GB)</Typography.Text>
-                  <Typography.Text className="cdm-machine-text">{container.swap_gb ?? container.swap_gb === 0 ? String(container.swap_gb) : '-'}</Typography.Text>
+                  <Typography.Text className="cdm-machine-text">{(container.swap_gb !== null && container.swap_gb !== undefined) ? String(container.swap_gb) : '-'}</Typography.Text>
                 </div>
               </Space>
             </Col>

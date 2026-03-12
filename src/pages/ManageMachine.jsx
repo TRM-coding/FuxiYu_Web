@@ -458,8 +458,8 @@ const ManageMachine = () => {
         machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
         cpu_number: detail.cpu_number ?? container.cpu_number ?? null,
         gpu_number: detail.gpu_number ?? container.gpu_number ?? 0,
-        memory_gb: detail.memory_gb ?? container.memory_gb ?? null,
-        swap_gb: detail.swap_gb ?? container.swap_gb ?? null,
+        memory_gb: detail.memory_gb ?? container.memory_gb ?? 0,
+        swap_gb: detail.swap_gb ?? container.swap_gb ?? 0,
         owners: detail.owners || detail.owner_list || container.owners || [],
         accounts: detail.accounts || detail.account_list || container.accounts || []
       };
