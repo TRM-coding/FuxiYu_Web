@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination } from 'antd';
+import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination, Slider } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import TableComponent from '../components/TableComponent';
 import ConfirmModal from '../components/ConfirmModal';
@@ -82,6 +82,14 @@ const ManageMachine = () => {
   // top-level container-name search loading
   const [containerSearchLoading, setContainerSearchLoading] = useState(false);
   const containerSearchTimerRef = useRef(null);
+
+  const stopEventPropagation = (e) => {
+    try {
+      if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    } catch (err) {
+      // ignore
+    }
+  };
 
   const performMachineContainerSearch = async (keyword) => {
     const k = (keyword || '').trim().toLowerCase();
@@ -591,24 +599,44 @@ const ManageMachine = () => {
   };
 
   // 打开编辑宿主机弹窗（与添加使用同一表单，但为编辑模式）
-  const openEditMachine = (machine) => {
+  const openEditMachine = async (machine) => {
     setIsEditMode(true);
     setEditTargetMachine(machine);
-    // 预填表单
-    addHostForm.setFieldsValue({
-      machine_name: machine.machine_name || '',
-      machine_ip: machine.machine_ip || '',
-      machine_type: (machine.machine_type || 'CPU').toUpperCase() === 'GPU' ? 'GPU' : 'CPU',
-      machine_status: (machine.machine_status || 'online').toLowerCase(),
-      cpu_core_number: machine.cpu_core_number || null,
-      gpu_number: machine.gpu_number ?? 0,
-      gpu_type: machine.gpu_type || '',
-      memory_size: machine.memory_size_gb || null,
-      max_swap_gb: machine.max_swap_gb || null,
-      disk_size: machine.disk_size_gb || null,
-      machine_description: machine.machine_description || ''
-    });
-    setAddHostVisible(true);
+    setAddHostLoading(true);
+    // try to fetch detailed info from backend to populate max_* fields
+    try {
+      const mid = machine.machine_id || machine.key;
+      let detail = null;
+      try {
+        detail = await getDetailInformation(Number(mid));
+      } catch (e) {
+        // fallback to passed machine object if API call fails
+        detail = null;
+      }
+      const src = detail || machine || {};
+      addHostForm.setFieldsValue({
+        machine_name: src.machine_name || machine.machine_name || '',
+        machine_ip: src.machine_ip || machine.machine_ip || '',
+        machine_type: (src.machine_type || machine.machine_type || 'CPU').toUpperCase() === 'GPU' ? 'GPU' : 'CPU',
+        machine_status: (src.machine_status || machine.machine_status || 'online').toLowerCase(),
+        cpu_core_number: src.cpu_core_number ?? machine.cpu_core_number ?? null,
+        gpu_number: src.gpu_number ?? machine.gpu_number ?? 0,
+        gpu_type: src.gpu_type || machine.gpu_type || '',
+        memory_size: src.memory_size_gb ?? machine.memory_size_gb ?? null,
+        max_memory_gb: src.max_memory_gb ?? machine.max_memory_gb ?? 0,
+        max_gpu_number: src.max_gpu_number ?? machine.max_gpu_number ?? 0,
+        max_cpu_core_number: src.max_cpu_core_number ?? machine.max_cpu_core_number ?? 0,
+        max_swap_gb: src.max_swap_gb ?? machine.max_swap_gb ?? null,
+        disk_size: src.disk_size_gb ?? machine.disk_size_gb ?? null,
+        machine_description: src.machine_description || machine.machine_description || ''
+      });
+      setAddHostVisible(true);
+    } catch (err) {
+      console.error('openEditMachine failed', err);
+      await showErrorModal({ message: err?.body || err || '获取宿主机详情失败，请重试' });
+    } finally {
+      setAddHostLoading(false);
+    }
   };
 
   // 添加宿主机确认
@@ -628,6 +656,9 @@ const ManageMachine = () => {
         gpu_number: values.gpu_number || 0,
         gpu_type: values.gpu_type || null,
         memory_size: values.memory_size || null,
+        max_memory_gb: values.max_memory_gb || 0,
+        max_gpu_number: values.max_gpu_number || 0,
+        max_cpu_core_number: values.max_cpu_core_number || 0,
         max_swap_gb: values.max_swap_gb || null,
         disk_size: values.disk_size || null,
       };
@@ -650,6 +681,9 @@ const ManageMachine = () => {
             machine_status: isOnlineToMaintenance ? oldStatus : requestedStatus,
             cpu_core_number: payload.cpu_core_number,
             memory_size_gb: payload.memory_size,
+            max_memory_gb: payload.max_memory_gb,
+            max_gpu_number: payload.max_gpu_number,
+            max_cpu_core_number: payload.max_cpu_core_number,
             max_swap_gb: payload.max_swap_gb,
             gpu_number: payload.gpu_number,
             gpu_type: payload.gpu_type,
@@ -709,9 +743,11 @@ const ManageMachine = () => {
           }
         } finally {
           setAddHostLoading(false);
-          setIsEditMode(false);
-          setEditTargetMachine(null);
-          if (success) setAddHostVisible(false);
+          if (success) {
+            setIsEditMode(false);
+            setEditTargetMachine(null);
+            setAddHostVisible(false);
+          }
         }
       } else {
         // 添加模式
@@ -1269,7 +1305,7 @@ const ManageMachine = () => {
           <Form
             form={addHostForm}
             layout="vertical"
-            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance' }}
+            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance', max_memory_gb: 0, max_gpu_number: 0, max_cpu_core_number: 0 }}
               onValuesChange={(changedValues) => {
                 if (changedValues.machine_type) {
                   if (changedValues.machine_type !== 'GPU') {
@@ -1293,6 +1329,8 @@ const ManageMachine = () => {
                 </Form.Item>
               </Col>
             </Row>
+
+            
 
             <Row gutter={16}>
               <Col span={12}>
@@ -1331,52 +1369,166 @@ const ManageMachine = () => {
               </Form.Item>
             </Row>
 
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="cpu_core_number" label="CPU 核心数">
-                  <InputNumber min={1} className="mm-width-100" />
+            
+
+            <Row gutter={16} align="middle">
+              <Col xs={24} sm={18} md={18} lg={18} xl={18}>
+                <Form.Item shouldUpdate noStyle>
+                  {() => {
+                    const cpuMax = addHostForm.getFieldValue('cpu_core_number') || 1;
+                    const val = addHostForm.getFieldValue('max_cpu_core_number') || 0;
+                    return (
+                          <Form.Item name="max_cpu_core_number" label={`CPU 最大允许分配（整数，单位：核）`}>
+                            <>
+                              <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation} style={{ touchAction: 'pan-y' }}>
+                                <div style={{ minHeight: 22, marginBottom: 8 }}>
+                                  {(cpuMax > 0 && val > Math.floor(cpuMax * 0.8)) ? (
+                                    <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
+                                  ) : (
+                                    <span style={{ visibility: 'hidden' }}>占位</span>
+                                  )}
+                                </div>
+                                <Slider
+                                  min={0}
+                                  max={Math.max(1, cpuMax)}
+                                  step={1}
+                                  value={typeof val === 'number' ? val : 0}
+                                  onChange={(v) => addHostForm.setFieldsValue({ max_cpu_core_number: v })}
+                                />
+                              </div>
+                            </>
+                          </Form.Item>
+                        );
+                  }}
                 </Form.Item>
               </Col>
-              <Col span={12}>
+                  <Col xs={24} sm={6} md={6} lg={6} xl={6}>
+                    <Form.Item name="cpu_core_number" label="CPU 核心数">
+                      <InputNumber min={1} style={{ width: '100%', maxWidth: 110 }} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+            <Form.Item shouldUpdate noStyle>
+              {() => {
+                const mt = addHostForm.getFieldValue('machine_type');
+                const gpuMax = addHostForm.getFieldValue('gpu_number') || 0;
+                const val = addHostForm.getFieldValue('max_gpu_number') || 0;
+                if (mt === 'GPU' && gpuMax > 0 && val > Math.floor(gpuMax * 0.8)) {
+                  return <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>;
+                }
+                return null;
+              }}
+            </Form.Item>
+
+            <Row gutter={16} align="middle">
+              <Col xs={24} sm={18} md={18} lg={18} xl={18}>
+                <Form.Item shouldUpdate noStyle>
+                  {() => {
+                    const memMax = addHostForm.getFieldValue('memory_size') || 1;
+                    const val = addHostForm.getFieldValue('max_memory_gb') || 0;
+                    return (
+                      <Form.Item name="max_memory_gb" label={`内存 最大允许分配（GB，整数）`}>
+                        <>
+                          <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation} style={{ touchAction: 'pan-y' }}>
+                            <div style={{ minHeight: 22, marginBottom: 8 }}>
+                              {(memMax > 0 && val > Math.floor(memMax * 0.8)) ? (
+                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
+                              ) : (
+                                <span style={{ visibility: 'hidden' }}>占位</span>
+                              )}
+                            </div>
+                            <Slider
+                              min={0}
+                              max={Math.max(1, memMax)}
+                              step={1}
+                              value={typeof val === 'number' ? val : 0}
+                              onChange={(v) => addHostForm.setFieldsValue({ max_memory_gb: v })}
+                            />
+                          </div>
+                        </>
+                      </Form.Item>
+                    );
+                  }}
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={6} md={6} lg={6} xl={6}>
+                <Form.Item name="memory_size" label="内存 (GB)">
+                  <InputNumber min={1} style={{ width: '100%', maxWidth: 110 }} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16} align="middle">
+              <Col xs={24} sm={18} md={18} lg={18} xl={18}>
+                <Form.Item shouldUpdate noStyle>
+                  {() => {
+                    const mt = addHostForm.getFieldValue('machine_type');
+                    const gpuMax = addHostForm.getFieldValue('gpu_number') || 0;
+                    const val = addHostForm.getFieldValue('max_gpu_number') || 0;
+                    return (
+                      <Form.Item name="max_gpu_number" label={`GPU 最大允许分配（整数）`}>
+                        <>
+                          <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation} style={{ touchAction: 'pan-y' }}>
+                            <div style={{ minHeight: 22, marginBottom: 8 }}>
+                              {(mt === 'GPU' && gpuMax > 0 && val > Math.floor(gpuMax * 0.8)) ? (
+                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
+                              ) : (
+                                <span style={{ visibility: 'hidden' }}>占位</span>
+                              )}
+                            </div>
+                            <Slider
+                              min={0}
+                              max={Math.max(0, gpuMax)}
+                              step={1}
+                              value={typeof val === 'number' ? val : 0}
+                              onChange={(v) => addHostForm.setFieldsValue({ max_gpu_number: v })}
+                              disabled={mt !== 'GPU'}
+                            />
+                          </div>
+                        </>
+                      </Form.Item>
+                    );
+                  }}
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={6} md={6} lg={6} xl={6}>
                 <Form.Item shouldUpdate noStyle>
                   {() => {
                     const mt = addHostForm.getFieldValue('machine_type');
                     return (
-                        <Form.Item name="gpu_number" label="GPU 数量">
-                        <InputNumber min={0} className="mm-width-100" disabled={mt !== 'GPU'} />
+                      <Form.Item name="gpu_number" label="GPU 数量">
+                        <InputNumber min={0} style={{ width: '100%', maxWidth: 110 }} disabled={mt !== 'GPU'} />
                       </Form.Item>
                     );
                   }}
                 </Form.Item>
               </Col>
             </Row>
-
-            <Form.Item shouldUpdate noStyle>
-              {({ getFieldValue }) => {
-                const mt = getFieldValue('machine_type');
-                const gnum = getFieldValue('gpu_number');
-                if (mt === 'GPU' || (typeof gnum === 'number' && gnum > 0)) {
-                  return (
-                    <Row gutter={16}>
-                      <Col span={12}>
-                        <Form.Item name="gpu_type" label="GPU 型号">
-                          <Input placeholder="例如：NVIDIA Tesla V100" maxLength={115} />
-                        </Form.Item>
-                      </Col>
-                      <Col span={12} />
-                    </Row>
-                  );
-                }
-                return null;
-              }}
-            </Form.Item>
-
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="memory_size" label="内存 (GB)">
-                  <InputNumber min={1} className="mm-width-100" />
+            <Row>
+              <Col span={24}>
+                <Form.Item shouldUpdate noStyle>
+                  {() => {
+                    const mt = addHostForm.getFieldValue('machine_type');
+                        const gnum = addHostForm.getFieldValue('gpu_number');
+                        if (mt === 'GPU' || (typeof gnum === 'number' && gnum > 0)) {
+                      return (
+                        <Row gutter={16}>
+                          <Col xs={24} sm={12} md={12} lg={12} xl={12}>
+                            <Form.Item name="gpu_type" label="GPU 型号">
+                              <Input placeholder="例如：NVIDIA Tesla V100" maxLength={115} />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={12} md={12} lg={12} xl={12} />
+                        </Row>
+                      );
+                    }
+                    return null;
+                  }}
                 </Form.Item>
               </Col>
+            </Row>
+
+            <Row gutter={16}>
               <Col span={12}>
                 <Form.Item name="disk_size" label="磁盘 (GB)">
                   <InputNumber min={1} className="mm-width-100" />

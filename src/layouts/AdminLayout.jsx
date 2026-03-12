@@ -7,6 +7,9 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const touchStartXRef = useRef(0);
+  const touchStartYRef = useRef(0);
+  const touchStartTargetRef = useRef(null);
+  const touchStartTimeRef = useRef(0);
   const [menuResetToken, setMenuResetToken] = useState(0);
   const swipePaths = useMemo(() => ['/admin/users', '/admin/machines'], []);
 
@@ -28,6 +31,9 @@ export default function AdminLayout() {
     const touch = e.touches?.[0];
     if (!touch) return;
     touchStartXRef.current = touch.clientX;
+    touchStartYRef.current = touch.clientY;
+    touchStartTargetRef.current = e.target;
+    touchStartTimeRef.current = Date.now();
   };
 
   const handleTouchEnd = (e) => {
@@ -36,6 +42,18 @@ export default function AdminLayout() {
     if (!touch) return;
 
     const dx = touch.clientX - touchStartXRef.current;
+    const dy = touch.clientY - touchStartYRef.current;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    // 忽略很小水平移动
+    if (absDx < 50) return;
+    // 要求水平移动明显大于垂直移动
+    if (absDx < absDy * 1.5) return;
+    // 如果触摸起点在输入/选择/按钮等控件上，忽略导航
+    const startTag = touchStartTargetRef.current?.tagName?.toLowerCase();
+    if (['input', 'textarea', 'select', 'button'].includes(startTag)) return;
+
     if (dx === 0) return;
 
     const currentPath = normalizePath(location.pathname);
@@ -50,6 +68,12 @@ export default function AdminLayout() {
     }
     setMenuResetToken((v) => v + 1);
     navigate(swipePaths[nextIndex]);
+
+    // 清理 touch refs
+    touchStartXRef.current = 0;
+    touchStartYRef.current = 0;
+    touchStartTargetRef.current = null;
+    touchStartTimeRef.current = 0;
   };
 
   return (
