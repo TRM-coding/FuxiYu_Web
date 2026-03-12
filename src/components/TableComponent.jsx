@@ -129,9 +129,13 @@ const TableComponent = ({ className = '', children, ...props }) => {
                       const isAction = /操作|action/i.test(titleText) || /action/i.test(keyText);
                       const isStats = /统计|stats/i.test(titleText) || /stats/i.test(keyText);
                       const plainValue = rawValue == null ? '' : String(rawValue);
-                      const isShortPrimitive = (typeof rawValue === 'string' || typeof rawValue === 'number') && plainValue.length > 0 && plainValue.length <= 18;
-                      const shortTitle = titleText.length > 0 && titleText.length <= 8;
-                      const isCompact = !isAction && !isStats && !col.render && isShortPrimitive && shortTitle;
+                      // consider rendered content too: allow compact when render returns short primitive
+                      const renderedStr = (content === null || content === undefined) ? '' : String(content);
+                      const isShortPrimitive = ((typeof content === 'string' || typeof content === 'number') && renderedStr.length > 0 && renderedStr.length <= 18) || ((typeof rawValue === 'string' || typeof rawValue === 'number') && plainValue.length > 0 && plainValue.length <= 18);
+                      // allow slightly longer titles (e.g. 最大Swap(GB)) to be considered short
+                      const shortTitle = titleText.length > 0 && titleText.length <= 12;
+                      // allow compact layout even if column has a render function, as long as rendered content is short
+                      const isCompact = !isAction && !isStats && isShortPrimitive && shortTitle;
                       const itemCls = `app-table-mobile-item${isAction ? ' is-action' : ''}${isStats ? ' is-stats' : ''}${isCompact ? ' is-compact' : ''}`;
                       return (
                         <div key={`${cardKey}-${col.key || colIndex}`} className={itemCls}>

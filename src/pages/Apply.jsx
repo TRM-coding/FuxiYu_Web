@@ -89,6 +89,7 @@ const Apply = () => {
   const [addContainerMachineId, setAddContainerMachineId] = useState(null);
   const [addContainerUnsafe, setAddContainerUnsafe] = useState(false);
   const [addContainerMachineType, setAddContainerMachineType] = useState('CPU');
+  const addContainerMachine = machines.find(m => String(m.machine_id || m.key) === String(addContainerMachineId));
   
 
   const fetchMachines = async (p = page, ps = pageSize) => {
@@ -426,12 +427,12 @@ const Apply = () => {
 
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="CPU_NUMBER" label="CPU 数量">
+                <Form.Item name="CPU_NUMBER" label={<span>CPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_cpu_core_number ?? addContainerMachine?.cpu_core_number ?? '-'})</span></span>}>
                   <InputNumber min={1} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="MEMORY" label="内存 (GB)">
+                <Form.Item name="MEMORY" label={<span>内存 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_memory_gb ?? addContainerMachine?.memory_size_gb ?? '-'})</span></span>}>
                   <InputNumber min={1} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
@@ -440,12 +441,12 @@ const Apply = () => {
             {addContainerMachineType === 'GPU' && (
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item name="gpu_number" label="请求 GPU 数量">
+                  <Form.Item name="gpu_number" label={<span>请求 GPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_gpu_number ?? addContainerMachine?.gpu_number ?? '-'})</span></span>}>
                     <InputNumber min={0} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="SWAP_MEM" label="交换空间 (GB)">
+                  <Form.Item name="SWAP_MEM" label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? addContainerMachine?.max_swap_gb ?? '-'})</span></span>}>
                     <InputNumber min={0} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>

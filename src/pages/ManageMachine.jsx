@@ -199,6 +199,7 @@ const ManageMachine = () => {
   const [addContainerMachineId, setAddContainerMachineId] = useState(null);
   const [addContainerUnsafe, setAddContainerUnsafe] = useState(false);
   const [addContainerMachineType, setAddContainerMachineType] = useState('CPU');
+  const addContainerMachine = machines.find(m => String(m.machine_id || m.key) === String(addContainerMachineId));
   // 编辑模式
   const [isEditMode, setIsEditMode] = useState(false);
   const [editTargetMachine, setEditTargetMachine] = useState(null);
@@ -215,9 +216,11 @@ const ManageMachine = () => {
   const fetchMachinesFromApi = async () => {
     setMachinesLoading(true);
     try {
+      // 获取机器列表
       const res = await listAllMachineBrefInformation({ page_number: 0, page_size: defaultPageSize });
       const items = (res && res.machines) || [];
-      // map to existing shape with minimal defaults and keep machine_id
+      
+      // 基础映射
       const mapped = items.map((m, idx) => ({
         key: String(m.machine_id || idx + 1),
         machine_id: m.machine_id,
@@ -236,37 +239,38 @@ const ManageMachine = () => {
         disk_size_gb: null,
         machine_description: ''
       }));
-      // 按机器ID并行获取详情以补全信息
+
+      // 并行获取详情
       try {
-        const detailPromises = mapped.map(it =>
-          getDetailInformation(it.machine_id).catch(err => {
-            console.warn('detail fetch failed for', it.machine_id, err && err.message);
-            return null;
+        const detailResults = await Promise.all(
+          mapped.map(async (it) => {
+            try {
+              const detail = await getDetailInformation(it.machine_id);
+              return {
+                ...it,
+                cpu_core_number: detail.cpu_core_number ?? it.cpu_core_number,
+                memory_size_gb: detail.memory_size_gb ?? it.memory_size_gb,
+                gpu_number: detail.gpu_number ?? it.gpu_number ?? 0,
+                gpu_type: detail.gpu_type ?? it.gpu_type ?? '',
+                disk_size_gb: detail.disk_size_gb ?? it.disk_size_gb,
+                max_memory_gb: detail.max_memory_gb ?? it.max_memory_gb,
+                max_gpu_number: detail.max_gpu_number ?? it.max_gpu_number ?? 0,
+                max_cpu_core_number: detail.max_cpu_core_number ?? it.max_cpu_core_number,
+                machine_description: detail.machine_description ?? it.machine_description,
+                machine_type: (detail.machine_type ?? it.machine_type).toUpperCase(),
+                machine_status: (detail.machine_status ?? it.machine_status).toLowerCase()
+              };
+            } catch (err) {
+              console.warn('detail fetch failed for', it.machine_id, err?.message);
+              return it; // 如果获取详情失败，返回基础信息
+            }
           })
         );
-        const details = await Promise.all(detailPromises);
-        const merged = mapped.map((it, i) => {
-          const d = details[i];
-          if (!d) return it;
-          return {
-            ...it,
-            cpu_core_number: d.cpu_core_number ?? it.cpu_core_number,
-            memory_size_gb: d.memory_size_gb ?? it.memory_size_gb,
-            max_memory_gb: d.max_memory_gb ?? it.max_memory_gb,
-            max_gpu_number: d.max_gpu_number ?? it.max_gpu_number,
-            max_cpu_core_number: d.max_cpu_core_number ?? it.max_cpu_core_number,
-            max_swap_gb: d.max_swap_gb ?? it.max_swap_gb,
-            gpu_number: d.gpu_number ?? it.gpu_number,
-            gpu_type: d.gpu_type ?? it.gpu_type,
-            disk_size_gb: d.disk_size_gb ?? it.disk_size_gb,
-            machine_description: d.machine_description ?? it.machine_description,
-            machine_type: (d.machine_type ?? it.machine_type).toUpperCase(),
-            machine_status: (d.machine_status ?? it.machine_status).toLowerCase()
-          };
-        });
-        return merged;
+        
+        return detailResults;
       } catch (e) {
-        return mapped;
+        console.warn('Some details failed to load, returning basic info', e);
+        return mapped; // 如果整体失败，返回基础信息
       }
     } catch (err) {
       console.error('Failed to load machines', err);
@@ -452,6 +456,10 @@ const ManageMachine = () => {
         container_status: (detail.container_status || detail.status || '').toLowerCase(),
         machine_ip: detail.machine_ip || container.machine_ip || '',
         machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
+        cpu_number: detail.cpu_number ?? container.cpu_number ?? null,
+        gpu_number: detail.gpu_number ?? container.gpu_number ?? 0,
+        memory_gb: detail.memory_gb ?? container.memory_gb ?? null,
+        swap_gb: detail.swap_gb ?? container.swap_gb ?? null,
         owners: detail.owners || detail.owner_list || container.owners || [],
         accounts: detail.accounts || detail.account_list || container.accounts || []
       };
@@ -1758,12 +1766,12 @@ const ManageMachine = () => {
 
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="CPU_NUMBER" label="CPU 数量">
+                <Form.Item name="CPU_NUMBER" label={<span>CPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_cpu_core_number ?? addContainerMachine?.cpu_core_number ?? '-'})</span></span>}>
                   <InputNumber min={1} className="mm-width-100" />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="MEMORY" label="内存 (GB)">
+                <Form.Item name="MEMORY" label={<span>内存 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_memory_gb ?? addContainerMachine?.memory_size_gb ?? '-'})</span></span>}>
                   <InputNumber min={1} className="mm-width-100" />
                 </Form.Item>
               </Col>
@@ -1773,12 +1781,12 @@ const ManageMachine = () => {
             {addContainerMachineType === 'GPU' && (
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item name="gpu_number" label="请求 GPU 数量">
+                  <Form.Item name="gpu_number" label={<span>请求 GPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_gpu_number ?? addContainerMachine?.gpu_number ?? '-'})</span></span>}>
                     <InputNumber min={0} className="mm-width-100" />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="SWAP_MEM" label="交换空间 (GB)">
+                  <Form.Item name="SWAP_MEM" label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? addContainerMachine?.max_swap_gb ?? '-'})</span></span>}>
                     <InputNumber min={0} className="mm-width-100" />
                   </Form.Item>
                 </Col>

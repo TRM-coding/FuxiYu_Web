@@ -413,7 +413,18 @@ const ManageUser = () => {
             });
             if (found) userRole = found.role ?? null;
           }
-          return { ...c, container_image: image, accounts, userRole, machine_ip: det?.machine_ip ? det.machine_ip : c.machine_ip, machine_id: det?.machine_id ? String(det.machine_id) : c.machine_id };
+          return {
+            ...c,
+            container_image: image,
+            accounts,
+            userRole,
+            machine_ip: det?.machine_ip ? det.machine_ip : c.machine_ip,
+            machine_id: det?.machine_id ? String(det.machine_id) : c.machine_id,
+            cpu_number: det?.cpu_number ?? c.cpu_number ?? null,
+            gpu_number: det?.gpu_number ?? c.gpu_number ?? 0,
+            memory_gb: det?.memory_gb ?? c.memory_gb ?? null,
+            swap_gb: det?.swap_gb ?? c.swap_gb ?? null
+          };
         } catch (e) {
           // if detail fetch fails, do not attempt old fallback — keep bref info but no userRole
           return { ...c, accounts: c.accounts || [], userRole: null };

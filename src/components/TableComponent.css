@@ -69,7 +69,14 @@
 }
 
 .app-table-mobile-item.is-compact {
-	width: calc(50% - 5px);
+	width: calc(48% - 6px);
+}
+
+/* Prevent compact items (two-column) from forcing card width by keeping value single-line */
+.app-table-mobile-item.is-compact .app-table-mobile-value {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .app-table-mobile-expanded {
@@ -94,7 +101,7 @@
 	justify-content: flex-end;
 }
 
-@media (max-width: 420px) {
+@media (max-width: 360px) {
 	.app-table-mobile-item.is-compact {
 		width: 100%;
 	}
