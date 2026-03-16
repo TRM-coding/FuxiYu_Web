@@ -199,6 +199,7 @@ const ManageMachine = () => {
   const [addContainerMachineId, setAddContainerMachineId] = useState(null);
   const [addContainerUnsafe, setAddContainerUnsafe] = useState(false);
   const [addContainerMachineType, setAddContainerMachineType] = useState('CPU');
+  const [addContainerFieldErrors, setAddContainerFieldErrors] = useState({});
   const addContainerMachine = machines.find(m => String(m.machine_id || m.key) === String(addContainerMachineId));
   // 编辑模式
   const [isEditMode, setIsEditMode] = useState(false);
@@ -492,6 +493,7 @@ const ManageMachine = () => {
     const mid = machine?.machine_id ?? machine?.key ?? null;
     setAddContainerMachineId(mid);
     addContainerForm.resetFields();
+    setAddContainerFieldErrors({});
     // prefill machine id and defaults
     const defaultUser = localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
     const mtype = (machine && (machine.machine_type || machine.machine_type === 0) ? (machine.machine_type || 'CPU') : 'CPU');
@@ -1720,7 +1722,7 @@ const ManageMachine = () => {
         title="添加容器"
         message="请填写容器信息并确认添加"
         onConfirm={handleAddContainerConfirm}
-        onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); }}
+        onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); setAddContainerFieldErrors({}); }}
         loading={addContainerLoading}
         confirmText="添加"
         confirmDisabled={addContainerUnsafe}
@@ -1729,17 +1731,34 @@ const ManageMachine = () => {
             form={addContainerForm}
             layout="vertical"
             initialValues={{ CPU_NUMBER: 1, MEMORY: 1, SWAP_MEM: 0, GPU_LIST: [], gpu_number: 0 }}
-            onValuesChange={() => {
+            onValuesChange={(_changed, allVals) => {
               try {
-                const vals = addContainerForm.getFieldsValue();
+                const vals = allVals || addContainerForm.getFieldsValue();
                 const name = vals.NAME || '';
                 const image = vals.image || '';
                 const pub = vals.public_key || '';
                 import('../utils/validateCmdArg').then(mod => {
                   setAddContainerUnsafe(Boolean(mod.anyUnsafe(name, image, pub)));
                 }).catch(() => setAddContainerUnsafe(false));
+
+                const errs = {};
+                const m = addContainerMachine || {};
+                const cpu = Number(vals.CPU_NUMBER || 0);
+                const mem = Number(vals.MEMORY || 0);
+                const swap = Number(vals.SWAP_MEM || 0);
+                const gnum = Number(vals.gpu_number || 0);
+                const maxCpu = m.max_cpu_core_number ?? m.cpu_core_number ?? null;
+                const maxMem = m.max_memory_gb ?? m.memory_size_gb ?? null;
+                const maxSwap = m.max_swap_gb ?? m.max_swap_gb ?? null;
+                const maxGpu = m.max_gpu_number ?? m.gpu_number ?? null;
+                if (maxCpu != null && cpu > Number(maxCpu)) errs.CPU_NUMBER = `超出最大 CPU (${maxCpu})`;
+                if (maxMem != null && mem > Number(maxMem)) errs.MEMORY = `超出最大内存 (${maxMem} GB)`;
+                if (maxSwap != null && swap > Number(maxSwap)) errs.SWAP_MEM = `超出最大交换空间 (${maxSwap} GB)`;
+                if ((addContainerMachineType || '').toUpperCase() === 'GPU' && maxGpu != null && gnum > Number(maxGpu)) errs.gpu_number = `超出最大 GPU (${maxGpu})`;
+                setAddContainerFieldErrors(errs);
               } catch (e) {
                 setAddContainerUnsafe(false);
+                setAddContainerFieldErrors({});
               }
             }}
           >
@@ -1766,12 +1785,22 @@ const ManageMachine = () => {
 
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="CPU_NUMBER" label={<span>CPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_cpu_core_number ?? addContainerMachine?.cpu_core_number ?? '-'})</span></span>}>
+                <Form.Item
+                  name="CPU_NUMBER"
+                  label={<span>CPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_cpu_core_number ?? addContainerMachine?.cpu_core_number ?? '-'})</span></span>}
+                  validateStatus={addContainerFieldErrors.CPU_NUMBER ? 'error' : undefined}
+                  help={addContainerFieldErrors.CPU_NUMBER || null}
+                >
                   <InputNumber min={1} className="mm-width-100" />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="MEMORY" label={<span>内存 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_memory_gb ?? addContainerMachine?.memory_size_gb ?? '-'})</span></span>}>
+                <Form.Item
+                  name="MEMORY"
+                  label={<span>内存 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_memory_gb ?? addContainerMachine?.memory_size_gb ?? '-'})</span></span>}
+                  validateStatus={addContainerFieldErrors.MEMORY ? 'error' : undefined}
+                  help={addContainerFieldErrors.MEMORY || null}
+                >
                   <InputNumber min={1} className="mm-width-100" />
                 </Form.Item>
               </Col>
@@ -1781,12 +1810,22 @@ const ManageMachine = () => {
             {addContainerMachineType === 'GPU' && (
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item name="gpu_number" label={<span>请求 GPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_gpu_number ?? addContainerMachine?.gpu_number ?? '-'})</span></span>}>
+                  <Form.Item
+                    name="gpu_number"
+                    label={<span>请求 GPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_gpu_number ?? addContainerMachine?.gpu_number ?? '-'})</span></span>}
+                    validateStatus={addContainerFieldErrors.gpu_number ? 'error' : undefined}
+                    help={addContainerFieldErrors.gpu_number || null}
+                  >
                     <InputNumber min={0} className="mm-width-100" />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="SWAP_MEM" label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? addContainerMachine?.max_swap_gb ?? '-'})</span></span>}>
+                  <Form.Item
+                    name="SWAP_MEM"
+                    label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? addContainerMachine?.max_swap_gb ?? '-'})</span></span>}
+                    validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
+                    help={addContainerFieldErrors.SWAP_MEM || null}
+                  >
                     <InputNumber min={0} className="mm-width-100" />
                   </Form.Item>
                 </Col>
@@ -1796,7 +1835,12 @@ const ManageMachine = () => {
             {addContainerMachineType !== 'GPU' && (
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item name="SWAP_MEM" label="交换空间 (GB)">
+                  <Form.Item
+                    name="SWAP_MEM"
+                    label="交换空间 (GB)"
+                    validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
+                    help={addContainerFieldErrors.SWAP_MEM || null}
+                  >
                     <InputNumber min={0} className="mm-width-100" />
                   </Form.Item>
                 </Col>

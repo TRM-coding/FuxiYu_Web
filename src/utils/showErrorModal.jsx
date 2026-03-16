@@ -138,13 +138,13 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
 
   const routeErrorMap = {
     // 用户相关
-    '/register': { username_exists: '用户名已存在', email_exists: '邮箱已存在' },
+    '/register': { username_exists: '用户名已存在', email_exists: '邮箱已存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线' },
     '/login': { user_not_found: '用户不存在', password_incorrect: '密码错误' },
-    '/users/change_password': { old_password_incorrect: '旧密码不正确' },
+    '/users/change_password': { old_password_incorrect: '旧密码不正确', no_none_ascii: '禁止非ASCII字符（请勿输入中文）' },
     '/users/delete_user': { wild_container: '存在无主容器，无法删除用户', missing_user_id: '缺少 user_id' },
     '/users/get_user_detail_information': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
     '/users/list_all_user_bref_information': { list_failed: '获取用户列表失败' },
-    '/users/update_user': { missing_fields: '缺少更新字段', user_not_found: '用户不存在' },
+    '/users/update_user': { missing_fields: '缺少更新字段', user_not_found: '用户不存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线' },
     '/users/reset_password': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
 
     // 容器相关

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Form, Input, InputNumber } from 'antd';
+import { isValidName } from '../utils/validateCmdArg';
 import { useNavigate } from 'react-router-dom';
 import { registerUser } from '../api/user_api';
 import ConfirmModal from '../components/ConfirmModal';
@@ -29,6 +30,19 @@ const RegisterBlock = () => {
   const navigate = useNavigate();
 
   const onFinish = async values => {
+    // client-side validation: username must match container-name rules; email/password ASCII-only
+    const username = values.username || '';
+    const email = values.email || '';
+    const password = values.password || '';
+    const isAscii = s => /^[\x00-\x7F]*$/.test(String(s || ''));
+    if (!isValidName(username)) {
+      await showErrorModal({ title: '注册出错', message: '用户名仅允许英文、数字和下划线' });
+      return;
+    }
+    if (!isAscii(email) || !isAscii(password)) {
+      await showErrorModal({ title: '注册出错', message: '禁止非ASCII字符（请勿输入中文）' });
+      return;
+    }
     try {
       const payload = {
         username: values.username,

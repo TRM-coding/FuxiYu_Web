@@ -21,6 +21,10 @@ const User = () => {
   const [yearMsg, setYearMsg] = useState(null);
   const [passwordMsg, setPasswordMsg] = useState(null);
   const [passwordMsgType, setPasswordMsgType] = useState(null);
+  const [usernameInvalid, setUsernameInvalid] = useState(false);
+  const [emailInvalid, setEmailInvalid] = useState(false);
+  const [currentPasswordInvalid, setCurrentPasswordInvalid] = useState(false);
+  const [newPasswordInvalid, setNewPasswordInvalid] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
 
@@ -89,6 +93,10 @@ const User = () => {
             });
         setCurrentPassword('');
         setNewPassword('');
+        setUsernameInvalid(false);
+        setEmailInvalid(false);
+        setCurrentPasswordInvalid(false);
+        setNewPasswordInvalid(false);
       } catch (err) {
         console.error('Failed to load user detail', err);
         await showErrorModal({ message: err?.body || err || '加载用户信息失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
@@ -106,6 +114,13 @@ const User = () => {
       if (!old_password || !new_password) {
         setPasswordMsg('请输入当前密码和新密码');
         setPasswordMsgType('error');
+        setCurrentPasswordInvalid(!isAllAscii(old_password));
+        setNewPasswordInvalid(!isAllAscii(new_password));
+        return;
+      }
+      if (currentPasswordInvalid || newPasswordInvalid) {
+        setPasswordMsg('密码包含非法字符（仅允许ASCII）');
+        setPasswordMsgType('error');
         return;
       }
       const userId = Number(currentUserId);
@@ -122,7 +137,23 @@ const User = () => {
       const msg = (err && err.body && err.body.message) ? String(err.body.message) : (err && err.message) ? String(err.message) : '修改密码失败';
       setPasswordMsg(msg);
       setPasswordMsgType('error');
+      if (err && err.body && err.body.error_reason === 'no_none_ascii') {
+        setCurrentPasswordInvalid(true);
+        setNewPasswordInvalid(true);
+      }
     }
+  };
+
+  const isAllAscii = (s) => {
+    if (s === null || s === undefined) return true;
+    try {
+      return /^[\x00-\x7F]*$/.test(String(s));
+    } catch (e) { return false; }
+  };
+
+  const isValidUsername = (s) => {
+    if (s === null || s === undefined) return false;
+    try { return /^[A-Za-z0-9_]+$/.test(String(s)); } catch (e) { return false; }
   };
   return (
     <Row 
@@ -143,12 +174,29 @@ const User = () => {
             <Form.Item label="用户名" name="username" className="user-form-item">
               <Space>
                 {/* 放大输入框宽度 - controlled to preserve auto-fill */}
-                <Input placeholder="请输入用户名" className="user-input-300" maxLength={75} value={username} onChange={e => setUsername(e.target.value)} />
+                <Input
+                  placeholder="请输入用户名"
+                  className="user-input-300"
+                  maxLength={75}
+                  value={username}
+                  onChange={e => {
+                    const v = e.target.value || '';
+                    setUsername(v);
+                    // username must match container-name rules
+                    setUsernameInvalid(!isValidUsername(v));
+                  }}
+                  status={usernameInvalid ? 'error' : undefined}
+                />
                 {String(username) === String(originalInfo.username) ? (
                   <Button type="text" disabled>无变化</Button>
                 ) : (
                   <Button type="text" onClick={async () => {
                     try {
+                      if (usernameInvalid) {
+                        setUsernameMsg('用户名仅允许英文、数字和下划线');
+                        setTimeout(() => setUsernameMsg(null), 3000);
+                        return;
+                      }
                       const userId = Number(currentUserId);
                       await updateUser({ user_id: userId, fields: { username } });
                       setOriginalInfo(prev => ({ ...prev, username }));
@@ -171,7 +219,17 @@ const User = () => {
             {/* 当前密码（留空） + 新密码 */}
             <Form.Item label="当前密码" name="current_password" className="user-form-item">
               <Space>
-                <Input.Password placeholder="留空以不修改" className="user-input-300" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
+                <Input.Password
+                  placeholder="留空以不修改"
+                  className="user-input-300"
+                  value={currentPassword}
+                  onChange={e => {
+                    const v = e.target.value || '';
+                    setCurrentPassword(v);
+                    setCurrentPasswordInvalid(!isAllAscii(v));
+                  }}
+                  status={currentPasswordInvalid ? 'error' : undefined}
+                />
                 <Button type="text" onClick={handleChangePassword}>修改密码</Button>
               </Space>
               {passwordMsg ? (
@@ -181,18 +239,44 @@ const User = () => {
               ) : null}
             </Form.Item>
             <Form.Item label="新密码" name="new_password" className="user-form-item">
-                <Input.Password placeholder="输入新密码" className="user-input-300" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                <Input.Password
+                  placeholder="输入新密码"
+                  className="user-input-300"
+                  value={newPassword}
+                  onChange={e => {
+                    const v = e.target.value || '';
+                    setNewPassword(v);
+                    setNewPasswordInvalid(!isAllAscii(v));
+                  }}
+                  status={newPasswordInvalid ? 'error' : undefined}
+                />
             </Form.Item>
 
             {/* 邮箱 + 修改按钮 */}
             <Form.Item label="邮箱" name="email" className="user-form-item">
               <Space>
-                <Input placeholder="请输入邮箱" className="user-input-300" maxLength={115} value={email} onChange={e => setEmail(e.target.value)} />
+                <Input
+                  placeholder="请输入邮箱"
+                  className="user-input-300"
+                  maxLength={115}
+                  value={email}
+                  onChange={e => {
+                    const v = e.target.value || '';
+                    setEmail(v);
+                    setEmailInvalid(!isAllAscii(v));
+                  }}
+                  status={emailInvalid ? 'error' : undefined}
+                />
                 {String(email) === String(originalInfo.email) ? (
                   <Button type="text" disabled>无变化</Button>
                 ) : (
                   <Button type="text" onClick={async () => {
                     try {
+                      if (emailInvalid) {
+                        setEmailMsg('邮箱包含非法字符');
+                        setTimeout(() => setEmailMsg(null), 3000);
+                        return;
+                      }
                       const userId = Number(currentUserId);
                       await updateUser({ user_id: userId, fields: { email } });
                       setOriginalInfo(prev => ({ ...prev, email }));
