@@ -88,7 +88,7 @@ export const requestRegisterCode = async ({ email }, timeout = null) => {
   }
 };
 
-export const registerUser = async ({ username, email, password, graduation_year = null }, timeout = null) => {
+export const registerUser = async ({ username, email, password, graduation_year = null, registration_code }, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
     const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.REGISTER}`, {
