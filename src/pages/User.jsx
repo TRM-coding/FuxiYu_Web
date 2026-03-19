@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, Form, Input, DatePicker, Button, Row, Col, Space, message, InputNumber, Typography } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
-import { getUserDetailInformation, updateUser, changePasswordUser, requestUpdateEmailCode } from '../api/user_api';
+import { getUserDetailInformation, updateUser, changePasswordUser } from '../api/user_api';
 import './User.css';
 
 const User = () => {
@@ -18,9 +18,6 @@ const User = () => {
   const [isOperator, setIsOperator] = useState(false);
   const [usernameMsg, setUsernameMsg] = useState(null);
   const [emailMsg, setEmailMsg] = useState(null);
-  const [emailVerificationCode, setEmailVerificationCode] = useState('');
-  const [emailCodeMsg, setEmailCodeMsg] = useState(null);
-  const [emailCodeRequested, setEmailCodeRequested] = useState(false);
   const [yearMsg, setYearMsg] = useState(null);
   const [passwordMsg, setPasswordMsg] = useState(null);
   const [passwordMsgType, setPasswordMsgType] = useState(null);
@@ -98,9 +95,6 @@ const User = () => {
         setNewPassword('');
         setUsernameInvalid(false);
         setEmailInvalid(false);
-        setEmailVerificationCode('');
-        setEmailCodeMsg(null);
-        setEmailCodeRequested(false);
         setCurrentPasswordInvalid(false);
         setNewPasswordInvalid(false);
       } catch (err) {
@@ -258,7 +252,7 @@ const User = () => {
                 />
             </Form.Item>
 
-            {/* 邮箱 + 修改按钮 */}
+            {/* 邮箱 */}
             <Form.Item label="邮箱" name="email" className="user-form-item">
               <Space>
                 <Input
@@ -266,71 +260,10 @@ const User = () => {
                   className="user-input-300"
                   maxLength={115}
                   value={email}
-                  onChange={e => {
-                    const v = e.target.value || '';
-                    setEmail(v);
-                    setEmailInvalid(!isAllAscii(v));
-                  }}
-                  status={emailInvalid ? 'error' : undefined}
+                  disabled
                 />
-                {String(email) === String(originalInfo.email) ? (
-                  <Button type="text" disabled>无变化</Button>
-                ) : (
-                  <Button type="text" onClick={async () => {
-                    try {
-                      if (emailInvalid) {
-                        setEmailMsg('邮箱包含非法字符');
-                        setTimeout(() => setEmailMsg(null), 3000);
-                        return;
-                      }
-                      const userId = Number(currentUserId);
-                      await updateUser({ user_id: userId, fields: { email } });
-                      setOriginalInfo(prev => ({ ...prev, email }));
-                      setEmailMsg('修改成功');
-                      setTimeout(() => setEmailMsg(null), 3000);
-                    } catch (err) {
-                      console.error('update email failed', err);
-                      await showErrorModal({ message: err?.body || err || '更新邮箱失败', status: err?.status });
-                    }
-                  }}>修改</Button>
-                )}
+                <Button type="text" disabled>不允许修改</Button>
               </Space>
-              {emailCodeMsg ? (
-                <div className="user-msg-wrapper">
-                  <Typography.Text className="user-msg-success">{emailCodeMsg}</Typography.Text>
-                </div>
-              ) : null}
-              {emailCodeRequested ? (
-                <Space style={{ marginTop: 8 }}>
-                  <Input
-                    placeholder="输入邮箱验证码"
-                    className="user-input-300"
-                    maxLength={6}
-                    value={emailVerificationCode}
-                    onChange={e => setEmailVerificationCode(e.target.value || '')}
-                  />
-                  <Button type="primary" onClick={async () => {
-                    try {
-                      const userId = Number(currentUserId);
-                      await updateUser({ user_id: userId, fields: { email, email_change_code: emailVerificationCode } });
-                      setOriginalInfo(prev => ({ ...prev, email }));
-                      setEmailMsg('邮箱修改成功');
-                      setEmailCodeRequested(false);
-                      setEmailVerificationCode('');
-                      setEmailCodeMsg(null);
-                      setTimeout(() => setEmailMsg(null), 3000);
-                    } catch (err) {
-                      console.error('confirm email update failed', err);
-                      await showErrorModal({ message: err?.body || err || '更新邮箱失败', status: err?.status });
-                    }
-                  }}>确认修改</Button>
-                </Space>
-              ) : null}
-              {emailMsg ? (
-                <div className="user-msg-wrapper">
-                  <Typography.Text className="user-msg-success">{emailMsg}</Typography.Text>
-                </div>
-              ) : null}
             </Form.Item>
 
             {/* 毕业时间 + 修改按钮 */}
