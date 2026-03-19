@@ -66,13 +66,35 @@ export const loginUser = async ({ username, password }, timeout = null) => {
   }
 };
 
-export const registerUser = async ({ username, email, password, graduation_year = null }, timeout = null) => {
+export const requestRegisterCode = async ({ email }, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.REQUEST_REGISTER_CODE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+      signal: controller.signal,
+      credentials: CREDENTIALS
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Request register code');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Request register code timed out');
+    throw err;
+  }
+};
+
+export const registerUser = async ({ username, email, password, graduation_year = null, registration_code }, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
     const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.REGISTER}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password, graduation_year }),
+      body: JSON.stringify({ username, email, password, graduation_year, registration_code }),
       signal: controller.signal,
       credentials: CREDENTIALS
     });

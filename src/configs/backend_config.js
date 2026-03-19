@@ -17,6 +17,7 @@ export const API_ROUTES = {
 	// User routes
 	LOGIN: '/api/login',
 	REGISTER: '/api/register',
+	REQUEST_REGISTER_CODE: '/api/request_register_code',
 	USERS_CHANGE_PASSWORD: '/api/users/change_password',
 	USERS_DELETE: '/api/users/delete_user',
 	USERS_GET_DETAIL: '/api/users/get_user_detail_information',

@@ -252,7 +252,7 @@ const User = () => {
                 />
             </Form.Item>
 
-            {/* 邮箱 + 修改按钮 */}
+            {/* 邮箱 */}
             <Form.Item label="邮箱" name="email" className="user-form-item">
               <Space>
                 <Input
@@ -260,40 +260,10 @@ const User = () => {
                   className="user-input-300"
                   maxLength={115}
                   value={email}
-                  onChange={e => {
-                    const v = e.target.value || '';
-                    setEmail(v);
-                    setEmailInvalid(!isAllAscii(v));
-                  }}
-                  status={emailInvalid ? 'error' : undefined}
+                  disabled
                 />
-                {String(email) === String(originalInfo.email) ? (
-                  <Button type="text" disabled>无变化</Button>
-                ) : (
-                  <Button type="text" onClick={async () => {
-                    try {
-                      if (emailInvalid) {
-                        setEmailMsg('邮箱包含非法字符');
-                        setTimeout(() => setEmailMsg(null), 3000);
-                        return;
-                      }
-                      const userId = Number(currentUserId);
-                      await updateUser({ user_id: userId, fields: { email } });
-                      setOriginalInfo(prev => ({ ...prev, email }));
-                      setEmailMsg('修改成功');
-                      setTimeout(() => setEmailMsg(null), 3000);
-                    } catch (err) {
-                      console.error('update email failed', err);
-                      await showErrorModal({ message: err?.body || err || '更新邮箱失败', status: err?.status });
-                    }
-                  }}>修改</Button>
-                )}
+                <Button type="text" disabled>不允许修改</Button>
               </Space>
-              {emailMsg ? (
-                <div className="user-msg-wrapper">
-                  <Typography.Text className="user-msg-success">{emailMsg}</Typography.Text>
-                </div>
-              ) : null}
             </Form.Item>
 
             {/* 毕业时间 + 修改按钮 */}
