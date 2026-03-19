@@ -137,6 +137,28 @@ export const changePasswordUser = async ({ user_id, old_password, new_password }
   }
 };
 
+export const requestUpdateEmailCode = async ({ user_id, new_email }, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}/api/request_update_email_code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthTokenHeader() },
+      body: JSON.stringify({ user_id, new_email }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Request update email code');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Request update email code timed out');
+    throw err;
+  }
+};
+
 export const updateUser = async ({ user_id, fields } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
