@@ -138,34 +138,47 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
 
   const routeErrorMap = {
     // 用户相关
-    '/register': { username_exists: '用户名已存在', email_exists: '邮箱已存在' },
+    '/register': { username_exists: '用户名已存在', email_exists: '邮箱已存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线' },
     '/login': { user_not_found: '用户不存在', password_incorrect: '密码错误' },
-    '/users/change_password': { old_password_incorrect: '旧密码不正确' },
+    '/users/change_password': { old_password_incorrect: '旧密码不正确', no_none_ascii: '禁止非ASCII字符（请勿输入中文）' },
     '/users/delete_user': { wild_container: '存在无主容器，无法删除用户', missing_user_id: '缺少 user_id' },
     '/users/get_user_detail_information': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
     '/users/list_all_user_bref_information': { list_failed: '获取用户列表失败' },
-    '/users/update_user': { missing_fields: '缺少更新字段', user_not_found: '用户不存在' },
+    '/users/update_user': { missing_fields: '缺少更新字段', user_not_found: '用户不存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线' },
     '/users/reset_password': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
 
     // 容器相关
-    '/containers/create_container': { duplicate_entry: '创建容器失败：重复项', invalid_payload: '无效的容器数据', create_failed: '创建容器失败' },
+    '/containers/create_container': { duplicate_entry: '创建容器失败：重复项', invalid_payload: '无效的容器数据', invalid_config: '容器配置无效或超出宿主机上限', create_failed: '创建容器失败' },
     '/containers/delete_container': { delete_failed: '删除容器失败', not_found: '容器不存在' },
-    '/containers/add_collaborator': { add_collaborator_failed: '添加协作者失败' },
-    '/containers/remove_collaborator': { remove_collaborator_failed: '移除协作者失败' },
-    '/containers/update_role': { update_role_failed: '更新角色失败' },
+    '/containers/add_collaborator': { add_collaborator_failed: '添加协作者失败', container_offline: '容器未在线，无法添加协作者' },
+    '/containers/remove_collaborator': { remove_collaborator_failed: '移除协作者失败', container_offline: '容器未在线，无法移除协作者' },
+    '/containers/update_role': { update_role_failed: '更新角色失败', container_offline: '容器未在线，无法更新角色' },
     '/containers/get_container_detail_information': { get_detail_failed: '获取容器详情失败' },
     '/containers/list_all_container_bref_information': { list_failed: '获取容器列表失败' },
 
     // 机器相关
     '/machines/add_machine': { duplicate_entry: '机器已存在', internal_error: '内部错误，添加失败', create_failed: '添加机器失败' },
     '/machines/remove_machine': { remove_failed: '删除机器失败' },
-    '/machines/update_machine': { update_failed: '更新机器失败' },
-    '/machines/get_detail_information': { machine_not_found: '机器不存在' },
-    '/machines/list_all_machine_bref_information': { list_failed: '获取机器列表失败' },
+    '/machines/update_machine': { update_failed: '更新机器失败', machine_not_found: '机器不存在', machine_maintenance: '机器正在维护中', machine_offline: '机器离线' },
+    '/machines/get_detail_information': { machine_not_found: '机器不存在', machine_offline: '机器离线', machine_maintenance: '机器正在维护中' },
+    '/machines/list_all_machine_bref_information': { list_failed: '获取机器列表失败', machine_offline: '机器离线' },
 
     // 通用/鉴权
-    '': { invalid_token: '身份验证失败，请重新登录', insufficient_permission: '权限不足' },
-    '*': { create_failed: '创建失败', list_failed: '获取列表失败', duplicate_entry: '重复项导致失败', internal_error: '服务器内部错误' }
+    '': { invalid_token: '身份验证失败，请重新登录', insufficient_permission: '权限不足', unexpected_response: '远端返回意外响应', NODE_error: '节点错误' },
+    '*': {
+      create_failed: '创建失败',
+      list_failed: '获取列表失败',
+      duplicate_entry: '重复项导致失败',
+      internal_error: '服务器内部错误',
+      start_failed: '启动失败',
+      stop_failed: '停止失败',
+      restart_failed: '重启失败',
+      unexpected_response: '远端返回意外响应',
+      NODE_error: '节点错误',
+      machine_maintenance: '机器正在维护中',
+      machine_offline: '机器离线',
+      machine_not_found: '机器不存在'
+    }
   };
 
   // If an explicit error_reason exists, prefer it for display

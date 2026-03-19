@@ -1,5 +1,6 @@
 import { BACKEND_BASE_URL, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
+import { getAuthTokenHeader } from '../utils/authToken';
 
 
 const createTimeoutController = (timeout) => {
@@ -25,19 +26,21 @@ const ensureOk = async (res, action) => {
 		err.body = body;
 		if (res.status === 401 || res.status === 403) {
 			try { abortAll('auth'); } catch (e) {}
+			// clear local auth and redirect to login for 401
+			if (typeof window !== 'undefined' && res.status === 401) {
+				try {
+					localStorage.removeItem('authToken');
+					sessionStorage.removeItem('authToken');
+					localStorage.removeItem('currentUserId');
+					localStorage.removeItem('currentUserName');
+					document.cookie = 'auth_token=; Max-Age=0; path=/';
+				} catch (e) {}
+				try { window.location.href = '/'; } catch (e) {}
+			}
 		}
 		throw err;
 	}
 	return res.json();
-};
-
-const getTokenHeader = () => {
-	try {
-		const token = localStorage.getItem('authToken');
-		return token ? { token } : {};
-	} catch (e) {
-		return {};
-	}
 };
 
 export const createContainer = async (payload = {}, timeout = null) => {
@@ -47,7 +50,7 @@ export const createContainer = async (payload = {}, timeout = null) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify(payload),
 			signal: controller.signal,
@@ -72,7 +75,7 @@ export const deleteContainer = async (container_id = 0, timeout = null) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -97,7 +100,7 @@ export const addCollaborator = async ({ user_id = '', container_id = 0, role = '
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ user_id, container_id, role }),
 			signal: controller.signal,
@@ -122,7 +125,7 @@ export const removeCollaborator = async ({ user_id = '', container_id = 0 } = {}
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ user_id, container_id }),
 			signal: controller.signal,
@@ -147,7 +150,7 @@ export const updateRole = async ({ container_id = 0, user_id = '', updated_role 
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id, user_id, updated_role }),
 			signal: controller.signal,
@@ -172,7 +175,7 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -197,7 +200,7 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getTokenHeader(),
+				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ machine_id, user_id, page_number, page_size }),
 			signal: controller.signal,
@@ -215,6 +218,81 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 	}
 };
 
+export const startContainer = async (container_id = 0, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_START}`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...getAuthTokenHeader(),
+			},
+			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Start container');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Start container request timed out');
+		throw err;
+	}
+};
+
+export const stopContainer = async (container_id = 0, timeout = null, stopTimeout = 5) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_STOP}`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...getAuthTokenHeader(),
+			},
+ 			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Stop container');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Stop container request timed out');
+		throw err;
+	}
+};
+
+export const restartContainer = async (container_id = 0, timeout = null, restartTimeout = 5) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_RESTART}`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...getAuthTokenHeader(),
+			},
+			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Restart container');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Restart container request timed out');
+		throw err;
+	}
+};
+
 export default {
 	createContainer,
 	deleteContainer,
@@ -223,5 +301,8 @@ export default {
 	updateRole,
 	getContainerDetailInformation,
 	listAllContainerBrefInformation,
+	startContainer,
+	stopContainer,
+	restartContainer,
 };
 

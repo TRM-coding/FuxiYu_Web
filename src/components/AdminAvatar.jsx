@@ -1,12 +1,13 @@
 import React from 'react';
 import { Space, Typography, Avatar } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
+import './Navbar.css';
 
 export default function AdminAvatar({ onNavigate }) {
   return (
     <Space 
       align="center" 
-      style={{ marginLeft: '20px', cursor: 'pointer', zIndex: 1001 }}
+      className="navbar-avatar"
       onClick={() => onNavigate('/admin/profile')}
     >
       <Avatar icon={<UserOutlined />} />

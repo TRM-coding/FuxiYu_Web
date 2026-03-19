@@ -1,0 +1,33 @@
+/* About page styles */
+.about-wrap {
+	padding: 24px;
+	display: flex;
+	justify-content: center;
+}
+.about-card {
+	width: 100%;
+	max-width: 1000px;
+}
+.about-space {
+	width: 100%;
+}
+.about-title {
+	margin: 0;
+}
+.about-paragraph {
+	margin: 0;
+	font-size: 15px;
+}
+.about-section {
+	margin-top: 12px;
+}
+.about-section-title {
+	margin-bottom: 12px;
+}
+.about-check-icon {
+	color: #52c41a;
+	font-size: 18px;
+}
+.about-list-item-title {
+	font-size: 14px;
+}

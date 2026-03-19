@@ -1,7 +1,18 @@
 .login-layout {
   display: flex;
-  width: 100vw;
+  width: 100%;
+  max-width: 100%;
   height: 100vh;
+  overflow-x: hidden;
+  background:
+    radial-gradient(1200px 700px at 82% 18%, rgba(170, 198, 255, 0.22) 0%, rgba(170, 198, 255, 0) 58%),
+    radial-gradient(1000px 620px at 90% 80%, rgba(255, 245, 220, 0.16) 0%, rgba(255, 245, 220, 0) 60%),
+    linear-gradient(135deg, #f7fbff 0%, #f2f7ff 45%, #fdfefe 100%);
+}
+
+.login-layout,
+.login-layout * {
+  box-sizing: border-box;
 }
 
 /* 左半边布局 */
@@ -10,7 +21,7 @@
   display: flex;
   justify-content: center;   /* 水平居中内容 */
   align-items: center;       /* 垂直居中内容 */
-  background: #ffffff;
+  background: transparent;
 }
 
 /* 内容块整体（按钮+表单） */
@@ -19,7 +30,9 @@
   flex-direction: column;
   align-items: center;
   gap: 20px;
-  margin-top: -400px; /* 负外边距上移 */
+  margin-top: 0;
+  padding: 24px 12px;
+  width: 100%;
 }
 
 /* 登录注册按钮 */
@@ -31,16 +44,16 @@
 .switch-btn {
   width: 100px;
   height: 40px;
-  border: 1.5px solid #ff4d4f;
+  border: 1.5px solid #1890ff;
   background: #fff;
   border-radius: 8px;
   cursor: pointer;
   font-size: 16px;
-  transition: all 0.2s;
+  transition: all 0.16s ease;
 }
 
 .switch-btn.active {
-  background: #ff4d4f;
+  background: #1890ff;
   color: #fff;
 }
 
@@ -48,10 +61,25 @@
 .login-box {
   width: 380px;
   min-height: 280px;
-  border: 2px solid #ff4d4f;
+  border: 2px solid #1890ff;
   border-radius: 10px;
   padding: 24px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.92);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 16px 36px rgba(24, 144, 255, 0.14), 0 2px 8px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(4px);
+}
+
+.login-box-header {
+  text-align: center;
+}
+.login-title {
+  margin: 0 0 6px 0;
+  font-size: 18px;
+  color: #111;
+  font-weight: 600;
 }
 
 /* 右半边 LOGO 区 */
@@ -62,7 +90,7 @@
   align-items: center;
   background: #ffffff; */
   flex: 1; /* 右侧占比 1，与左侧平分宽度 */
-  background-color: #f0f0f0; /* 给右侧一个背景色以便区分 */
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -70,6 +98,74 @@
   height: 100vh; 
   min-height: 600px; /* 或者其他你需要的最小高度 */
   position: relative;
+}
+
+.model-stage {
+  width: min(90%, 680px);
+  height: min(82vh, 760px);
+  min-height: 420px;
+  position: relative;
+}
+
+.model-stage::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 7%;
+  transform: translateX(-50%);
+  width: min(62%, 380px);
+  height: clamp(22px, 4.8vh, 46px);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(35, 50, 70, 0.24) 0%, rgba(35, 50, 70, 0.12) 46%, rgba(35, 50, 70, 0) 78%);
+  filter: blur(1.6px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.model-stage > .model-container {
+  position: relative;
+  z-index: 1;
+}
+
+/* Responsive: stack for small screens */
+@media (max-width: 768px) {
+  .login-layout {
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    min-height: 100vh;
+    height: auto;
+    overflow-x: hidden;
+  }
+  .login-left, .login-right {
+    width: 100%;
+    min-height: unset;
+    height: auto;
+  }
+  .login-right {
+    display: flex;
+    min-height: 260px;
+    padding: 8px 0 16px;
+  }
+  .login-content {
+    margin-top: 0;
+    padding: 12px;
+  }
+  .login-box {
+    width: min(92vw, 420px);
+    max-width: 420px;
+    padding: 18px;
+  }
+  .switch-btn { width: 90px; }
+  .model-stage {
+    width: 92%;
+    height: 240px;
+    min-height: 220px;
+  }
+  .model-stage::after {
+    width: 58%;
+    bottom: 8%;
+  }
 }
 
 /* .logo-placeholder {

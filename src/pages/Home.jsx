@@ -4,18 +4,23 @@ import { SearchOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Table, Tag, message } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
+import TableComponent from '../components/TableComponent';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
-import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer } from '../api/container_api';
+import { startContainerStatusHeartbeat } from '../utils/heartbeat';
+import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
 import ContainerDetailModal from '../components/ContainerDetailModal';
+import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 const { Column, ColumnGroup } = Table;
+import './Home.css';
 
 const Desc = props => (
-  <Flex justify="center" align="center" style={{ height: '100%' }}>
-    <Typography.Title type="secondary" level={5} style={{ whiteSpace: 'nowrap' }}>
+  <Flex justify="center" align="center" className="home-desc-flex">
+    <Typography.Title type="secondary" level={5} className="home-desc-title">
       {props.text}
     </Typography.Title>
   </Flex>
@@ -28,6 +33,7 @@ const initialContainers = [];
 const Home = () => {
   const [value3, setValue3] = useState('Any');
   const [position, setPosition] = useState('end');
+  const { barRef: statsBarRef, barStyle: statsBarStyle } = useAutoHideTopBar();
   const navigate = useNavigate();
 
   // read current user name from localStorage; if missing or error, clear auth and redirect to login
@@ -91,12 +97,13 @@ const Home = () => {
           port: c.port ? String(c.port) : (c.port_str || ''),
           container_status: (c.container_status || '').toLowerCase(),
           machine_id: c.machine_id ? String(c.machine_id) : null,
+          machine_ip: c.machine_ip || '',
           accounts: c.accounts || [],
         }));
         if (mounted) setContainers(mapped);
       } catch (err) {
         console.error('load containers failed', err);
-        await showErrorModal({ message: err?.body?.message || err?.message || '加载容器列表失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        await showErrorModal({ message: err?.body || err || '加载容器列表失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       } finally {
         if (mounted) setLoadingContainers(false);
       }
@@ -104,6 +111,54 @@ const Home = () => {
     load();
     return () => { mounted = false; };
   }, [currentUserId]);
+
+  // If navigated here with a startHeartbeat request (from Apply), start the heartbeat and refresh list when ONLINE
+  const location = useLocation();
+  useEffect(() => {
+    const req = location?.state?.startHeartbeat;
+    if (!req || !req.container_name) return;
+    let stop = null;
+      try {
+      stop = startContainerStatusHeartbeat({
+        machine_id: req.machine_id,
+        container_name: req.container_name,
+        onRunning: async (data) => {
+          // heartbeat may return a payload with container_status; handle 'failed' explicitly
+          const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+          if (st === 'failed') {
+            message.error('容器创建失败');
+            try {
+              setContainers(prev => prev.map(c => {
+                if (String(c.machine_id) === String(req.machine_id) && (c.container_name === req.container_name || c.container_name === req.container_name)) {
+                  return { ...c, container_status: 'failed' };
+                }
+                return c;
+              }));
+            } catch (e) {
+              // ignore update errors
+            }
+            return;
+          }
+
+          message.success('容器已运行，刷新状态');
+          try {
+            setContainers(prev => prev.map(c => {
+              if (String(c.machine_id) === String(req.machine_id) && (c.container_name === req.container_name || c.container_name === req.container_name)) {
+                return { ...c, container_status: 'online' };
+              }
+              return c;
+            }));
+          } catch (e) {
+            // ignore update errors
+          }
+        },
+      });
+    } catch (e) {
+      // ignore
+    }
+    return () => { if (typeof stop === 'function') stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location, currentUserId]);
 
   // Modal state
   const [modal, setModal] = useState({
@@ -168,6 +223,114 @@ const Home = () => {
     setContainers(prev => prev.map(c => (String(c.key) === String(updated.key) ? { ...c, ...updated } : c)));
     message.success('容器用户信息已保存');
     closeEditModal();
+  };
+
+  // 这里 start/stop/restart 的实现都只是前端模拟，实际应该调用对应的 API 来操作容器，并根据结果来更新状态和提示用户
+  const handleStartContainer = async (record) => {
+    const cid = record?.key;
+    if ((record?.container_status || '').toLowerCase() !== 'offline') return;
+    try {
+      // optimistic UI
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'starting' } : c)));
+      message.loading({ content: `正在启动 ${record.container_name}...`, key: `start-${cid}` });
+      await startContainer(Number(cid));
+      // start web-side heartbeat to wait until controller reports ONLINE
+      try {
+        startContainerStatusHeartbeat({
+          machine_id: record.machine_id,
+          container_name: record.container_name,
+          terminalState: 'online',
+          onTerminal: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st === 'failed') {
+              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)));
+              message.error({ content: `容器 ${record.container_name} 创建失败`, key: `start-${cid}`, duration: 4 });
+              return;
+            }
+            setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+            message.success({ content: `容器 ${record.container_name} 已启动`, key: `start-${cid}`, duration: 2 });
+          }
+        });
+      } catch (e) {
+        message.success({ content: `启动指令已发送`, key: `start-${cid}`, duration: 2 });
+      }
+    } catch (e) {
+      console.error('start container failed', e);
+      // revert state
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)));
+      try { await showErrorModal({ message: e?.body || e || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      message.error('启动失败');
+    }
+  };
+
+  const handleStopContainer = async (record) => {
+    const cid = record?.key;
+    if ((record?.container_status || '').toLowerCase() !== 'online') return;
+    try {
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'stopping' } : c)));
+      message.loading({ content: `正在停止 ${record.container_name}...`, key: `stop-${cid}` });
+      await stopContainer(Number(cid));
+      try {
+        startContainerStatusHeartbeat({
+          machine_id: record.machine_id,
+          container_name: record.container_name,
+          terminalState: 'offline',
+          onTerminal: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st === 'failed') {
+              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)));
+              message.error({ content: `容器 ${record.container_name} 状态异常`, key: `stop-${cid}`, duration: 4 });
+              return;
+            }
+            setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)));
+            message.success({ content: `容器 ${record.container_name} 已停止`, key: `stop-${cid}`, duration: 2 });
+          }
+        });
+      } catch (e) {
+        message.success({ content: `停止指令已发送`, key: `stop-${cid}`, duration: 2 });
+      }
+    } catch (e) {
+      console.error('stop container failed', e);
+      // revert state
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+      try { await showErrorModal({ message: e?.body || e || '停止失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      message.error('停止失败');
+    }
+  };
+
+  const handleRestartContainer = async (record) => {
+    const cid = record?.key;
+    if ((record?.container_status || '').toLowerCase() !== 'online') return;
+    try {
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'starting' } : c)));
+      message.loading({ content: `正在重启 ${record.container_name}...`, key: `restart-${cid}` });
+      await restartContainer(Number(cid));
+      try {
+        startContainerStatusHeartbeat({
+          machine_id: record.machine_id,
+          container_name: record.container_name,
+          terminalState: 'online',
+          onTerminal: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st === 'failed') {
+              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)));
+              message.error({ content: `容器 ${record.container_name} 重启失败`, key: `restart-${cid}`, duration: 4 });
+              return;
+            }
+            setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+            message.success({ content: `容器 ${record.container_name} 已重启`, key: `restart-${cid}`, duration: 2 });
+          }
+        });
+      } catch (e) {
+        message.success({ content: `重启指令已发送`, key: `restart-${cid}`, duration: 2 });
+      }
+    } catch (e) {
+      console.error('restart container failed', e);
+      // revert to online
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+      try { await showErrorModal({ message: e?.body || e || '重启失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
+      message.error('重启失败');
+    }
   };
 
   // helpers
@@ -251,7 +414,7 @@ const Home = () => {
       }
     } catch (err) {
       console.error('modal action failed', err);
-      await showErrorModal({ message: err?.body?.message || err?.message || '操作失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.body || err || '操作失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
     } finally {
       setModal({ visible: false, type: '', loading: false, data: null });
     }
@@ -279,6 +442,10 @@ const Home = () => {
         container_status: (detail.container_status || detail.status || '').toLowerCase(),
         machine_ip: detail.machine_ip || container.machine_ip || '',
         machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
+        cpu_number: detail.cpu_number || container.cpu_number || 0,
+        gpu_number: detail.gpu_number || container.gpu_number || 0,
+        memory_gb: detail.memory_gb || container.memory_gb || 0,
+        swap_gb: detail.swap_gb || container.swap_gb || 0,
         owners: detail.owners || detail.owner_list || container.owners || [],
         accounts: detail.accounts || detail.account_list || container.accounts || []
       };
@@ -302,7 +469,7 @@ const Home = () => {
     } catch (err) {
       console.error('getContainerDetailInformation failed', err);
       const status = err?.response?.status || err?.status;
-      await showErrorModal({ message: err?.body?.message || err?.message || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       if (status === 403) {
         handleAuthError(403, navigate);
       }
@@ -330,7 +497,7 @@ const Home = () => {
         title: '确认删除容器',
         message: `确定要删除容器 ${data?.record?.container_name} 吗？`,
         content: (
-          <div style={{ background: '#fff2f0', padding: 16, borderRadius: 4, border: '1px solid #ffccc7' }}>
+          <div className="home-modal-danger">
             <Typography.Text type="danger">此操作不可恢复！容器内所有数据将被永久删除。</Typography.Text>
           </div>
         ),
@@ -342,7 +509,7 @@ const Home = () => {
         title: '确认退出容器',
         message: `确定要退出容器 ${data?.record?.container_name} 吗？`,
         content: (
-          <div style={{ background: '#fffbe6', padding: 16, borderRadius: 4, border: '1px solid #ffe58f' }}>
+          <div className="home-modal-warning">
             <Typography.Text>退出后需要管理员重新邀请才能加入。</Typography.Text>
           </div>
         ),
@@ -354,7 +521,7 @@ const Home = () => {
         title: '确认移除用户',
         message: `确定要将 ${data?.username} 从容器中移除吗？`,
         content: (
-          <div style={{ background: '#fff2f0', padding: 16, borderRadius: 4, border: '1px solid #ffccc7' }}>
+          <div className="home-modal-danger">
             <Typography.Text>该用户将无法访问此容器。</Typography.Text>
           </div>
         ),
@@ -366,7 +533,7 @@ const Home = () => {
         title: '确认变更角色',
         message: `确定要变更 ${data?.username} 的角色吗？`,
         content: (
-          <div style={{ background: '#e6f7ff', padding: 16, borderRadius: 4, border: '1px solid #91d5ff' }}>
+          <div className="home-modal-info">
             <Typography.Text>角色变更将影响该用户的权限。</Typography.Text>
           </div>
         ),
@@ -402,47 +569,48 @@ const Home = () => {
         loading={modal.loading}
       />
       
-      <div style={{ minHeight: '100vh', boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)' }}>
-        <div style={{ padding: '16px', background: '#fafafa' }}>
-          <Row gutter={16} style={{ marginBottom: 16 }}>
-            <Col xs={24} sm={12} md={6}>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>总容器数</Typography.Text>
-                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#1890ff' }}>{containers.length}</Typography.Title>
+      <div className="home-root">
+        <div ref={statsBarRef} style={statsBarStyle} className="home-hero home-auto-hide-bar">
+          <Row gutter={16} className="home-row-bottom">
+            <Col xs={12} sm={12} md={6}>
+              <div className="home-stat-card">
+                <Typography.Text type="secondary" className="home-stat-label">总容器数</Typography.Text>
+                <Typography.Title level={2} className="home-stat-number home-blue">{containers.length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={24} sm={12} md={6}>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>运行中</Typography.Text>
-                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#52c41a' }}>{containers.filter(c => c.container_status === 'online').length}</Typography.Title>
+            <Col xs={12} sm={12} md={6}>
+              <div className="home-stat-card">
+                <Typography.Text type="secondary" className="home-stat-label">运行中</Typography.Text>
+                <Typography.Title level={2} className="home-stat-number home-green">{containers.filter(c => c.container_status === 'online').length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={24} sm={12} md={6}>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>维护中</Typography.Text>
-                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#faad14' }}>{containers.filter(c => c.container_status === 'maintenance').length}</Typography.Title>
+            <Col xs={12} sm={12} md={6}>
+              <div className="home-stat-card">
+                <Typography.Text type="secondary" className="home-stat-label">异常</Typography.Text>
+                <Typography.Title level={2} className="home-stat-number home-warning">{containers.filter(c => c.container_status === 'failed').length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={24} sm={12} md={6}>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: '14px' }}>离线</Typography.Text>
-                <Typography.Title level={2} style={{ margin: '8px 0 0 0', color: '#ff4d4f' }}>{containers.filter(c => c.container_status === 'offline').length}</Typography.Title>
+            <Col xs={12} sm={12} md={6}>
+              <div className="home-stat-card">
+                <Typography.Text type="secondary" className="home-stat-label">离线</Typography.Text>
+                <Typography.Title level={2} className="home-stat-number home-red">{containers.filter(c => c.container_status === 'offline').length}</Typography.Title>
               </div>
             </Col>
           </Row>
         </div>
-        <div style={{ padding: '16px' }}>
-          <Table dataSource={containers} loading={loadingContainers} style={{ padding: '16px' }}>
+        <div className="home-table-wrapper">
+          <TableComponent dataSource={containers} loading={loadingContainers} className="home-table">
             <Column title="容器名称" dataIndex="container_name" key="container_name" render={(text, record) => <a onClick={() => openContainerDetail(record)}>{text}</a>} />
             <Column title="容器ID" dataIndex="key" key="key" />
-            <Column title="机器ID" dataIndex="machine_id" key="machine_id" />
+            <Column title="机器 IP" dataIndex="machine_ip" key="machine_ip" render={(text, record) => (record.machine_ip  || '-')} />
             <Column
               title="容器状态"
               dataIndex="container_status"
               key="container_status"
               render={status => {
-                let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
-                return <Tag color={color}>{String(status).toUpperCase()}</Tag>;
+                let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
+                let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status;
+                return <Tag color={color}>{text}</Tag>;
               }}
             />
             <Column title="端口" dataIndex="port" key="port" />
@@ -451,30 +619,65 @@ const Home = () => {
               key="action"
               render={(_, record) => {
                 const myRole = getRoleForUser(record.accounts, currentUserName);
+                const status = (record?.container_status || '').toLowerCase();
+                const startDisabled = status !== 'offline';
+                const restartDisabled = status !== 'online';
+                const stopDisabled = status !== 'online';
+
+                const ActionButtons = (
+                  <Space size="small">
+                      <a
+                        onClick={() => { if (!startDisabled) handleStartContainer(record); }}
+                        className={startDisabled ? 'home-action-link home-action-disabled' : 'home-action-link'}
+                      >
+                        启动
+                      </a>
+                      <a
+                        onClick={() => { if (!restartDisabled) handleRestartContainer(record); }}
+                        className={restartDisabled ? 'home-action-link home-action-disabled' : 'home-action-link'}
+                      >
+                        重启
+                      </a>
+                      <a
+                        onClick={() => { if (!stopDisabled) handleStopContainer(record); }}
+                        className={stopDisabled ? 'home-action-link home-action-disabled' : 'home-action-link home-action-stop'}
+                      >
+                        停止
+                      </a>
+                    </Space>
+                );
+
+                // Show 查看详情 first, then role-specific links, then the action buttons
+                const detailLink = <a onClick={() => openContainerDetail(record)}>查看详情</a>;
                 if (myRole === 'ADMIN') {
                   return (
                     <Space size="middle">
+                      {detailLink}
                       <a onClick={() => handleInvite(record)}>邀请</a>
                       <a onClick={() => handleDeleteContainer(record)}>删除容器</a>
+                      {ActionButtons}
                     </Space>
                   );
                 }
                 if (myRole === 'COLLABORATOR') {
                   return (
                     <Space size="middle">
+                      {detailLink}
                       <a onClick={() => handleLeave(record)}>退出</a>
+                      {ActionButtons}
                     </Space>
                   );
                 }
                 // default actions for others
                 return (
                   <Space size="middle">
-                    <a onClick={() => openContainerDetail(record)}>查看详情</a>
+                    {detailLink}
+                    {ActionButtons}
                   </Space>
                 );
               }}
             />
-          </Table>
+          </TableComponent>
 
           <ContainerDetailModal
             visible={detailVisible}

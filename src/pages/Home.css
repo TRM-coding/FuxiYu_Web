@@ -1,0 +1,116 @@
+/* Home page styles */
+.home-desc-flex {
+  height: 100%;
+}
+.home-desc-title {
+  white-space: nowrap;
+}
+.home-root {
+  min-height: 100vh;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+.home-hero {
+  padding: 16px;
+  background: #fafafa;
+}
+.home-row-bottom {
+  margin-bottom: 16px;
+}
+.home-stat-card {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.home-stat-label {
+  font-size: 14px;
+}
+.home-stat-number {
+  margin: 8px 0 0 0;
+}
+.home-blue { color: #1890ff; }
+.home-green { color: #52c41a; }
+.home-warning { color: #faad14; }
+.home-red { color: #ff4d4f; }
+.home-table-wrapper {
+  padding: 16px;
+}
+.home-table {
+  padding: 16px;
+}
+.home-modal-danger { /*这个是危险状态的样式*/
+  background: #fff2f0;
+  padding: 16px;
+  border-radius: 4px;
+  border: 1px solid #ffccc7;
+}
+.home-modal-warning {
+  background: #fffbe6;
+  padding: 16px;
+  border-radius: 4px;
+  border: 1px solid #ffe58f;
+}
+.home-modal-info {
+  background: #e6f7ff;
+  padding: 16px;
+  border-radius: 4px;
+  border: 1px solid #91d5ff;
+}
+.home-action-link { /*这个是可点击的链接样式*/
+  padding: 0 6px;
+  cursor: pointer;
+}
+.home-action-disabled { /*这个是禁用状态的样式*/
+  color: #bfbfbf;
+  cursor: not-allowed;
+}
+.home-action-stop { /*这个是停止状态的样式*/
+  color: rgba(255,0,0,0.85);
+}
+
+/* Ensure stat number colors apply with higher specificity */
+.home-stat-number.home-blue { color: #1890ff !important; }
+.home-stat-number.home-green { color: #52c41a !important; }
+.home-stat-number.home-warning { color: #faad14 !important; }
+.home-stat-number.home-red { color: #ff4d4f !important; }
+
+@media (max-width: 768px) {
+  .home-auto-hide-bar {
+    will-change: transform;
+    transform: translate3d(0, calc(-1 * var(--auto-hide-offset, 0px)), 0);
+    pointer-events: auto;
+  }
+  .home-hero {
+    position: sticky;
+    top: 56px;
+    z-index: 10;
+    padding: 10px;
+    border-bottom: 1px solid #f0f0f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    background: #fff;
+  }
+  .home-row-bottom {
+    margin-bottom: 10px;
+    width: 100%;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  .home-stat-card {
+    padding: 8px 8px;
+    border-radius: 6px;
+  }
+  .home-stat-label {
+    font-size: 11px;
+    line-height: 1.1;
+  }
+  .home-stat-number {
+    margin-top: 3px;
+    font-size: 20px !important;
+    line-height: 1;
+  }
+  .home-table-wrapper,
+  .home-table {
+    padding: 10px;
+  }
+}

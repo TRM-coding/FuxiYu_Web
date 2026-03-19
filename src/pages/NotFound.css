@@ -1,0 +1,69 @@
+.notfound-page {
+	min-height: calc(100vh - 64px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	background: radial-gradient(circle at 20% 20%, #f0f7ff 0%, #f7f9fc 45%, #ffffff 100%);
+}
+
+.notfound-card {
+	width: min(560px, 100%);
+	padding: 40px 32px;
+	border-radius: 16px;
+	background: #fff;
+	border: 1px solid #eef2f7;
+	box-shadow: 0 12px 30px rgba(26, 43, 77, 0.08);
+	text-align: center;
+}
+
+.notfound-code {
+	font-size: 72px;
+	font-weight: 800;
+	line-height: 1;
+	letter-spacing: 2px;
+	margin-bottom: 12px;
+	color: #1677ff;
+}
+
+.notfound-title {
+	margin: 0;
+	font-size: 32px;
+	color: #1f2a44;
+}
+
+.notfound-desc {
+	margin: 14px 0 28px;
+	font-size: 15px;
+	color: #6b7280;
+}
+
+@media (max-width: 768px) {
+	.notfound-page {
+		padding: 12px;
+		min-height: calc(100vh - 56px);
+	}
+
+	.notfound-card {
+		border-radius: 12px;
+		padding: 28px 18px;
+	}
+
+	.notfound-code {
+		font-size: 56px;
+		margin-bottom: 10px;
+	}
+
+	.notfound-title {
+		font-size: 24px;
+	}
+
+	.notfound-desc {
+		margin: 10px 0 22px;
+		font-size: 14px;
+	}
+
+	.notfound-card .ant-btn {
+		width: 100%;
+	}
+}

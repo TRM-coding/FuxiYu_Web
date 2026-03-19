@@ -1,7 +1,15 @@
 // 单文件配置，移除对 config.js 的依赖
 
-// Use IPv4 loopback to avoid IPv6 (::1) connection issues in some browsers
-export const BACKEND_BASE_URL = 'http://127.0.0.1:5000';
+// Use Vite-provided environment variables when available (import.meta.env.VITE_*),
+// otherwise fall back to the hardcoded address. This lets you switch between
+// http/https without editing source.
+// Example (shell): VITE_BACKEND_BASE_URL=https://localhost:5000 npm run dev
+export const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL || 'https://192.168.5.230:5000';
+// Optional: front-end can know whether it should operate in HTTPS mode
+// (useful for building URLs or toggling secure cookies). Set VITE_ENABLE_SSL=true
+// when launching Vite to indicate HTTPS mode.
+// Default to true (HTTPS enabled) unless explicitly disabled by VITE_ENABLE_SSL='false'
+export const ENABLE_SSL = (import.meta.env.VITE_ENABLE_SSL === 'false') ? false : true;
 export const REQUEST_TIMEOUT = 5000;
 export const CREDENTIALS = 'include'; // 携带 cookies
 
@@ -31,6 +39,9 @@ export const API_ROUTES = {
 	CONTAINERS_UPDATE_ROLE: '/api/containers/update_role',
 	CONTAINERS_GET_DETAIL: '/api/containers/get_container_detail_information',
 	CONTAINERS_LIST: '/api/containers/list_all_container_bref_information',
+	CONTAINERS_START: '/api/containers/start_container',
+	CONTAINERS_STOP: '/api/containers/stop_container',
+	CONTAINERS_RESTART: '/api/containers/restart_container',
 	
 };
 

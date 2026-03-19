@@ -4,6 +4,7 @@ import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { Card, Typography, Row, Col, List, Space, Tag } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
+import './About.css';
 
 export default function About() {
   const navigate = useNavigate();
@@ -42,18 +43,18 @@ export default function About() {
   }, [navigate]);
 
   return (
-    <div style={{ padding: 24, display: 'flex', justifyContent: 'center' }}>
-      <Card style={{ width: '100%', maxWidth: 1000 }} bordered>
+    <div className="about-wrap">
+      <Card className="about-card" bordered>
         <Row gutter={24} align="middle">
           <Col xs={24} md={16}>
-            <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              <Typography.Title level={2} style={{ margin: 0 }}>伏羲·御</Typography.Title>
-              <Typography.Paragraph style={{ margin: 0, fontSize: 15 }}>
+            <Space direction="vertical" size="small" className="about-space">
+              <Typography.Title level={2} className="about-title">伏羲·御</Typography.Title>
+              <Typography.Paragraph className="about-paragraph">
                 伏羲·御 是面向算力平台的 Docker 化集群管理与自助使用系统。系统将物理服务器纳入统一的“控制面”，用户通过申请到的 Docker 实例直接操作实体机，配套可视化的基础环境配置（例如网络、用户与权限配置等），免去繁琐的安装与踩坑流程，友好地面向 Linux 新手与多用户场景。
               </Typography.Paragraph>
             </Space>
-            <div style={{ marginTop: 18 }}>
-              <Typography.Title level={4} style={{ marginBottom: 12 }}>核心特性</Typography.Title>
+            <div className="about-section">
+              <Typography.Title level={4} className="about-section-title">核心特性</Typography.Title>
               <List
                 dataSource={[
                   '统一节点管理：将多台物理服务器纳入统一控制面，支持批量配置与监控。',
@@ -65,14 +66,14 @@ export default function About() {
                 renderItem={item => (
                   <List.Item>
                     <List.Item.Meta
-                      avatar={<CheckCircleOutlined style={{ color: '#52c41a', fontSize: 18 }} />}
-                      title={<span style={{ fontSize: 14 }}>{item}</span>}
+                      avatar={<CheckCircleOutlined className="about-check-icon" />}
+                      title={<span className="about-list-item-title">{item}</span>}
                     />
                   </List.Item>
                 )}
               />
             </div>
-            <div style={{ marginTop: 12 }}>
+            <div className="about-section">
               <Typography.Title level={4}>适用对象</Typography.Title>
               <Typography.Paragraph>算力平台管理员、科研/教学用户与运维人员，需要对物理算力进行统一调度与自助使用的团队或组织。</Typography.Paragraph>
             </div>

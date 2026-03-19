@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
-import { Typography, Row, Col, Button, Input, Table, Tag, Radio, Space, Form, InputNumber, message } from 'antd';
+import { Typography, Row, Col, Button, Input, Table, Tag, Radio, Space, Form, InputNumber, message, Select } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 const { Column } = Table;
+import './Apply.css';
+
+import TableComponent from '../components/TableComponent';
 
 const options = [
   { label: '任意', value: 'Any', className: 'label-1' },
@@ -14,13 +17,18 @@ const options = [
 
 
 import { listAllMachineBrefInformation, getDetailInformation } from '../api/machine_api';
+import { isValidName, isValidImageName } from '../utils/validateCmdArg';
 import { createContainer } from '../api/container_api';
+import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import ConfirmModal from '../components/ConfirmModal';
+import MachineDetailModal from '../components/MachineDetailModal';
+import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 
 // data will be fetched from backend; table will use mapped `tableData` built from API response.
 
 const Apply = () => {
   const navigate = useNavigate();
+  const { barRef: filterBarRef, barStyle: filterBarStyle } = useAutoHideTopBar();
   const [value3, setValue3] = useState('Any');
   const [searchIp, setSearchIp] = useState('');
   const [searchId, setSearchId] = useState('');
@@ -79,6 +87,10 @@ const Apply = () => {
   const [addContainerLoading, setAddContainerLoading] = useState(false);
   const [addContainerForm] = Form.useForm();
   const [addContainerMachineId, setAddContainerMachineId] = useState(null);
+  const [addContainerUnsafe, setAddContainerUnsafe] = useState(false);
+  const [addContainerMachineType, setAddContainerMachineType] = useState('CPU');
+  const [addContainerFieldErrors, setAddContainerFieldErrors] = useState({});
+  const addContainerMachine = machines.find(m => String(m.machine_id || m.key) === String(addContainerMachineId));
   
 
   const fetchMachines = async (p = page, ps = pageSize) => {
@@ -88,7 +100,18 @@ const Apply = () => {
       const res = await listAllMachineBrefInformation({ page_number: Math.max(0, p - 1), page_size: ps });
       // backend returns { machines: [...], total_pages: N }
       const items = (res && res.machines) || [];
-      setMachines(items);
+      // try to fetch detail info for each machine to obtain max limits
+      try {
+        const detailPromises = items.map(it => {
+          const id = it.machine_id || 0;
+          return getDetailInformation(id).then(d => d || null).catch(() => null);
+        });
+        const details = await Promise.all(detailPromises);
+        const merged = items.map((it, idx) => ({ ...it, ...(details[idx] || {}), machine_status: it.machine_status }));
+        setMachines(merged);
+      } catch (e) {
+        setMachines(items);
+      }
       // if server provides total_pages compute total items for pagination
       if (res && typeof res.total_pages === 'number') {
         // compute estimated total items
@@ -114,7 +137,10 @@ const Apply = () => {
     const mid = machine?.machine_id ?? machine?.key ?? null;
     setAddContainerMachineId(mid);
     addContainerForm.resetFields();
-    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [] });
+    setAddContainerFieldErrors({});
+    const mtype = (machine && (machine.machine_type || machine.machine_type === 0) ? (machine.machine_type || 'CPU') : 'CPU');
+    setAddContainerMachineType((mtype || 'CPU').toUpperCase());
+    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SWAP_MEM: 0, GPU_LIST: [], gpu_number: 0 });
     setAddContainerVisible(true);
   };
 
@@ -124,27 +150,48 @@ const Apply = () => {
       setAddContainerLoading(true);
       const machineId = values.machine_id || addContainerMachineId;
       // 使用状态中的 currentUserName 和 currentUserId
+      // build GPU_LIST per machine type
+      let gpuList = [];
+      try {
+        if ((addContainerMachineType || '').toUpperCase() === 'GPU') {
+          const gnum = Number(values.gpu_number || 0);
+          if (Number.isInteger(gnum) && gnum > 0) gpuList = Array.from({ length: gnum }, (_, i) => i);
+          else gpuList = values.GPU_LIST || [];
+        } else {
+          gpuList = [];
+        }
+      } catch (e) {
+        gpuList = values.GPU_LIST || [];
+      }
+
       const payload = {
         user_name: currentUserName || '',
         user_id: currentUserId || null,
         machine_id: machineId,
         container: {
-          GPU_LIST: values.GPU_LIST || [],
+          GPU_LIST: gpuList,
           CPU_NUMBER: values.CPU_NUMBER || 1,
-          MEMORY: values.MEMORY || 512,
+          MEMORY: values.MEMORY || 1,
           NAME: values.NAME || `container-${Date.now()}`,
-          image: values.image || ''
+          image: values.image || '',
+          swap_memory: values.SWAP_MEM || 0
         },
         public_key: values.public_key || ''
       };
 
       try {
-        await createContainer(payload);
+        const res = await createContainer(payload);
         message.success('容器创建请求已发送');
         setAddContainerVisible(false);
+        // navigate to Home and pass startHeartbeat request via location state
+        try {
+          navigate('/index', { state: { startHeartbeat: { machine_id: machineId, container_name: payload.container.NAME } } });
+        } catch (e) {
+          navigate('/index');
+        }
       } catch (err) {
         console.error('createContainer failed', err);
-        await showErrorModal({ message: err?.body?.message || err?.message || '创建容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        await showErrorModal({ message: err?.body || err || '创建容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       } finally {
         setAddContainerLoading(false);
       }
@@ -171,22 +218,12 @@ const Apply = () => {
     });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div className="apply-page">
       {/* 顶部筛选区域，贴在导航栏下方 */}
-      <div
-        style={{
-          padding: '16px',
-          background: '#fff',
-          borderBottom: '1px solid #f0f0f0',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-          position: 'sticky',
-          top: 64,
-          zIndex: 10,
-        }}
-      >
+      <div ref={filterBarRef} style={filterBarStyle} className="apply-filter-bar apply-auto-hide-bar">
         <Row gutter={[16, 16]} justify="center" align="middle">
-          <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>设备类型</Typography.Text>
+          <Col xs={24} sm={12} md={6} className="apply-filter-col-compact">
+            <Typography.Text type="secondary" className="apply-filter-label">设备类型</Typography.Text>
             <Radio.Group 
               options={options} 
               onChange={({ target: { value } }) => setValue3(value)} 
@@ -195,28 +232,28 @@ const Apply = () => {
             />
           </Col>
 
-          <Col xs={24} sm={12} md={6} style={{ minWidth: 200, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>IP地址</Typography.Text>
+          <Col xs={24} sm={12} md={6} className="apply-filter-col-wide">
+            <Typography.Text type="secondary" className="apply-filter-label">IP地址</Typography.Text>
             <Input 
-              placeholder="xxx.xxx.xxx.xxx" 
+              placeholder="XXX.XXX.XXX.XXX" 
               allowClear 
               value={searchIp}
               onChange={e => setSearchIp(e.target.value)}
-              style={{ width: '80%', minWidth: 160 }} 
+              className="apply-input-ip" 
             />
           </Col>
 
-          <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '8px', textAlign: 'center' }}>机器ID</Typography.Text>
+          <Col xs={24} sm={12} md={6} className="apply-filter-col-compact">
+            <Typography.Text type="secondary" className="apply-filter-label">机器ID</Typography.Text>
             <Input 
               placeholder="机器ID" 
               value={searchId}
               onChange={e => setSearchId(e.target.value)}
-              style={{ width: '80%', minWidth: 80 }} 
+              className="apply-input-machine-id" 
             />
           </Col>
 
-          <Col xs={24} sm={12} md={6} style={{ minWidth: 140, display: 'flex', justifyContent: 'center' }}>
+          <Col xs={24} sm={12} md={6} className="apply-filter-col-actions">
             <Button type="primary" icon={<SearchOutlined />} onClick={() => {}}>
               Search
             </Button>
@@ -225,8 +262,8 @@ const Apply = () => {
       </div>
 
       {/* 表格区域，随内容自然伸展 */}
-      <div style={{ padding: '16px' }}>
-        <Table
+      <div className="apply-table-wrapper">
+        <TableComponent
           dataSource={filteredData}
           loading={loading}
           pagination={{
@@ -241,6 +278,7 @@ const Apply = () => {
           }}
           bordered
         >
+          
           <Column
             title="机器名称"
             dataIndex="machine_name"
@@ -248,22 +286,26 @@ const Apply = () => {
             render={(text, record) => (
               <a
                 onClick={async () => {
-                  const id = record.machine_id || 0;
-                  setDetailError('');
-                  setDetailInfo(null);
-                  setDetailLoading(true);
-                  try {
-                    const res = await getDetailInformation(id);
-                    setDetailInfo(res);
-                    setDetailVisible(true);
-                  } catch (err) {
-                    console.error('Failed to get detail', err);
-                    setDetailError(err.message || 'Failed to load details');
-                    setDetailVisible(true);
-                  } finally {
-                    setDetailLoading(false);
-                  }
-                }}
+                      const id = record.machine_id || 0;
+                      setDetailError('');
+                      // show immediate info from the list data (use list status)
+                      setDetailInfo(record);
+                      setDetailVisible(true);
+                      setDetailLoading(true);
+                      try {
+                        const res = await getDetailInformation(id);
+                        // merge detail but keep machine_status from list data
+                        const merged = { ...(res || {}), ...record, machine_status: record.machine_status };
+                        // ensure fields from detail override when present except machine_status
+                        const final = { ...merged, machine_status: record.machine_status };
+                        setDetailInfo(final);
+                      } catch (err) {
+                        console.error('Failed to get detail', err);
+                        setDetailError(err.message || 'Failed to load details');
+                      } finally {
+                        setDetailLoading(false);
+                      }
+                    }}
               >
                 {text}
               </a>
@@ -297,16 +339,18 @@ const Apply = () => {
                 onClick={async () => {
                   const id = record.machine_id || 0;
                   setDetailError('');
-                  setDetailInfo(null);
+                  // show immediate info from the list data (use list status)
+                  setDetailInfo(record);
+                  setDetailVisible(true);
                   setDetailLoading(true);
                   try {
                     const res = await getDetailInformation(id);
-                    setDetailInfo(res);
-                    setDetailVisible(true);
+                    const merged = { ...(res || {}), ...record, machine_status: record.machine_status };
+                    const final = { ...merged, machine_status: record.machine_status };
+                    setDetailInfo(final);
                   } catch (err) {
                     console.error('Failed to get detail', err);
                     setDetailError(err.message || 'Failed to load details');
-                    setDetailVisible(true);
                   } finally {
                     setDetailLoading(false);
                   }
@@ -326,94 +370,155 @@ const Apply = () => {
                   {/* 此处直接用创建容器的方法 */}
                 </Space>
               ) : (
-                <span style={{ color: '#999' }}>不可用</span>
+                <span className="apply-unavailable">不可用</span>
               )
             )}
           />
-        </Table>
+        </TableComponent>
       </div>
-      <ConfirmModal
+      <MachineDetailModal
         visible={detailVisible}
-        title={detailInfo ? detailInfo.machine_name || '机器详情' : '机器详情'}
-        message={detailError || ''}
-        content={
-          detailInfo ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div>
-                <b>IP:</b> {detailInfo.machine_ip}
-              </div>
-              <div>
-                <b>类型:</b> <Tag color={detailInfo.machine_type === 'GPU' ? 'volcano' : 'green'}>{detailInfo.machine_type}</Tag>
-              </div>
-              <div>
-                <b>CPU core 数:</b> {detailInfo.cpu_core_number}
-              </div>
-              <div>
-                <b>GPU 数:</b> {detailInfo.gpu_number} {detailInfo.gpu_type ? `(${detailInfo.gpu_type})` : ''}
-              </div>
-              <div>
-                <b>内存:</b> {detailInfo.memory_size_gb} GB
-              </div>
-              <div>
-                <b>磁盘:</b> {detailInfo.disk_size_gb} GB
-              </div>
-              <div>
-                <b>描述:</b>
-                <div style={{ whiteSpace: 'pre-wrap', marginTop: 6 }}>{detailInfo.machine_description}</div>
-              </div>
-              <div>
-                <b>容器:</b> {Array.isArray(detailInfo.containers) ? detailInfo.containers.join(', ') : ''}
-              </div>
-            </div>
-          ) : (
-            <div>{detailError || '加载中...'}</div>
-          )
-        }
-        onConfirm={() => setDetailVisible(false)}
-        onCancel={() => setDetailVisible(false)}
+        machine={detailInfo}
+        onClose={() => setDetailVisible(false)}
         loading={detailLoading}
-        confirmText="关闭"
-        showCancel={false}
       />
       <ConfirmModal
         visible={addContainerVisible}
         title="添加容器"
         message="请填写容器信息并确认添加"
         onConfirm={handleAddContainerConfirm}
-        onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); }}
+        onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); setAddContainerFieldErrors({}); }}
         loading={addContainerLoading}
         confirmText="添加"
+        confirmDisabled={addContainerUnsafe}
         content={
           <Form
             form={addContainerForm}
             layout="vertical"
             initialValues={{ CPU_NUMBER: 1, MEMORY: 512, GPU_LIST: [] }}
+            onValuesChange={(_changed, allVals) => {
+                try {
+                  const vals = allVals || addContainerForm.getFieldsValue();
+                  const name = vals.NAME || '';
+                  const image = vals.image || '';
+                  const pub = vals.public_key || '';
+                  // lazy import to avoid bundler warnings
+                  import('../utils/validateCmdArg').then(mod => {
+                    const unsafe = mod.anyUnsafe(name, image, pub);
+                    setAddContainerUnsafe(Boolean(unsafe));
+                  }).catch(() => setAddContainerUnsafe(false));
+
+                  // check numeric limits against machine's max values and show errors
+                  const errs = {};
+                  const m = addContainerMachine || {};
+                  const cpu = Number(vals.CPU_NUMBER || 0);
+                  const mem = Number(vals.MEMORY || 0);
+                  const swap = Number(vals.SWAP_MEM || 0);
+                  const gnum = Number(vals.gpu_number || 0);
+                  const maxCpu = m.max_cpu_core_number ?? m.cpu_core_number ?? null;
+                  const maxMem = m.max_memory_gb ?? m.memory_size_gb ?? null;
+                  const maxSwap = m.max_swap_gb ?? m.max_swap_gb ?? m.max_swap_gb ?? null;
+                  const maxGpu = m.max_gpu_number ?? m.gpu_number ?? null;
+                  if (maxCpu != null && cpu > Number(maxCpu)) errs.CPU_NUMBER = `超出最大 CPU (${maxCpu})`;
+                  if (maxMem != null && mem > Number(maxMem)) errs.MEMORY = `超出最大内存 (${maxMem} GB)`;
+                  if (maxSwap != null && swap > Number(maxSwap)) errs.SWAP_MEM = `超出最大交换空间 (${maxSwap} GB)`;
+                  if (addContainerMachineType === 'GPU' && maxGpu != null && gnum > Number(maxGpu)) errs.gpu_number = `超出最大 GPU (${maxGpu})`;
+                  setAddContainerFieldErrors(errs);
+                } catch (e) {
+                  setAddContainerUnsafe(false);
+                  setAddContainerFieldErrors({});
+                }
+              }}
           >
+            <Typography.Text type="secondary">请不要超过宿主机算力/内存/交换空间上限。</Typography.Text>
+            <br />
+            <br />
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }]}>
-                  <Input placeholder="容器名" />
+                <Form.Item
+                  name="NAME"
+                  label="容器名"
+                  rules={[
+                    { required: true, message: '请输入容器名' },
+                    { max: 115, message: '容器名长度不得超过115个字符' },
+                    { validator: (_, value) => isValidName(value) ? Promise.resolve() : Promise.reject(new Error('容器名仅允许英文、数字和下划线')) }
+                  ]}
+                >
+                  <Input placeholder="容器名，允许英文/数字/下划线" maxLength={115} />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}>
-                  <Input placeholder="例如：nginx:latest" />
+                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}> 
+                  <Select placeholder="选择镜像" defaultValue="ubuntu:24.04" style={{ width: '100%' }}>
+                    <Select.Option value="ubuntu:24.04">ubuntu:24.04</Select.Option>
+                  </Select>
                 </Form.Item>
               </Col>
             </Row>
 
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="CPU_NUMBER" label="CPU 数量">
+                <Form.Item
+                  name="CPU_NUMBER"
+                  label={<span>CPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_cpu_core_number ?? addContainerMachine?.cpu_core_number ?? '-'})</span></span>}
+                  validateStatus={addContainerFieldErrors.CPU_NUMBER ? 'error' : undefined}
+                  help={addContainerFieldErrors.CPU_NUMBER || null}
+                >
                   <InputNumber min={1} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="MEMORY" label="内存 (MB)">
-                  <InputNumber min={128} style={{ width: '100%' }} />
+                <Form.Item
+                  name="MEMORY"
+                  label={<span>内存 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_memory_gb ?? addContainerMachine?.memory_size_gb ?? '-'})</span></span>}
+                  validateStatus={addContainerFieldErrors.MEMORY ? 'error' : undefined}
+                  help={addContainerFieldErrors.MEMORY || null}
+                >
+                  <InputNumber min={1} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
             </Row>
+
+            {addContainerMachineType === 'GPU' && (
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="gpu_number"
+                    label={<span>请求 GPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_gpu_number ?? addContainerMachine?.gpu_number ?? '-'})</span></span>}
+                    validateStatus={addContainerFieldErrors.gpu_number ? 'error' : undefined}
+                    help={addContainerFieldErrors.gpu_number || null}
+                  >
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="SWAP_MEM"
+                    label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? addContainerMachine?.max_swap_gb ?? '-'})</span></span>}
+                    validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
+                    help={addContainerFieldErrors.SWAP_MEM || null}
+                  >
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+            )}
+
+            {addContainerMachineType !== 'GPU' && (
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="SWAP_MEM"
+                    label="交换空间 (GB)"
+                    validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
+                    help={addContainerFieldErrors.SWAP_MEM || null}
+                  >
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12} />
+              </Row>
+            )}
 
             <Row gutter={16}>
               <Col span={12}>
@@ -426,8 +531,8 @@ const Apply = () => {
 
             <Row gutter={16}>
               <Col span={24}>
-                <Form.Item name="public_key" label="公钥 (可选)">
-                  <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" />
+                <Form.Item name="public_key" label="公钥 (可选)" rules={[{ max: 495, message: '公钥长度不得超过495个字符' }]}>
+                  <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" maxLength={495} />
                 </Form.Item>
               </Col>
             </Row>

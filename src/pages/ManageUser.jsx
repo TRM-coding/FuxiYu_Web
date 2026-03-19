@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message, InputNumber } from 'antd';
@@ -8,6 +8,9 @@ import { handleAuthError } from '../utils/authHelpers';
 import { listAllUserBrefInformation, getUserDetailInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator } from '../api/container_api';
 const { Column } = Table;
+import './ManageUser.css';
+import TableComponent from '../components/TableComponent';
+import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 
 // users and containers will be fetched from backend
 const initialUsers = [];
@@ -50,25 +53,34 @@ const ManageUser = () => {
       openModal('save', { record, changedFields });
     };
 
-    const labelStyle = (field) => (String(values[field]) !== String(original.current[field]) ? { fontWeight: 700, fontStyle: 'italic' } : {});
+    const labelClass = (field) => (String(values[field]) !== String(original.current[field]) ? 'manage-user-label-changed' : '');
 
     return (
-      <div style={{ background: '#fff' }}>
+      <div className="manage-user-edit-row">
         <Form layout="inline" initialValues={{ username: values.username, email: values.email, graduation_year: values.graduation_year }}>
-          <Row gutter={[16, 0]} align="middle" style={{ width: '100%' }}>
+          <Row gutter={[16, 0]} align="middle" className="manage-user-row">
             <Col flex="auto">
-              <Form.Item label={<span style={labelStyle('username')}>用户名</span>} style={{ marginBottom: 0 }}>
-                <Input value={values.username} onChange={e => setValues(v => ({ ...v, username: e.target.value }))} style={{ width: 150 }} />
+              <Form.Item label={<span className={labelClass('username')}>用户名</span>} className="manage-user-form-item">
+                <Input value={values.username} onChange={e => setValues(v => ({ ...v, username: e.target.value }))} className="manage-user-input-150" />
               </Form.Item>
             </Col>
             <Col flex="auto">
-              <Form.Item label={<span style={labelStyle('email')}>邮箱</span>} style={{ marginBottom: 0 }}>
-                <Input value={values.email} onChange={e => setValues(v => ({ ...v, email: e.target.value }))} style={{ width: 200 }} />
+              <Form.Item label={<span className={labelClass('email')}>邮箱</span>} className="manage-user-form-item">
+                <Input value={values.email} onChange={e => setValues(v => ({ ...v, email: e.target.value }))} className="manage-user-input-200" />
               </Form.Item>
             </Col>
             <Col flex="auto">
-              <Form.Item label={<span style={labelStyle('graduation_year')}>毕业年份</span>} style={{ marginBottom: 0 }}>
-                <InputNumber value={values.graduation_year === '' || values.graduation_year === null ? undefined : Number(values.graduation_year)} onChange={v => setValues(val => ({ ...val, graduation_year: v }))} style={{ width: 120 }} />
+              <Form.Item label={<span className={labelClass('graduation_year')}>毕业年份</span>} className="manage-user-form-item">
+                <InputNumber
+                  value={values.graduation_year === '' || values.graduation_year === null ? undefined : Number(values.graduation_year)}
+                  onChange={v => setValues(val => ({ ...val, graduation_year: v }))}
+                  className="manage-user-input-120"
+                  min={1900}
+                  max={2100}
+                  precision={0}
+                  step={1}
+                  parser={(val) => String(val || '').replace(/[^\d]/g, '')}
+                />
               </Form.Item>
             </Col>
             <Col>
@@ -85,11 +97,13 @@ const ManageUser = () => {
 
   // 用户搜索状态
   const [searchUsername, setSearchUsername] = useState('');
-  const [searchUserId, setSearchUserId] = useState('');
+  const [searchContainerName, setSearchContainerName] = useState('');
   const [searchEmail, setSearchEmail] = useState('');
 
   // 展开的行key
   const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+  // 选中的行 key（用于高亮当前选中行及其展开部分）
+  const [selectedRowKey, setSelectedRowKey] = useState(null);
 
   // fetched users
   const [users, setUsers] = useState(initialUsers);
@@ -97,6 +111,11 @@ const ManageUser = () => {
 
   // container cache per user id: { [userId]: { loading, data } }
   const [containerMap, setContainerMap] = useState({});
+  // matched user ids from top-level container name search
+  const [matchedUserIds, setMatchedUserIds] = useState(null);
+  // top-level container-name search loading
+  const [containerSearchLoading, setContainerSearchLoading] = useState(false);
+  const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
 
   const navigate = useNavigate();
 
@@ -181,7 +200,7 @@ const ManageUser = () => {
           handleAuthError(401, navigate);
           return;
         }
-        await showErrorModal({ message: err?.body?.message || (msg ? `加载用户列表失败: ${msg}` : '加载用户列表失败'), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        await showErrorModal({ message: err?.body || err || (msg ? `加载用户列表失败: ${msg}` : '加载用户列表失败'), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       } finally {
         if (mounted) setUsersLoading(false);
       }
@@ -198,12 +217,11 @@ const ManageUser = () => {
     data: null,
   });
 
-  // 过滤用户数据
-  const filteredUserData = users.filter(user => {
+  // 基础过滤（不含容器名）
+  const baseFilteredUserData = users.filter(user => {
     const matchUsername = user.username.toLowerCase().includes(searchUsername.toLowerCase());
-    const matchUserId = user.key.includes(searchUserId);
     const matchEmail = user.email.toLowerCase().includes(searchEmail.toLowerCase());
-    return matchUsername && matchUserId && matchEmail;
+    return matchUsername && matchEmail;
   });
 
   // 打开弹窗
@@ -395,7 +413,18 @@ const ManageUser = () => {
             });
             if (found) userRole = found.role ?? null;
           }
-          return { ...c, container_image: image, accounts, userRole, machine_id: det?.machine_id ? String(det.machine_id) : c.machine_id };
+          return {
+            ...c,
+            container_image: image,
+            accounts,
+            userRole,
+            machine_ip: det?.machine_ip ? det.machine_ip : c.machine_ip,
+            machine_id: det?.machine_id ? String(det.machine_id) : c.machine_id,
+            cpu_number: det?.cpu_number ?? c.cpu_number ?? null,
+            gpu_number: det?.gpu_number ?? c.gpu_number ?? 0,
+            memory_gb: det?.memory_gb ?? c.memory_gb ?? null,
+            swap_gb: det?.swap_gb ?? c.swap_gb ?? null
+          };
         } catch (e) {
           // if detail fetch fails, do not attempt old fallback — keep bref info but no userRole
           return { ...c, accounts: c.accounts || [], userRole: null };
@@ -420,6 +449,70 @@ const ManageUser = () => {
     return data; // `userRole` is provided by detail fetch and stored in cache
   };
 
+  // 顶部“容器名”搜索：全局查找容器 -> 获取 container_id -> 获取 detail -> 收集 accounts 中的 user_id
+  const userContainerSearchTokenRef = useRef(0);
+  const performUserContainerSearch = async (keywordRaw) => {
+    const keyword = (keywordRaw || '').trim().toLowerCase();
+    if (!keyword) {
+      setMatchedUserIds(null);
+      return;
+    }
+    const myToken = ++userContainerSearchTokenRef.current;
+    setContainerSearchLoading(true);
+    try {
+      const pageSize = 1000;
+      const res = await listAllContainerBrefInformation({ machine_id: '', page_number: 0, page_size: pageSize });
+      const items = (res && (res.containers_info || res.containers)) || [];
+      const matched = items.filter(c => {
+        const name = String(c.container_name || c.name || '').toLowerCase();
+        return name && name.includes(keyword);
+      });
+      const limit = 200;
+      const toInspect = matched.slice(0, limit);
+      const foundUserIds = new Set();
+      for (const c of toInspect) {
+        if (userContainerSearchTokenRef.current !== myToken) break; // cancelled
+        const cid = c.container_id || c.id || c.containerId || c.key;
+        if (!cid) continue;
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const detailRes = await getContainerDetailInformation(cid);
+          const detail = (detailRes && (detailRes.container_info || detailRes.container || detailRes.data || detailRes.container_detail)) || detailRes || null;
+          const accounts = detail?.accounts || detail?.account_list || c.accounts || [];
+          for (const a of accounts) {
+            const uid = a?.user_id || a?.userId || a?.id || a?.uid || null;
+            if (uid !== null && uid !== undefined && String(uid) !== '') foundUserIds.add(String(uid));
+          }
+        } catch (e) {
+          // ignore per-container detail failure
+        }
+      }
+      if (userContainerSearchTokenRef.current === myToken) {
+        setMatchedUserIds(foundUserIds.size ? foundUserIds : new Set());
+      }
+    } catch (e) {
+      console.warn('global container name search failed', e);
+      if (userContainerSearchTokenRef.current === myToken) setMatchedUserIds(new Set());
+    } finally {
+      if (userContainerSearchTokenRef.current === myToken) setContainerSearchLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    performUserContainerSearch(searchContainerName);
+    return () => { userContainerSearchTokenRef.current += 1; };
+  }, [searchContainerName]);
+
+  // 最终过滤（含容器名)
+  const filteredUserData = baseFilteredUserData.filter(user => {
+    const keyword = (searchContainerName || '').trim().toLowerCase();
+    if (!keyword) return true;
+    // if matchedUserIds is null, we haven't finished global search yet -> optimistically include user (or you may choose to exclude)
+    if (matchedUserIds === null) return true;
+    const id = String(user.key);
+    return matchedUserIds.has(id);
+  });
+
   // 切换展开状态
   const toggleExpand = (userId) => {
     const willExpand = !expandedRowKeys.includes(userId);
@@ -443,21 +536,16 @@ const ManageUser = () => {
         const rec = data?.record || {};
         const changed = data?.changedFields || {};
         return (
-          <div style={{ 
-            background: '#fafafa', 
-            padding: 16, 
-            borderRadius: 4,
-            border: '1px solid #f0f0f0'
-          }}>
+          <div className="manage-user-modal-save">
             <Row gutter={[0, 12]}>
               <Col span={24}>
                 <Typography.Text type="secondary">用户：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{rec?.username}</Typography.Text>
+                <Typography.Text className="manage-user-text-gap">{rec?.username}</Typography.Text>
               </Col>
               {Object.keys(changed).map((k) => (
                 <Col span={24} key={k}>
                   <Typography.Text type="secondary">{k}：</Typography.Text>
-                  <Typography.Text style={{ marginLeft: 8 }}>{String(changed[k])}</Typography.Text>
+                  <Typography.Text className="manage-user-text-gap">{String(changed[k])}</Typography.Text>
                 </Col>
               ))}
             </Row>
@@ -467,27 +555,22 @@ const ManageUser = () => {
       case 'delete': {
         const user = data;
         return (
-          <div style={{ 
-            background: '#fff2f0', 
-            padding: 16, 
-            borderRadius: 4,
-            border: '1px solid #ffccc7'
-          }}>
+          <div className="manage-user-modal-delete">
             <Row gutter={[0, 12]}>
               <Col span={24}>
                 <Typography.Text type="secondary">用户ID：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{user?.key}</Typography.Text>
+                <Typography.Text className="manage-user-text-gap">{user?.key}</Typography.Text>
               </Col>
               <Col span={24}>
                 <Typography.Text type="secondary">用户名：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{user?.username}</Typography.Text>
+                <Typography.Text className="manage-user-text-gap">{user?.username}</Typography.Text>
               </Col>
               <Col span={24}>
                 <Typography.Text type="secondary">邮箱：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{user?.email}</Typography.Text>
+                <Typography.Text className="manage-user-text-gap">{user?.email}</Typography.Text>
               </Col>
             </Row>
-            <Typography.Text type="danger" style={{ display: 'block', marginTop: 16 }}>
+            <Typography.Text type="danger" className="manage-user-danger-text">
               此操作不可恢复！
             </Typography.Text>
           </div>
@@ -496,12 +579,7 @@ const ManageUser = () => {
       case 'resetPassword': {
         const user = data || {};
         return (
-          <div style={{ 
-            background: '#fffbe6', 
-            padding: 16, 
-            borderRadius: 4,
-            border: '1px solid #ffe58f'
-          }}>
+          <div className="manage-user-modal-reset">
             <Typography.Text type="secondary">
               系统将为用户 {user?.username || user?.key} 重置密码，确认后会显示新密码，请提醒用户尽快修改。
             </Typography.Text>
@@ -511,32 +589,27 @@ const ManageUser = () => {
       case 'removeAssociation': {
         const { username, container } = data || {};
         return (
-          <div style={{ 
-            background: '#fff2f0', 
-            padding: 16, 
-            borderRadius: 4,
-            border: '1px solid #ffccc7'
-          }}>
+          <div className="manage-user-modal-remove">
             <Row gutter={[0, 12]}>
               <Col span={24}>
                 <Typography.Text type="secondary">容器ID：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{container?.key}</Typography.Text>
+                <Typography.Text className="manage-user-text-gap">{container?.key}</Typography.Text>
               </Col>
               <Col span={24}>
                 <Typography.Text type="secondary">容器名称：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{container?.container_name}</Typography.Text>
+                <Typography.Text className="manage-user-text-gap">{container?.container_name}</Typography.Text>
               </Col>
               <Col span={24}>
                 <Typography.Text type="secondary">容器镜像：</Typography.Text>
-                <Typography.Text style={{ marginLeft: 8 }}>{container?.container_image}</Typography.Text>
+                <Typography.Text className="manage-user-text-gap">{container?.container_image}</Typography.Text>
               </Col>
               <Col span={24}>
                 <Typography.Text type="secondary">当前角色：</Typography.Text>
-                <Tag color={
+                <Tag className="manage-user-text-gap" color={
                   container?.userRole === 'ADMIN' ? 'volcano' : 
                   container?.userRole === 'COLLABORATOR' ? 'green' : 
                   'purple'
-                } style={{ marginLeft: 8 }}>
+                }>
                   {container?.userRole === 'ADMIN' ? '管理员' : 
                    container?.userRole === 'COLLABORATOR' ? '协作者' : 
                    '超级管理员'}
@@ -619,52 +692,44 @@ const ManageUser = () => {
         loading={modal.loading}
       />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className="manage-user-root">
         {/* 1. 搜索区域（固定顶部） */}
-        <div style={{ 
-          padding: '16px', 
-          background: '#fff', 
-          borderBottom: '1px solid #f0f0f0',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-          position: 'sticky',
-          top: 64,
-          zIndex: 10
-        }}>
+        <div ref={searchBarRef} style={searchBarStyle} className="manage-user-search-bar manage-user-auto-hide-bar">
           <Flex justify="center" align="center">
             <Space direction="horizontal" size="middle">
               <Row gutter={[16, 0]} align="middle">
                 <Col>
                   <Typography.Text type="secondary">用户名：</Typography.Text>
-                  <Input 
-                  placeholder="输入用户名" 
-                  value={searchUsername} 
-                  onChange={e => setSearchUsername(e.target.value)} 
-                  allowClear 
-                  style={{ width: 120 }} 
-                />
+                  <Input
+                    placeholder="输入用户名"
+                    value={searchUsername}
+                    onChange={e => setSearchUsername(e.target.value)}
+                    allowClear
+                    className="manage-user-input-120"
+                  />
               </Col>
               <Col>
-                <Typography.Text type="secondary">用户ID：</Typography.Text>
-                <Input 
-                  placeholder="输入用户ID" 
-                  value={searchUserId} 
-                  onChange={e => setSearchUserId(e.target.value)} 
-                  allowClear 
-                  style={{ width: 120 }} 
+                <Typography.Text type="secondary">容器名：</Typography.Text>
+                <Input
+                  placeholder="输入容器名"
+                  value={searchContainerName}
+                  onChange={e => setSearchContainerName(e.target.value)}
+                  allowClear
+                  className="manage-user-input-120"
                 />
               </Col>
               <Col>
                 <Typography.Text type="secondary">邮箱：</Typography.Text>
-                <Input 
-                  placeholder="输入邮箱" 
-                  value={searchEmail} 
-                  onChange={e => setSearchEmail(e.target.value)} 
-                  allowClear 
-                  style={{ width: 120 }} 
+                <Input
+                  placeholder="输入邮箱"
+                  value={searchEmail}
+                  onChange={e => setSearchEmail(e.target.value)}
+                  allowClear
+                  className="manage-user-input-120"
                 />
               </Col>
               <Col>
-                <Button type="primary" icon={<SearchOutlined />}>
+                <Button type="primary" icon={<SearchOutlined />} loading={containerSearchLoading} onClick={() => performUserContainerSearch(searchContainerName)}>
                   搜索
                 </Button>
               </Col>
@@ -674,10 +739,10 @@ const ManageUser = () => {
         </div>
 
       {/* 2. 下方区域：用户表格 */}
-        <div style={{ padding: '16px' }}>
-          <Table 
-            dataSource={filteredUserData} 
-            rowKey="key" 
+        <div className="manage-user-table-wrap">
+          <TableComponent
+            dataSource={filteredUserData}
+            rowKey="key"
             loading={usersLoading}
             pagination={{ pageSize: 10 }}
             bordered
@@ -694,34 +759,24 @@ const ManageUser = () => {
                   }
                 },
               showExpandColumn: false,
-              expandedRowRender: (record) => (
-                <div style={{ margin: '16px 0', padding: '16px', background: '#fafafa', borderRadius: '4px' }}>
+                expandedRowRender: (record) => (
+                  <div className={"manage-user-expanded" + (String(record.key) === String(selectedRowKey) ? ' manage-user-expanded-selected' : '')}>
                   {/* 编辑功能标题 */}
-                  <div style={{ 
-                    marginBottom: '12px',
-                    paddingBottom: '8px',
-                    borderBottom: '1px solid #f0f0f0'
-                  }}>
-                    <Typography.Text strong style={{ fontSize: '14px' }}>
+                  <div className="manage-user-section-title">
+                    <Typography.Text strong className="manage-user-section-title-text">
                       编辑用户信息 - {record.username}
                     </Typography.Text>
                   </div>
 
                   {/* 用户信息编辑卡片 - 紧凑设计 */}
-                  <div style={{ 
-                    background: '#fff', 
-                    padding: '12px 16px', 
-                    borderRadius: '4px',
-                    border: '1px solid #f0f0f0',
-                    marginBottom: '16px'
-                  }}>
+                  <div className="manage-user-edit-card">
                     <EditUserRow record={record} />
                   </div>
 
                   {/* 用户容器子表格 */}
-                  <Card 
+                  <Card
                     title={(
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div className="manage-user-card-title">
                         <span>{record.username} 的容器</span>
                         <Button size="small" onClick={() => fetchContainersForUser(record.key)} icon={<ReloadOutlined />} />
                       </div>
@@ -734,7 +789,7 @@ const ManageUser = () => {
                         const childData = getUserContainers(record.username);
                         const loading = !!(containerMap[id] && containerMap[id].loading);
                         return (
-                          <Table
+                          <TableComponent
                             dataSource={childData}
                             rowKey="key"
                             pagination={childData.length > 5 ? { pageSize: 5 } : false}
@@ -781,7 +836,7 @@ const ManageUser = () => {
                                 );
                               }}
                             />
-                          </Table>
+                          </TableComponent>
                         );
                       })()
                     }
@@ -789,6 +844,12 @@ const ManageUser = () => {
                 </div>
               )
             }}
+          rowClassName={(record) => (String(record.key) === String(selectedRowKey) ? 'manage-user-selected-row' : '')}
+          onRow={(record) => ({
+            onClick: () => {
+              try { setSelectedRowKey(String(record.key)); } catch (e) {}
+            }
+          })}
           >
             <Column title="用户ID" dataIndex="key" key="key" />
             <Column title="用户名" dataIndex="username" key="username" />
@@ -796,29 +857,29 @@ const ManageUser = () => {
             <Column title="毕业年份" dataIndex="graduation_year" key="graduation_year" />
             <Column
               title="操作"
-              key="action"
-              render={(_, record) => {
-                const isExpanded = expandedRowKeys.includes(record.key);
-                return (
-                  <Space size="small">
-                    <Button
-                      type="text"
-                      icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
-                      onClick={() => toggleExpand(record.key)}
-                      style={{ color: '#1890ff' }}
-                    >
-                      {isExpanded ? '收起编辑' : '编辑用户'}
-                    </Button>
-                    <Button onClick={() => handleDeleteUser(record)}>
-                      <a style={{ color: '#ff4d4f' }}>删除</a>
-                    </Button>
-                    <Button onClick={() => handleResetPassword(record)}>
-                      <a style={{ color: '#faad14' }}>重置密码</a>
-                    </Button>
-                  </Space>
-                );
-              }}
-            />
+                      key="action"
+                      render={(_, record) => {
+                        const isExpanded = expandedRowKeys.includes(record.key);
+                        return (
+                          <Space size="small">
+                            <Button
+                              type="text"
+                              icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
+                              onClick={() => toggleExpand(record.key)}
+                              className="manage-user-action-edit"
+                            >
+                              {isExpanded ? '收起编辑' : '编辑用户'}
+                            </Button>
+                            <Button onClick={() => handleDeleteUser(record)}>
+                              <a className="manage-user-action-delete">删除</a>
+                            </Button>
+                            <Button onClick={() => handleResetPassword(record)}>
+                              <a className="manage-user-action-reset">重置密码</a>
+                            </Button>
+                          </Space>
+                        );
+                      }}
+                    />
             <Column
               title="统计信息"
               key="stats"
@@ -829,20 +890,20 @@ const ManageUser = () => {
                 const managedContainers = record.amount_of_managed_container ?? record.amountOfManagedContainer ?? 0;
 
                 return (
-                  <span style={{ fontSize: '13px' }}>
-                    <span style={{ color: '#8c8c8c' }}>容器: </span>
-                    <span style={{ color: '#1890ff', fontWeight: '500' }}>{totalContainers}</span>
-                    <span style={{ color: '#8c8c8c', margin: '0 8px' }}>·</span>
-                    <span style={{ color: '#8c8c8c' }}>正常: </span>
-                    <span style={{ color: '#52c41a', fontWeight: '500' }}>{runningContainers}</span>
-                    <span style={{ color: '#8c8c8c', margin: '0 8px' }}>·</span>
-                    <span style={{ color: '#8c8c8c' }}>由ta管理: </span>
-                    <span style={{ color: '#faad14', fontWeight: '500' }}>{managedContainers}</span>
+                  <span className="manage-user-stats">
+                    <span className="manage-user-stats-key">容器: </span>
+                    <span className="manage-user-stats-value-blue">{totalContainers}</span>
+                    <span className="manage-user-stats-sep">·</span>
+                    <span className="manage-user-stats-key">正常: </span>
+                    <span className="manage-user-stats-value-green">{runningContainers}</span>
+                    <span className="manage-user-stats-sep">·</span>
+                    <span className="manage-user-stats-key">由ta管理: </span>
+                    <span className="manage-user-stats-value-yellow">{managedContainers}</span>
                   </span>
                 );
               }}
             />
-          </Table>
+          </TableComponent>
         </div>
       </div>
     </>

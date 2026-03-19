@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { loginUser } from '../api/user_api';
 import ConfirmModal from '../components/ConfirmModal';
 import showErrorModal from '../utils/showErrorModal';
+import './Login.css';
 
 const LoginBlock = () => {
 	const [confirmVisible, setConfirmVisible] = useState(false);
@@ -17,7 +18,23 @@ const LoginBlock = () => {
 			const data = await loginUser(values);
 			// 假设后端返回 { token: '...', success: true } 或类似结构
 			if (data && (data.token || data.success !== false)) {
-				if (data.token) localStorage.setItem('authToken', data.token);
+				if (data.token) {
+					const remember = values?.remember === true;
+					const encodedToken = encodeURIComponent(String(data.token));
+					const maxAge = 60 * 60 * 24 * 30; // 30天
+					// remember=true => persistent cookie; remember=false => session cookie
+					document.cookie = remember
+						? `auth_token=${encodedToken}; Max-Age=${maxAge}; Path=/; SameSite=Lax`
+						: `auth_token=${encodedToken}; Path=/; SameSite=Lax`;
+
+					if (remember) {
+						localStorage.setItem('authToken', data.token);
+						try { sessionStorage.removeItem('authToken'); } catch (e) {}
+					} else {
+						try { localStorage.removeItem('authToken'); } catch (e) {}
+						try { sessionStorage.setItem('authToken', data.token); } catch (e) {}
+					}
+				}
 				// store basic user info returned by backend for later UI usage
 				if (data.user_id) localStorage.setItem('currentUserId', String(data.user_id));
 				if (data.username) localStorage.setItem('currentUserName', String(data.username));
@@ -40,7 +57,7 @@ const LoginBlock = () => {
 				userMsg = '请求超时，请稍后重试。';
 			}
 			// use showErrorModal to display exceptions
-			await showErrorModal({ title: '登录出错', message: err?.body?.message || userMsg, status: err?.status || undefined, route: err?.route || err?.response?.url });
+			await showErrorModal({ title: '登录出错', message: err?.body || err || userMsg, status: err?.status || undefined, route: err?.route || err?.response?.url });
 		}
 	};
 
@@ -58,35 +75,35 @@ const LoginBlock = () => {
 				name="basic"
 				labelCol={{ span: 8 }}
 				wrapperCol={{ span: 16 }}
-				style={{ maxWidth: 600 }}
+				className="login-form"
 				initialValues={{ remember: true }}
 				onFinish={onFinish}
 				onFinishFailed={onFinishFailed}
 				autoComplete="off"
 			>
 				<Form.Item
-					label="Username"
+					label="用户名"
 					name="username"
 					rules={[{ required: true, message: 'Please input your username!' }]}
 				>
-					<Input />
+					<Input placeholder="请输入用户名" />
 				</Form.Item>
 
 				<Form.Item
-					label="Password"
+					label="密码"
 					name="password"
 					rules={[{ required: true, message: 'Please input your password!' }]}
 				>
-					<Input.Password />
+					<Input.Password placeholder="请输入密码" />
 				</Form.Item>
 
 				<Form.Item name="remember" valuePropName="checked" label={null}>
-					<Checkbox>Remember me</Checkbox>
+					<Checkbox>记住我</Checkbox>
 				</Form.Item>
 
 				<Form.Item label={null}>
 					<Button type="primary" htmlType="submit">
-						Submit
+						登录
 					</Button>
 				</Form.Item>
 			</Form>

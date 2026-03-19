@@ -1,0 +1,108 @@
+.app-table{width:100%}
+
+.app-table-mobile {
+	width: 100%;
+}
+
+.app-table-mobile-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 10px;
+}
+
+.app-table-mobile-card {
+	background: #fff;
+	border: 1px solid #f0f0f0;
+	border-radius: 10px;
+	box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+	padding: 12px 14px;
+	display: flex;
+	flex-wrap: wrap;
+	column-gap: 10px;
+}
+
+.app-table-mobile-item {
+	display: block;
+	padding: 8px 0;
+	border-bottom: 1px dashed #f0f0f0;
+	width: 100%;
+}
+
+.app-table-mobile-item:last-child {
+	border-bottom: none;
+}
+
+.app-table-mobile-label {
+	display: block;
+	margin-bottom: 4px;
+	color: #8c8c8c;
+	font-size: 12px;
+	line-height: 1.2;
+}
+
+.app-table-mobile-value {
+	display: block;
+	line-height: 1.45;
+	word-break: break-word;
+}
+
+.app-table-mobile-item.is-action {
+	padding-top: 10px;
+	border-bottom: none;
+}
+
+.app-table-mobile-item.is-action .app-table-mobile-value .ant-space {
+	display: flex;
+	flex-wrap: wrap;
+	row-gap: 8px;
+	column-gap: 8px;
+}
+
+.app-table-mobile-item.is-action .app-table-mobile-value .ant-btn,
+.app-table-mobile-item.is-action .app-table-mobile-value a {
+	white-space: nowrap;
+}
+
+.app-table-mobile-item.is-stats .app-table-mobile-value {
+	font-size: 13px;
+}
+
+.app-table-mobile-item.is-compact {
+	width: calc(48% - 6px);
+}
+
+/* Prevent compact items (two-column) from forcing card width by keeping value single-line */
+.app-table-mobile-item.is-compact .app-table-mobile-value {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.app-table-mobile-expanded {
+	width: 100%;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid #f0f0f0;
+}
+
+.app-table-mobile-card.manage-user-selected-row,
+.app-table-mobile-card.mm-selected-row {
+	box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.12);
+}
+
+.app-table-mobile-empty {
+	padding: 24px 0;
+}
+
+.app-table-mobile-pagination {
+	padding: 0 12px 12px;
+	display: flex;
+	justify-content: flex-end;
+}
+
+@media (max-width: 360px) {
+	.app-table-mobile-item.is-compact {
+		width: 100%;
+	}
+}

@@ -3,6 +3,7 @@ import { Modal, Form, Button, Space, Typography, Row, Col, Select, Tag, Avatar, 
 import showErrorModal from '../utils/showErrorModal';
 import { EditOutlined, PlusOutlined, TeamOutlined, DeleteOutlined } from '@ant-design/icons';
 import { addCollaborator, removeCollaborator, updateRole } from '../api/container_api';
+import './EditUserModal.css';
 
 const { Option } = Select;
 
@@ -75,10 +76,10 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       setSelectedRole(ROLE.COLLABORATOR);
       message.success('用户已添加');
     }).catch(async err => {
-      console.error('addCollaborator failed', err);
-      const bodyMsg = err?.body?.message || err?.body || null;
-      const messageText = bodyMsg ? `添加用户失败: ${bodyMsg}` : '添加用户失败';
-      await showErrorModal({ message: err?.body?.message || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
+    console.error('addCollaborator failed', err);
+    const bodyMsg = err?.body?.message || err?.body || null;
+    const messageText = bodyMsg ? `添加用户失败: ${bodyMsg}` : '添加用户失败';
+    await showErrorModal({ message: err?.body || err || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
     }).finally(() => setAdding(false));
   };
 
@@ -102,7 +103,7 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       console.error('removeCollaborator failed', err);
       const bodyMsg = err?.body?.message || err?.body || null;
       const messageText = bodyMsg ? `移除用户失败: ${bodyMsg}` : '移除用户失败';
-      await showErrorModal({ message: err?.body?.message || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.body || err || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
     }
   };
 
@@ -169,7 +170,7 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       console.error('updateRole failed', err);
       const bodyMsg = err?.body?.message || err?.body || null;
       const messageText = bodyMsg ? `更新角色失败: ${bodyMsg}` : '更新角色失败';
-      await showErrorModal({ message: err?.body?.message || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.body || err || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
     }
   };
 
@@ -186,27 +187,28 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       )}
       open={visible}
       onCancel={() => { onBack();  }}
-      width={800}
+      width="min(800px, calc(100vw - 24px))"
+      className="eum-modal"
       footer={[
         <Button key="back" onClick={() => { onBack(); }}>返回详情页</Button>,
         <Button key="done" type="primary" onClick={async () => { onClose(); }}>完成</Button>
       ]}
     >
       <Form form={form} layout="vertical">
-        <div style={{ marginBottom: 24 }}>
-          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+        <div className="eum-body">
+          <Typography.Text type="secondary" className="eum-subtitle">
             当前容器: {container?.container_name} | 所属机器ID: {container?.machine_id || container?.machine_ip}
           </Typography.Text>
 
-          <div style={{ background: '#fafafa', padding: 16, borderRadius: 8, marginBottom: 24, border: '1px dashed #d9d9d9' }}>
-            <Typography.Title level={5} style={{ marginBottom: 16 }}>
+          <div className="eum-add-card">
+            <Typography.Title level={5} className="eum-section-title">
               <PlusOutlined /> 添加新用户
             </Typography.Title>
             <Row gutter={[16, 16]} align="middle">
-              <Col span={10}>
+              <Col xs={24} sm={24} md={10}>
                 <Select
                   placeholder="点击选择"
-                  style={{ width: '100%' }}
+                  className="eum-full-width"
                   value={selectedUser?.id ?? undefined}
                   disabled={usersLoading}
                   onChange={(value) => { const user = usersList.find(u => String(u.id) === String(value)); setSelectedUser(user || null); }}
@@ -222,39 +224,39 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
                   ))}
                 </Select>
               </Col>
-              <Col span={8}>
-                <Select style={{ width: '100%' }} value={selectedRole} onChange={setSelectedRole}>
+              <Col xs={24} sm={12} md={8}>
+                <Select className="eum-full-width" value={selectedRole} onChange={setSelectedRole}>
                   <Option value={ROLE.COLLABORATOR}><Tag color="green">协作者</Tag></Option>
                   <Option value={ROLE.ADMIN}><Tag color="blue">管理员</Tag></Option>
                 </Select>
               </Col>
-              <Col span={6}>
+              <Col xs={24} sm={12} md={6}>
                 <Button type="primary" icon={<PlusOutlined />} onClick={handleAddUser} disabled={!selectedUser || adding} loading={adding}>添加用户</Button>
               </Col>
             </Row>
           </div>
 
-          <div>
-            <Typography.Title level={5} style={{ marginBottom: 16 }}>
+          <div className="eum-list-wrap">
+            <Typography.Title level={5} className="eum-section-title">
               <TeamOutlined /> 当前用户列表 ({accounts.length}人)
             </Typography.Title>
             <List dataSource={accounts} renderItem={(account) => (
               <List.Item actions={[
-                <Select key="role" value={account.role} onChange={(value) => handleRoleChange(account.user_id, value)} style={{ width: 120 }} disabled={account.role === ROLE.ROOT}>
+                <Select key="role" value={account.role} onChange={(value) => handleRoleChange(account.user_id, value)} className="eum-role-select" disabled={account.role === ROLE.ROOT}>
                   <Option value={ROLE.COLLABORATOR}><Tag color="green">协作者</Tag></Option>
                   <Option value={ROLE.ADMIN}><Tag color="blue">管理员</Tag></Option>
                   <Option value={ROLE.ROOT}><Tag color="red">超级管理员</Tag></Option>
                 </Select>,
                 <Button key="delete" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDeleteUser(account.user_id)} disabled={account.role === ROLE.ROOT} />
-              ]} style={{ borderBottom: '1px solid #f0f0f0', padding: '12px 0' }}>
+              ]} className="eum-list-item">
                 <List.Item.Meta avatar={<Avatar src={getAvatarUrl(account.username)} size="large" />} title={<Space><Typography.Text strong>{account.ownerName}</Typography.Text></Space>} description={<Typography.Text type="secondary">@{account.username}</Typography.Text>} />
               </List.Item>
             )} />
           </div>
 
-          <div style={{ marginTop: 24, padding: 16, background: '#fff7e6', borderRadius: 6, border: '1px solid #ffd591' }}>
-            <Typography.Text strong style={{ display: 'block', marginBottom: 8, color: '#fa8c16' }}>权限说明：</Typography.Text>
-            <ul style={{ margin: 0, paddingLeft: 16 }}>
+          <div className="eum-tip-box">
+            <Typography.Text strong className="eum-tip-title">权限说明：</Typography.Text>
+            <ul className="eum-tip-list">
               <li><Typography.Text type="secondary"><Tag color="red" size="small">超级管理员</Tag> 拥有最高权限，每个容器必须至少有一个ROOT用户</Typography.Text></li>
               <li><Typography.Text type="secondary"><Tag color="blue" size="small">管理员</Tag> 可以管理容器，但不能修改用户权限</Typography.Text></li>
               <li><Typography.Text type="secondary"><Tag color="green" size="small">协作者</Tag> 只能使用容器，操作权限有限</Typography.Text></li>

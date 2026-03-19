@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeOutlined, InfoCircleOutlined, FormOutlined, UserOutlined } from '@ant-design/icons';
+import { InfoCircleOutlined, UserOutlined } from '@ant-design/icons';
 import { Menu } from 'antd';
 import './Navbar.css'; // 复用了同样的样式
 
@@ -17,7 +17,7 @@ const items = [
   }
 ];
 
-export default function NavbarAdmin() {
+export default function NavbarAdmin({ menuResetToken = 0 }) {
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -36,6 +36,7 @@ export default function NavbarAdmin() {
   return (
     <div className="navbarAdmin" style={{ flex: 1 }}>
       <Menu
+        key={`${menuResetToken}-${location.pathname}`}
         onClick={onClick}
         selectedKeys={getSelectedKeys()}
         mode="horizontal"
