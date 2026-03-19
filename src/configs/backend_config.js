@@ -4,7 +4,7 @@
 // otherwise fall back to the hardcoded address. This lets you switch between
 // http/https without editing source.
 // Example (shell): VITE_BACKEND_BASE_URL=https://localhost:5000 npm run dev
-export const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL || 'https://192.168.5.230:5000';
+export const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL || 'http://192.168.5.141:5000';
 // Optional: front-end can know whether it should operate in HTTPS mode
 // (useful for building URLs or toggling secure cookies). Set VITE_ENABLE_SSL=true
 // when launching Vite to indicate HTTPS mode.
@@ -31,6 +31,8 @@ export const API_ROUTES = {
 	MACHINES_UPDATE: '/api/machines/update_machine',
 	MACHINES_GET_DETAIL: '/api/machines/get_detail_information',
 	MACHINES_LIST: '/api/machines/list_all_machine_bref_information',
+	MACHINES_ADD_PERMISSION: '/api/machines/add_machine_permission',
+	MACHINES_LIST_PERMISSION: '/api/machines/list_machine_permissions',
 
 	// Container routes
 	CONTAINERS_CREATE: '/api/containers/create_container',
