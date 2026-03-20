@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -6,9 +6,10 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 const ModelViewer = ({ modelPath = '/glb.glb' }) => {
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
+  const [renderDisabled, setRenderDisabled] = useState(false);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || renderDisabled) return;
 
     // Enable Three.js internal asset cache (helps repeated loads in session)
     THREE.Cache.enabled = true;
@@ -27,10 +28,17 @@ const ModelViewer = ({ modelPath = '/glb.glb' }) => {
     );
     camera.position.z = 5;
 
-    const renderer = new THREE.WebGLRenderer({ 
-      antialias: true,
-      alpha: true 
-    });
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ 
+        antialias: true,
+        alpha: true 
+      });
+    } catch (error) {
+      console.error('WebGL renderer init failed:', error);
+      setRenderDisabled(true);
+      return undefined;
+    }
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setClearColor(0x000000, 0); // 透明背景
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -286,7 +294,28 @@ const ModelViewer = ({ modelPath = '/glb.glb' }) => {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [modelPath]);
+  }, [modelPath, renderDisabled]);
+
+  if (renderDisabled) {
+    return (
+      <div
+        className="model-container"
+        style={{
+          width: '100%',
+          height: '100%',
+          minHeight: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#4f6b8a',
+          fontSize: '14px',
+          letterSpacing: '0.04em'
+        }}
+      >
+        3D 预览当前不可用
+      </div>
+    );
+  }
 
   return (
     <div 
