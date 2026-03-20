@@ -99,7 +99,12 @@ const Apply = () => {
       // backend pagination is 0-based (page_number=0 is first page)
       const res = await listAllMachineBrefInformation({ page_number: Math.max(0, p - 1), page_size: ps });
       // backend returns { machines: [...], total_pages: N }
-      const items = (res && res.machines) || [];
+      const items = (res && Array.isArray(res.machines) ? res.machines : []);
+      if (items.length === 0) {
+        setMachines([]);
+        setTotalCount(0);
+        return;
+      }
       // try to fetch detail info for each machine to obtain max limits
       try {
         const detailPromises = items.map(it => {
@@ -121,6 +126,7 @@ const Apply = () => {
     } catch (err) {
       console.error('Failed to fetch machines', err);
       setMachines([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }

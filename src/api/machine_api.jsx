@@ -166,3 +166,54 @@ export const listAllMachineBrefInformation = async ({ page_number = 1, page_size
     throw err;
   }
 };
+
+
+export const addMachinePermission = async ({ machine_id, user_id } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.MACHINES_ADD_PERMISSION}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type' : 'application/json',
+        ...getAuthTokenHeader(),
+      },
+      body: JSON.stringify({ machine_id, user_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Add machine permission');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Add machine permission request timed out');
+    throw err;
+  }
+};
+
+export const listMachinePermissions = async (machine_id = 0, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(`${BACKEND_BASE_URL}${API_ROUTES.MACHINES_LIST_PERMISSION}`);
+    url.searchParams.set('machine_id', String(machine_id));
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        ...getAuthTokenHeader(),
+      },
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'List machine permissions');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('List machine permissions request timed out');
+    throw err;
+  }
+};

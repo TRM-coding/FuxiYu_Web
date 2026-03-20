@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine } from '../api/machine_api';
+import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer } from '../api/container_api';
-import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination, Slider } from 'antd';
+import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined } from '@ant-design/icons';
+import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination, Slider, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import TableComponent from '../components/TableComponent';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 import { handleAuthError } from '../utils/authHelpers';
-import { getUserDetailInformation } from '../api/user_api';
+import { getUserDetailInformation, listAllUserBrefInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
 import { useNavigate } from 'react-router-dom';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
@@ -18,12 +18,12 @@ const { Option } = Select;
 
 import { startContainerStatusHeartbeat, startMachineStatusHeartbeat } from '../utils/heartbeat';
 
-import { listAllUserBrefInformation } from '../api/user_api';
 
 import './ManageMachine.css';
 
 // machines loaded from backend
 const defaultPageSize = 100;
+const userPermissionPageSize = 20;
 
 
 // ROLE枚举定义
@@ -129,6 +129,16 @@ const ManageMachine = () => {
   // users fetched from backend (used for selecting when adding users to a container)
   const [usersList, setUsersList] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [permissionModalVisible, setPermissionModalVisible] = useState(false);
+  const [permissionModalLoading, setPermissionModalLoading] = useState(false);
+  const [permissionModalSubmitting, setPermissionModalSubmitting] = useState(false);
+  const [permissionMachine, setPermissionMachine] = useState(null);
+  const [permissionUsers, setPermissionUsers] = useState([]);
+  const [permissionUsersPage, setPermissionUsersPage] = useState(1);
+  const [permissionUsersHasMore, setPermissionUsersHasMore] = useState(true);
+  const [permissionUsersSelected, setPermissionUsersSelected] = useState([]);
+  const [permissionUsersLoadingMore, setPermissionUsersLoadingMore] = useState(false);
+  const [permissionAssignedUserIds, setPermissionAssignedUserIds] = useState([]);
   const navigate = useNavigate();
   const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
 
@@ -474,6 +484,89 @@ const ManageMachine = () => {
         handleAuthError(403, navigate);
       }
       return;
+    }
+  };
+
+  const loadPermissionUsers = async (page = 1, append = false) => {
+    if (!append) {
+      setPermissionModalLoading(true);
+      setPermissionUsers([]);
+      setPermissionUsersPage(1);
+      setPermissionUsersHasMore(true);
+      setPermissionUsersSelected([]);
+    } else {
+      setPermissionUsersLoadingMore(true);
+    }
+    try {
+      const res = await listAllUserBrefInformation({ page_number: page, page_size: userPermissionPageSize });
+      const items = (res && (res.users || res.users_info || res.data || res.users_list)) || [];
+      const mapped = items.map(u => ({
+        id: Number(u.user_id || u.id || u.uid || u.userId),
+        username: u.username || u.name || String(u.user_id || u.id || u.uid || u.userId || ''),
+        email: u.email || '',
+      })).filter(u => u.id);
+      setPermissionUsers(prev => append ? [...prev, ...mapped] : mapped);
+      const totalPages = Number(res?.total_pages || res?.total_page || res?.totalPages || 0);
+      const hasMore = totalPages ? page < totalPages : mapped.length === userPermissionPageSize;
+      setPermissionUsersHasMore(hasMore);
+      setPermissionUsersPage(page);
+    } catch (err) {
+      console.error('loadPermissionUsers failed', err);
+      if (!append) {
+        await showErrorModal({ message: '加载用户列表失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      }
+      setPermissionUsersHasMore(false);
+    } finally {
+      setPermissionModalLoading(false);
+      setPermissionUsersLoadingMore(false);
+    }
+  };
+
+  const openPermissionModal = async (machine) => {
+    if (!machine) return;
+    setPermissionMachine(machine);
+    setPermissionModalVisible(true);
+    try {
+      setPermissionModalLoading(true);
+      const res = await listMachinePermissions(Number(machine.machine_id || machine.key));
+      const assigned = Array.isArray(res?.user_ids) ? res.user_ids.map(v => Number(v)).filter(Boolean) : [];
+      setPermissionAssignedUserIds(assigned);
+    } catch (err) {
+      console.error('listMachinePermissions failed', err);
+      setPermissionAssignedUserIds([]);
+    } finally {
+      setPermissionModalLoading(false);
+    }
+    await loadPermissionUsers(1, false);
+  };
+
+  const loadMorePermissionUsers = async () => {
+    if (permissionModalLoading || permissionUsersLoadingMore || !permissionUsersHasMore) return;
+    await loadPermissionUsers(permissionUsersPage + 1, true);
+  };
+
+  const handleGrantMachinePermission = async () => {
+    if (!permissionMachine || !permissionUsersSelected || permissionUsersSelected.length === 0) return;
+    setPermissionModalSubmitting(true);
+    try {
+      const machineId = Number(permissionMachine.machine_id || permissionMachine.key);
+      const selectedIds = Array.from(new Set(permissionUsersSelected.map(v => Number(v)).filter(Boolean)));
+      const pendingIds = selectedIds.filter(uid => !permissionAssignedUserIds.includes(uid));
+      if (!pendingIds.length) {
+        message.info('所选用户都已拥有权限');
+        setPermissionUsersSelected([]);
+        return;
+      }
+      for (const uid of pendingIds) {
+        await addMachinePermission({ machine_id: machineId, user_id: uid });
+      }
+      setPermissionAssignedUserIds(prev => Array.from(new Set([...prev, ...pendingIds])));
+      message.success(`已添加 ${pendingIds.length} 个用户的机器权限`);
+      setPermissionUsersSelected([]);
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err?.message || '添加机器权限失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setPermissionModalSubmitting(false);
     }
   };
 
@@ -1349,6 +1442,7 @@ const ManageMachine = () => {
                     >
                       {isExpanded ? '收起容器' : '查看容器'}
                     </Button>
+                    <Button onClick={() => openPermissionModal(record)} icon={<SafetyCertificateOutlined />}>权限</Button>
                     <Button onClick={() => openEditMachine(record)}><a>编辑</a></Button>
                     <Button onClick={() => openDeleteConfirm(record)}><a className="mm-link-danger">删除</a></Button>
                   </Space>
@@ -1717,6 +1811,79 @@ const ManageMachine = () => {
       />
 
       {/* 添加容器 确认弹窗（包含表单） */}
+      <Modal
+        open={permissionModalVisible}
+        title={permissionMachine ? '机器权限 - ' + (permissionMachine.machine_name || permissionMachine.machine_ip || permissionMachine.key) : '机器权限'}
+        onCancel={() => setPermissionModalVisible(false)}
+        footer={null}
+        width={760}
+        destroyOnClose
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Typography.Text type="secondary">为这台机器分配可访问的用户。下拉列表支持继续加载更多用户。</Typography.Text>
+          <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+            <Select
+              mode="multiple"
+              showSearch
+              allowClear
+              placeholder="选择用户（可多选）"
+              style={{ minWidth: 360, flex: 1 }}
+              value={permissionUsersSelected}
+              loading={permissionModalLoading}
+              onChange={(value) => setPermissionUsersSelected(value || [])}
+              filterOption={(input, option) => String(option?.label || '').toLowerCase().includes(String(input).toLowerCase())}
+              maxTagCount="responsive"
+              dropdownRender={(menu) => (
+                <div>
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <Checkbox
+                      checked={permissionUsers.length > 0 && permissionUsers.filter(u => !permissionAssignedUserIds.includes(u.id)).every(u => permissionUsersSelected.includes(u.id))}
+                      indeterminate={permissionUsers.some(u => permissionUsersSelected.includes(u.id)) && !permissionUsers.filter(u => !permissionAssignedUserIds.includes(u.id)).every(u => permissionUsersSelected.includes(u.id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          const selectable = permissionUsers.map(u => u.id).filter(uid => !permissionAssignedUserIds.includes(uid));
+                          setPermissionUsersSelected(Array.from(new Set([...(permissionUsersSelected || []), ...selectable])));
+                        } else {
+                          setPermissionUsersSelected([]);
+                        }
+                      }}
+                    >
+                      全选当前页
+                    </Checkbox>
+                    <Typography.Text type="secondary">已选 {permissionUsersSelected.length} 人</Typography.Text>
+                  </div>
+                  {menu}
+                  <div style={{ padding: 8, textAlign: 'center' }}>
+                    {permissionUsersLoadingMore ? <LoadingOutlined /> : permissionUsersHasMore ? <Button type="link" onClick={loadMorePermissionUsers}>加载更多用户</Button> : <Typography.Text type="secondary">没有更多用户了</Typography.Text>}
+                  </div>
+                </div>
+              )}
+              options={permissionUsers.map(u => ({
+                value: u.id,
+                label: u.username + (u.email ? ' <' + u.email + '>' : ''),
+                disabled: permissionAssignedUserIds.includes(u.id),
+              }))}
+            />
+            <Button type="primary" icon={<PlusOutlined />} loading={permissionModalSubmitting} onClick={handleGrantMachinePermission} disabled={!permissionUsersSelected.length}>添加权限</Button>
+          </Space>
+          <div style={{ border: '1px solid #f0f0f0', borderRadius: 12, padding: 12, background: '#fafafa' }}>
+            <Typography.Text strong>已授权用户</Typography.Text>
+            <div style={{ marginTop: 12 }}>
+              {permissionAssignedUserIds.length ? (
+                <Space wrap>
+                  {permissionAssignedUserIds.map(uid => {
+                    const user = permissionUsers.find(u => u.id === uid);
+                    return <Tag key={uid} color="blue">{user ? user.username : '用户 #' + uid}</Tag>;
+                  })}
+                </Space>
+              ) : (
+                <Typography.Text type="secondary">暂无授权用户</Typography.Text>
+              )}
+            </div>
+          </div>
+        </Space>
+      </Modal>
+
       <ConfirmModal
         visible={addContainerVisible}
         title="添加容器"
