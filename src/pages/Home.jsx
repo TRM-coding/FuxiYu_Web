@@ -88,13 +88,23 @@ const Home = () => {
     const d0 = new Date(t);
     if (!Number.isNaN(d0.getTime())) return d0;
 
-    // fallback: parse syslog-like prefix, e.g. "Mar 20 10:35:20 ..."
+    // fallback A: parse syslog-like prefix, e.g. "Mar 20 10:35:20 ..."
     const m = t.match(/^([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2})/);
-    if (!m) return null;
-    const year = new Date().getFullYear();
-    const d1 = new Date(`${m[1]} ${m[2]} ${year} ${m[3]}`);
-    if (Number.isNaN(d1.getTime())) return null;
-    return d1;
+    if (m) {
+      const year = new Date().getFullYear();
+      const d1 = new Date(`${m[1]} ${m[2]} ${year} ${m[3]}`);
+      if (!Number.isNaN(d1.getTime())) return d1;
+    }
+
+    // fallback B: parse `last` output snippet, e.g. "... Fri Mar 20 12:39 ..."
+    const m2 = t.match(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2})(?::(\d{2}))?\b/);
+    if (m2) {
+      const year = new Date().getFullYear();
+      const hhmmss = `${m2[3]}:${m2[4] || '00'}`;
+      const d2 = new Date(`${m2[1]} ${m2[2]} ${year} ${hhmmss}`);
+      if (!Number.isNaN(d2.getTime())) return d2;
+    }
+    return null;
   };
 
   const formatLastSshTime = (raw) => {
@@ -104,7 +114,21 @@ const Home = () => {
     return d.toLocaleString();
   };
 
-  const formatCleanupCountdown = (raw) => {
+  const formatCleanupCountdown = (raw, record = null) => {
+    // Prefer backend-calculated fields (authoritative and format-independent).
+    if (record && typeof record === 'object') {
+      const status = record.cleanup_status;
+      const seconds = Number(record.seconds_until_cleanup);
+      if (status === 'due') return '可清理';
+      if (Number.isFinite(seconds) && seconds >= 0) {
+        const hours = Math.ceil(seconds / 3600);
+        const days = Math.floor(hours / 24);
+        const remainHours = hours % 24;
+        if (days > 0) return `${days}天${remainHours}小时`;
+        return `${hours}小时`;
+      }
+    }
+
     const d = parseSshTimeToDate(raw);
     if (!d) return '-';
     const expireAt = d.getTime() + SSH_CLEANUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -126,9 +150,20 @@ const Home = () => {
       const value = (res && Object.prototype.hasOwnProperty.call(res, 'last_ssh_login_time'))
         ? res.last_ssh_login_time
         : null;
+      const cleanup_after_days = res?.cleanup_after_days ?? null;
+      const cleanup_at = res?.cleanup_at ?? null;
+      const seconds_until_cleanup = res?.seconds_until_cleanup ?? null;
+      const cleanup_status = res?.cleanup_status ?? null;
       setContainers(prev => prev.map(c => (
         String(c.key) === String(containerId)
-          ? { ...c, last_ssh_login_time: value }
+          ? {
+            ...c,
+            last_ssh_login_time: value,
+            cleanup_after_days,
+            cleanup_at,
+            seconds_until_cleanup,
+            cleanup_status,
+          }
           : c
       )));
       if (!silent) message.success('SSH 登录时间已刷新');
@@ -173,6 +208,10 @@ const Home = () => {
           machine_ip: c.machine_ip || '',
           accounts: c.accounts || [],
           last_ssh_login_time: c.last_ssh_login_time ?? null,
+          cleanup_after_days: c.cleanup_after_days ?? null,
+          cleanup_at: c.cleanup_at ?? null,
+          seconds_until_cleanup: c.seconds_until_cleanup ?? null,
+          cleanup_status: c.cleanup_status ?? null,
         }));
         if (mounted) setContainers(mapped);
         if (mounted) await refreshSshTimeForAllContainers(mapped);
@@ -698,7 +737,7 @@ const Home = () => {
               title="距清理时间"
               dataIndex="ssh_cleanup_countdown"
               key="ssh_cleanup_countdown"
-              render={(_, record) => formatCleanupCountdown(record?.last_ssh_login_time)}
+              render={(_, record) => formatCleanupCountdown(record?.last_ssh_login_time, record)}
             />
             <Column title="端口" dataIndex="port" key="port" />
             <Column
