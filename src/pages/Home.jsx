@@ -8,7 +8,7 @@ import TableComponent from '../components/TableComponent';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
-import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime } from '../api/container_api';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -29,6 +29,7 @@ const Desc = props => (
 
 // will be populated from backend
 const initialContainers = [];
+const SSH_CLEANUP_WINDOW_DAYS = 7;
 
 const Home = () => {
   const [value3, setValue3] = useState('Any');
@@ -79,6 +80,78 @@ const Home = () => {
   // containers state loaded from backend
   const [containers, setContainers] = useState(initialContainers);
   const [loadingContainers, setLoadingContainers] = useState(false);
+  const [sshRefreshingMap, setSshRefreshingMap] = useState({});
+
+  const parseSshTimeToDate = (raw) => {
+    if (!raw || typeof raw !== 'string') return null;
+    const t = raw.trim();
+    const d0 = new Date(t);
+    if (!Number.isNaN(d0.getTime())) return d0;
+
+    // fallback: parse syslog-like prefix, e.g. "Mar 20 10:35:20 ..."
+    const m = t.match(/^([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2})/);
+    if (!m) return null;
+    const year = new Date().getFullYear();
+    const d1 = new Date(`${m[1]} ${m[2]} ${year} ${m[3]}`);
+    if (Number.isNaN(d1.getTime())) return null;
+    return d1;
+  };
+
+  const formatLastSshTime = (raw) => {
+    if (!raw) return '-';
+    const d = parseSshTimeToDate(raw);
+    if (!d) return String(raw);
+    return d.toLocaleString();
+  };
+
+  const formatCleanupCountdown = (raw) => {
+    const d = parseSshTimeToDate(raw);
+    if (!d) return '-';
+    const expireAt = d.getTime() + SSH_CLEANUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const diff = expireAt - Date.now();
+    if (diff <= 0) return '可清理';
+    const hours = Math.ceil(diff / (60 * 60 * 1000));
+    const days = Math.floor(hours / 24);
+    const remainHours = hours % 24;
+    if (days > 0) return `${days}天${remainHours}小时`;
+    return `${hours}小时`;
+  };
+
+  const refreshSshTimeForContainer = async (containerId, options = {}) => {
+    const { silent = false } = options;
+    if (!containerId) return null;
+    setSshRefreshingMap(prev => ({ ...prev, [String(containerId)]: true }));
+    try {
+      const res = await refreshLastSshLoginTime(Number(containerId));
+      const value = (res && Object.prototype.hasOwnProperty.call(res, 'last_ssh_login_time'))
+        ? res.last_ssh_login_time
+        : null;
+      setContainers(prev => prev.map(c => (
+        String(c.key) === String(containerId)
+          ? { ...c, last_ssh_login_time: value }
+          : c
+      )));
+      if (!silent) message.success('SSH 登录时间已刷新');
+      return value;
+    } catch (err) {
+      if (!silent) {
+        await showErrorModal({ message: err?.body || err || '刷新 SSH 登录时间失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      }
+      return null;
+    } finally {
+      setSshRefreshingMap(prev => ({ ...prev, [String(containerId)]: false }));
+    }
+  };
+
+  const refreshSshTimeForAllContainers = async (list) => {
+    if (!Array.isArray(list) || list.length === 0) return;
+    await Promise.allSettled(
+      list
+        .map(c => c?.key)
+        .filter(Boolean)
+        .map(cid => refreshSshTimeForContainer(cid, { silent: true }))
+    );
+  };
 
   useEffect(() => {
     if (!currentUserId) return; // wait until we have the id
@@ -99,8 +172,10 @@ const Home = () => {
           machine_id: c.machine_id ? String(c.machine_id) : null,
           machine_ip: c.machine_ip || '',
           accounts: c.accounts || [],
+          last_ssh_login_time: c.last_ssh_login_time ?? null,
         }));
         if (mounted) setContainers(mapped);
+        if (mounted) await refreshSshTimeForAllContainers(mapped);
       } catch (err) {
         console.error('load containers failed', err);
         await showErrorModal({ message: err?.body || err || '加载容器列表失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
@@ -613,6 +688,18 @@ const Home = () => {
                 return <Tag color={color}>{text}</Tag>;
               }}
             />
+            <Column
+              title="上次SSH登录"
+              dataIndex="last_ssh_login_time"
+              key="last_ssh_login_time"
+              render={(_, record) => formatLastSshTime(record?.last_ssh_login_time)}
+            />
+            <Column
+              title="距清理时间"
+              dataIndex="ssh_cleanup_countdown"
+              key="ssh_cleanup_countdown"
+              render={(_, record) => formatCleanupCountdown(record?.last_ssh_login_time)}
+            />
             <Column title="端口" dataIndex="port" key="port" />
             <Column
               title="操作"
@@ -623,6 +710,7 @@ const Home = () => {
                 const startDisabled = status !== 'offline';
                 const restartDisabled = status !== 'online';
                 const stopDisabled = status !== 'online';
+                const sshRefreshLoading = !!sshRefreshingMap[String(record?.key)];
 
                 const ActionButtons = (
                   <Space size="small">
@@ -643,6 +731,12 @@ const Home = () => {
                         className={stopDisabled ? 'home-action-link home-action-disabled' : 'home-action-link home-action-stop'}
                       >
                         停止
+                      </a>
+                      <a
+                        onClick={() => { if (!sshRefreshLoading) refreshSshTimeForContainer(record?.key); }}
+                        className={sshRefreshLoading ? 'home-action-link home-action-disabled' : 'home-action-link'}
+                      >
+                        {sshRefreshLoading ? '刷新中' : '刷新SSH'}
                       </a>
                     </Space>
                 );

@@ -293,6 +293,31 @@ export const restartContainer = async (container_id = 0, timeout = null, restart
 	}
 };
 
+export const refreshLastSshLoginTime = async (container_id = 0, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_REFRESH_LAST_SSH_TIME}`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...getAuthTokenHeader(),
+			},
+			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Refresh last ssh login time');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Refresh last ssh login time request timed out');
+		throw err;
+	}
+};
+
 export default {
 	createContainer,
 	deleteContainer,
@@ -304,5 +329,5 @@ export default {
 	startContainer,
 	stopContainer,
 	restartContainer,
+	refreshLastSshLoginTime,
 };
-

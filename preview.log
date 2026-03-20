@@ -1,0 +1,8 @@
+
+> fuxi-web@0.0.0 preview
+> vite preview --host 0.0.0.0 --port 4173
+
+  ➜  Local:   http://localhost:4173/
+  ➜  Network: http://192.168.5.141:4173/
+  ➜  Network: http://192.168.5.116:4173/
+  ➜  Network: http://172.17.0.1:4173/
