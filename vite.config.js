@@ -26,7 +26,7 @@ export default defineConfig({
     proxy: {
       // Forward all backend blueprint routes to local Flask server.
       '/api': {
-        target: 'http://127.0.0.1:5000',
+        target: 'http://192.168.5.230:5000',
         changeOrigin: true,
         secure: false,
       },
