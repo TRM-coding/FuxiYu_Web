@@ -1,10 +1,9 @@
 // 单文件配置，移除对 config.js 的依赖
 
-// Use Vite-provided environment variables when available (import.meta.env.VITE_*),
-// otherwise fall back to the hardcoded address. This lets you switch between
-// http/https without editing source.
+// Use Vite-provided environment variable when available (import.meta.env.VITE_*).
+// Default to relative path so requests like /api/** go through Vite dev proxy.
 // Example (shell): VITE_BACKEND_BASE_URL=https://localhost:5000 npm run dev
-export const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL || 'https://192.168.5.230:5000';
+export const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL ?? '';
 // Optional: front-end can know whether it should operate in HTTPS mode
 // (useful for building URLs or toggling secure cookies). Set VITE_ENABLE_SSL=true
 // when launching Vite to indicate HTTPS mode.
