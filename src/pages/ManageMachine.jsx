@@ -264,6 +264,7 @@ const ManageMachine = () => {
                 gpu_number: detail.gpu_number ?? it.gpu_number ?? 0,
                 gpu_type: detail.gpu_type ?? it.gpu_type ?? '',
                 disk_size_gb: detail.disk_size_gb ?? it.disk_size_gb,
+                max_swap_gb: detail.max_swap_gb ?? it.max_swap_gb,
                 max_memory_gb: detail.max_memory_gb ?? it.max_memory_gb,
                 max_gpu_number: detail.max_gpu_number ?? it.max_gpu_number ?? 0,
                 max_cpu_core_number: detail.max_cpu_core_number ?? it.max_cpu_core_number,
@@ -769,6 +770,7 @@ const ManageMachine = () => {
         max_gpu_number: values.max_gpu_number || 0,
         max_cpu_core_number: values.max_cpu_core_number || 0,
         max_swap_gb: values.max_swap_gb || null,
+        swap_size: values.swap_size || null,
         disk_size: values.disk_size || null,
       };
 
@@ -1466,7 +1468,7 @@ const ManageMachine = () => {
           <Form
             form={addHostForm}
             layout="vertical"
-            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance', max_memory_gb: 0, max_gpu_number: 0, max_cpu_core_number: 0 }}
+            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance', max_memory_gb: 0, max_gpu_number: 0, max_cpu_core_number: 0, max_swap_gb: 0, swap_size: 0 }}
               onValuesChange={(changedValues) => {
                 if (changedValues.machine_type) {
                   if (changedValues.machine_type !== 'GPU') {
@@ -1697,13 +1699,42 @@ const ManageMachine = () => {
               </Col>
             </Row>
 
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item name="max_swap_gb" label="交换空间 (GB)">
-                    <InputNumber min={0} className="mm-width-100" />
+              <Row gutter={16} align="middle">
+                <Col xs={24} sm={18} md={18} lg={18} xl={18}>
+                  <Form.Item shouldUpdate noStyle>
+                    {() => {
+                      const base = addHostForm.getFieldValue('memory_size') || 1;
+                      const val = addHostForm.getFieldValue('max_swap_gb') || 0;
+                      return (
+                        <Form.Item name="max_swap_gb" label={`交换空间 最大允许分配（GB，整数）`}>
+                          <>
+                            <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
+                              <div style={{ minHeight: 22, marginBottom: 8 }}>
+                                {(base > 0 && val > Math.floor(base * 2)) ? (
+                                  <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
+                                ) : (
+                                  <span style={{ visibility: 'hidden' }}>占位</span>
+                                )}
+                              </div>
+                              <Slider
+                                min={0}
+                                max={Math.max(1, Math.floor(base * 2))}
+                                step={1}
+                                value={typeof val === 'number' ? val : 0}
+                                onChange={(v) => addHostForm.setFieldsValue({ max_swap_gb: v })}
+                              />
+                            </div>
+                          </>
+                        </Form.Item>
+                      );
+                    }}
                   </Form.Item>
                 </Col>
-                <Col span={12} />
+                <Col xs={24} sm={6} md={6} lg={6} xl={6}>
+                  <Form.Item name="swap_size" label="交换空间 (GB)">
+                    <InputNumber min={0} style={{ width: '100%', maxWidth: 110 }} />
+                  </Form.Item>
+                </Col>
               </Row>
 
             <Row>
@@ -2004,7 +2035,7 @@ const ManageMachine = () => {
                 <Col span={12}>
                   <Form.Item
                     name="SWAP_MEM"
-                    label="交换空间 (GB)"
+                    label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? '-'})</span></span>}
                     validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
                     help={addContainerFieldErrors.SWAP_MEM || null}
                   >

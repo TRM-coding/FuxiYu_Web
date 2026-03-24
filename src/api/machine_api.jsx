@@ -1,4 +1,4 @@
-import { BACKEND_BASE_URL, REQUEST_TIMEOUT, CREDENTIALS, API_ROUTES } from '../configs/backend_config';
+import { BACKEND_ORIGIN, REQUEST_TIMEOUT, CREDENTIALS, API_ROUTES } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
 import { getAuthTokenHeader } from '../utils/authToken';
 
@@ -45,7 +45,8 @@ const ensureOk = async (res, action) => {
 export const addMachine = async (machineData = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.MACHINES_ADD}`, {
+    const url = new URL(API_ROUTES.MACHINES_ADD, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -70,7 +71,8 @@ export const addMachine = async (machineData = {}, timeout = null) => {
 export const removeMachine = async (machine_ids = [], timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.MACHINES_REMOVE}`, {
+    const url = new URL(API_ROUTES.MACHINES_REMOVE, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -95,7 +97,8 @@ export const removeMachine = async (machine_ids = [], timeout = null) => {
 export const updateMachine = async (machine_id = 0, fields = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.MACHINES_UPDATE}`, {
+    const url = new URL(API_ROUTES.MACHINES_UPDATE, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -120,7 +123,8 @@ export const updateMachine = async (machine_id = 0, fields = {}, timeout = null)
 export const getDetailInformation = async (machine_id = 0, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.MACHINES_GET_DETAIL}`, {
+    const url = new URL(API_ROUTES.MACHINES_GET_DETAIL, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -145,7 +149,8 @@ export const getDetailInformation = async (machine_id = 0, timeout = null) => {
 export const listAllMachineBrefInformation = async ({ page_number = 1, page_size = 10 } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.MACHINES_LIST}`, {
+    const url = new URL(API_ROUTES.MACHINES_LIST, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -171,7 +176,8 @@ export const listAllMachineBrefInformation = async ({ page_number = 1, page_size
 export const addMachinePermission = async ({ machine_id, user_id } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.MACHINES_ADD_PERMISSION}`, {
+    const url = new URL(API_ROUTES.MACHINES_ADD_PERMISSION, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type' : 'application/json',
@@ -196,7 +202,7 @@ export const addMachinePermission = async ({ machine_id, user_id } = {}, timeout
 export const listMachinePermissions = async (machine_id = 0, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const url = new URL(`${BACKEND_BASE_URL}${API_ROUTES.MACHINES_LIST_PERMISSION}`);
+    const url = new URL(API_ROUTES.MACHINES_LIST_PERMISSION, BACKEND_ORIGIN);
     url.searchParams.set('machine_id', String(machine_id));
     const res = await fetch(url.toString(), {
       method: 'GET',

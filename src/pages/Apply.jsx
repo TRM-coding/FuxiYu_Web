@@ -515,7 +515,7 @@ const Apply = () => {
                 <Col span={12}>
                   <Form.Item
                     name="SWAP_MEM"
-                    label="交换空间 (GB)"
+                    label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? '-'})</span></span>}
                     validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
                     help={addContainerFieldErrors.SWAP_MEM || null}
                   >

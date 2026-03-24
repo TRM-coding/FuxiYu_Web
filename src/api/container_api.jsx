@@ -1,4 +1,4 @@
-import { BACKEND_BASE_URL, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
+import { BACKEND_ORIGIN, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
 import { getAuthTokenHeader } from '../utils/authToken';
 
@@ -46,7 +46,8 @@ const ensureOk = async (res, action) => {
 export const createContainer = async (payload = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_CREATE}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_CREATE, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -71,7 +72,8 @@ export const createContainer = async (payload = {}, timeout = null) => {
 export const deleteContainer = async (container_id = 0, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_DELETE}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_DELETE, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -96,7 +98,8 @@ export const deleteContainer = async (container_id = 0, timeout = null) => {
 export const addCollaborator = async ({ user_id = '', container_id = 0, role = 'COLLABORATOR' } = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_ADD_COLLABORATOR}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_ADD_COLLABORATOR, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -121,7 +124,8 @@ export const addCollaborator = async ({ user_id = '', container_id = 0, role = '
 export const removeCollaborator = async ({ user_id = '', container_id = 0 } = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_REMOVE_COLLABORATOR}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_REMOVE_COLLABORATOR, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -146,7 +150,8 @@ export const removeCollaborator = async ({ user_id = '', container_id = 0 } = {}
 export const updateRole = async ({ container_id = 0, user_id = '', updated_role = 'COLLABORATOR' } = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_UPDATE_ROLE}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_UPDATE_ROLE, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -171,7 +176,8 @@ export const updateRole = async ({ container_id = 0, user_id = '', updated_role 
 export const getContainerDetailInformation = async (container_id = 0, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_GET_DETAIL}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_GET_DETAIL, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -196,7 +202,8 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 export const listAllContainerBrefInformation = async ({ machine_id = '', user_id = '', page_number = 1, page_size = 10 } = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_LIST}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_LIST, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -221,7 +228,8 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 export const startContainer = async (container_id = 0, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_START}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_START, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -246,7 +254,8 @@ export const startContainer = async (container_id = 0, timeout = null) => {
 export const stopContainer = async (container_id = 0, timeout = null, stopTimeout = 5) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_STOP}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_STOP, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -271,7 +280,8 @@ export const stopContainer = async (container_id = 0, timeout = null, stopTimeou
 export const restartContainer = async (container_id = 0, timeout = null, restartTimeout = 5) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_RESTART}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_RESTART, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -296,7 +306,8 @@ export const restartContainer = async (container_id = 0, timeout = null, restart
 export const refreshLastSshLoginTime = async (container_id = 0, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
-		const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.CONTAINERS_REFRESH_LAST_SSH_TIME}`, {
+		const url = new URL(API_ROUTES.CONTAINERS_REFRESH_LAST_SSH_TIME, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
