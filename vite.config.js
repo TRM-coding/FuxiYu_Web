@@ -23,6 +23,14 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // 允许外网访问
     port: 5173,      // 可自定义端口
+    proxy: {
+      // Forward all backend blueprint routes to local Flask server.
+      '/api': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
     https: (function () {
       if (!enableSsl) return false
       try {
