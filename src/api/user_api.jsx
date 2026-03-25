@@ -1,4 +1,4 @@
-import { BACKEND_BASE_URL, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
+import { BACKEND_ORIGIN, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
 import { getAuthTokenHeader } from '../utils/authToken';
 
@@ -45,7 +45,8 @@ const ensureOk = async (res, action) => {
 export const loginUser = async ({ username, password }, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.LOGIN}`, {
+    const url = new URL(API_ROUTES.LOGIN, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -69,7 +70,8 @@ export const loginUser = async ({ username, password }, timeout = null) => {
 export const requestRegisterCode = async ({ email }, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.REQUEST_REGISTER_CODE}`, {
+    const url = new URL(API_ROUTES.REQUEST_REGISTER_CODE, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
@@ -91,7 +93,8 @@ export const requestRegisterCode = async ({ email }, timeout = null) => {
 export const registerUser = async ({ username, email, password, graduation_year = null, registration_code }, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.REGISTER}`, {
+    const url = new URL(API_ROUTES.REGISTER, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, email, password, graduation_year, registration_code }),
@@ -115,7 +118,8 @@ export const registerUser = async ({ username, email, password, graduation_year 
 export const changePasswordUser = async ({ user_id, old_password, new_password } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_CHANGE_PASSWORD}`, {
+    const url = new URL(API_ROUTES.USERS_CHANGE_PASSWORD, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -140,7 +144,8 @@ export const changePasswordUser = async ({ user_id, old_password, new_password }
 export const updateUser = async ({ user_id, fields } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_UPDATE}`, {
+    const url = new URL(API_ROUTES.USERS_UPDATE, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -165,7 +170,8 @@ export const updateUser = async ({ user_id, fields } = {}, timeout = null) => {
 export const resetPassword = async ({ user_id } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_RESET_PASSWORD}`, {
+    const url = new URL(API_ROUTES.USERS_RESET_PASSWORD, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -190,7 +196,8 @@ export const resetPassword = async ({ user_id } = {}, timeout = null) => {
 export const deleteUser = async (user_id = 0, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}${API_ROUTES.USERS_DELETE}`, {
+    const url = new URL(API_ROUTES.USERS_DELETE, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -215,7 +222,7 @@ export const deleteUser = async (user_id = 0, timeout = null) => {
 export const getUserDetailInformation = async (user_id = 0, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const url = new URL(`${BACKEND_BASE_URL}${API_ROUTES.USERS_GET_DETAIL}`);
+    const url = new URL(API_ROUTES.USERS_GET_DETAIL, BACKEND_ORIGIN);
     url.searchParams.set('user_id', String(user_id));
     const res = await fetch(url.toString(), {
       method: 'GET',
@@ -240,7 +247,7 @@ export const getUserDetailInformation = async (user_id = 0, timeout = null) => {
 export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 10 } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const url = new URL(`${BACKEND_BASE_URL}${API_ROUTES.USERS_LIST}`);
+    const url = new URL(API_ROUTES.USERS_LIST, BACKEND_ORIGIN);
     url.searchParams.set('page_number', String(page_number));
     url.searchParams.set('page_size', String(page_size));
     const res = await fetch(url.toString(), {

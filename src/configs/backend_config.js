@@ -3,7 +3,10 @@
 // Use Vite-provided environment variable when available (import.meta.env.VITE_*).
 // Default to relative path so requests like /api/** go through Vite dev proxy.
 // Example (shell): VITE_BACKEND_BASE_URL=https://localhost:5000 npm run dev
-export const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL ?? '';
+// 弃 export const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL ?? '';
+// Compute a runtime origin to use when constructing full URLs.
+// If VITE_BACKEND_BASE_URL is provided use it, otherwise fall back to the current page origin.
+export const BACKEND_ORIGIN = (typeof window !== 'undefined' ? window.location.origin : '');
 // Optional: front-end can know whether it should operate in HTTPS mode
 // (useful for building URLs or toggling secure cookies). Set VITE_ENABLE_SSL=true
 // when launching Vite to indicate HTTPS mode.
@@ -49,7 +52,7 @@ export const API_ROUTES = {
 };
 
 export default {
-	BACKEND_BASE_URL,
+	BACKEND_ORIGIN,
 	REQUEST_TIMEOUT,
 	CREDENTIALS,
 	API_ROUTES,

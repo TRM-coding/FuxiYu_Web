@@ -1,5 +1,5 @@
 // Web heartbeat utility: poll Ctrl for container status until RUNNING
-import { BACKEND_BASE_URL, REQUEST_TIMEOUT } from '../configs/backend_config';
+import { BACKEND_ORIGIN, REQUEST_TIMEOUT } from '../configs/backend_config';
 import { getAuthToken } from './authToken';
 
 export function startContainerStatusHeartbeat({ machine_id, container_name, onRunning, onTerminal, terminalState = 'online', timeout = 180000, interval = 3000 }) {
@@ -23,7 +23,8 @@ export function startContainerStatusHeartbeat({ machine_id, container_name, onRu
       const token = getAuthToken();
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers.token = token;
-      const res = await fetch(`${BACKEND_BASE_URL}/api/containers/container_status`, {
+      const url = new URL('/api/containers/container_status', BACKEND_ORIGIN).toString();
+      const res = await fetch(url, {
         method: 'POST',
         headers,
         credentials: 'include',
@@ -76,7 +77,8 @@ export function startMachineStatusHeartbeat({ machine_id, onTerminal, terminalSt
       const token = getAuthToken();
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers.token = token;
-      const res = await fetch(`${BACKEND_BASE_URL}/api/machines/list_all_machine_bref_information`, {
+      const url = new URL('/api/machines/list_all_machine_bref_information', BACKEND_ORIGIN).toString();
+      const res = await fetch(url, {
         method: 'POST',
         headers,
         credentials: 'include',
