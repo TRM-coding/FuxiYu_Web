@@ -423,7 +423,7 @@ const ManageUser = () => {
             cpu_number: det?.cpu_number ?? c.cpu_number ?? null,
             gpu_number: det?.gpu_number ?? c.gpu_number ?? 0,
             memory_gb: det?.memory_gb ?? c.memory_gb ?? null,
-            swap_gb: det?.swap_gb ?? c.swap_gb ?? null
+            shared_gb: det?.shared_gb ?? c.shared_gb ?? null
           };
         } catch (e) {
           // if detail fetch fails, do not attempt old fallback — keep bref info but no userRole

@@ -132,7 +132,7 @@ const TableComponent = ({ className = '', children, ...props }) => {
                       // consider rendered content too: allow compact when render returns short primitive
                       const renderedStr = (content === null || content === undefined) ? '' : String(content);
                       const isShortPrimitive = ((typeof content === 'string' || typeof content === 'number') && renderedStr.length > 0 && renderedStr.length <= 18) || ((typeof rawValue === 'string' || typeof rawValue === 'number') && plainValue.length > 0 && plainValue.length <= 18);
-                      // allow slightly longer titles (e.g. 最大Swap(GB)) to be considered short
+                      // allow slightly longer titles (e.g. 最大共享(GB)) to be considered short
                       const shortTitle = titleText.length > 0 && titleText.length <= 12;
                       // allow compact layout even if column has a render function, as long as rendered content is short
                       const isCompact = !isAction && !isStats && isShortPrimitive && shortTitle;

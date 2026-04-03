@@ -569,7 +569,7 @@ const Home = () => {
         cpu_number: detail.cpu_number || container.cpu_number || 0,
         gpu_number: detail.gpu_number || container.gpu_number || 0,
         memory_gb: detail.memory_gb || container.memory_gb || 0,
-        swap_gb: detail.swap_gb || container.swap_gb || 0,
+        shared_gb: detail.shared_gb || container.shared_gb || 0,
         owners: detail.owners || detail.owner_list || container.owners || [],
         accounts: detail.accounts || detail.account_list || container.accounts || []
       };

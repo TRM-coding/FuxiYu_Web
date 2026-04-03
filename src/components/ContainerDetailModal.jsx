@@ -160,8 +160,8 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
               <Space align="start">
                 <GlobalOutlined className="cdm-icon" />
                 <div>
-                  <Typography.Text strong className="cdm-item-label">Swap (GB)</Typography.Text>
-                  <Typography.Text className="cdm-machine-text">{(container.swap_gb !== null && container.swap_gb !== undefined) ? String(container.swap_gb) : '-'}</Typography.Text>
+                  <Typography.Text strong className="cdm-item-label">共享 (GB)</Typography.Text>
+                  <Typography.Text className="cdm-machine-text">{(container.shared_gb !== null && container.shared_gb !== undefined) ? String(container.shared_gb) : '-'}</Typography.Text>
                 </div>
               </Space>
             </Col>

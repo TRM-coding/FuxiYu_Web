@@ -304,7 +304,7 @@ const ManageMachine = () => {
         max_memory_gb: null,
         max_gpu_number: null,
         max_cpu_core_number: null,
-        max_swap_gb: null,
+        max_shared_gb: null,
         gpu_number: null,
         gpu_type: null,
         disk_size_gb: null,
@@ -324,7 +324,7 @@ const ManageMachine = () => {
                 gpu_number: detail.gpu_number ?? it.gpu_number ?? 0,
                 gpu_type: detail.gpu_type ?? it.gpu_type ?? '',
                 disk_size_gb: detail.disk_size_gb ?? it.disk_size_gb,
-                max_swap_gb: detail.max_swap_gb ?? it.max_swap_gb,
+                max_shared_gb: detail.max_shared_gb ?? it.max_shared_gb,
                 max_memory_gb: detail.max_memory_gb ?? it.max_memory_gb,
                 max_gpu_number: detail.max_gpu_number ?? it.max_gpu_number ?? 0,
                 max_cpu_core_number: detail.max_cpu_core_number ?? it.max_cpu_core_number,
@@ -531,7 +531,7 @@ const ManageMachine = () => {
         cpu_number: detail.cpu_number ?? container.cpu_number ?? null,
         gpu_number: detail.gpu_number ?? container.gpu_number ?? 0,
         memory_gb: detail.memory_gb ?? container.memory_gb ?? 0,
-        swap_gb: detail.swap_gb ?? container.swap_gb ?? 0,
+        shared_gb: detail.shared_gb ?? container.shared_gb ?? 0,
         owners: detail.owners || detail.owner_list || container.owners || [],
         accounts: detail.accounts || detail.account_list || container.accounts || []
       };
@@ -635,7 +635,7 @@ const ManageMachine = () => {
   const openAddHostModal = () => {
     addHostForm.resetFields();
     // set defaults for add mode: default status = maintenance
-    addHostForm.setFieldsValue({ machine_status: 'maintenance', machine_type: 'CPU', gpu_number: 0, max_swap_gb: 0 });
+    addHostForm.setFieldsValue({ machine_status: 'maintenance', machine_type: 'CPU', gpu_number: 0, max_shared_gb: 0 });
     setIsEditMode(false);
     setEditTargetMachine(null);
     setAddHostVisible(true);
@@ -652,7 +652,7 @@ const ManageMachine = () => {
     const defaultUser = localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
     const mtype = (machine && (machine.machine_type || machine.machine_type === 0) ? (machine.machine_type || 'CPU') : 'CPU');
     setAddContainerMachineType((mtype || 'CPU').toUpperCase());
-    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SWAP_MEM: 0, GPU_LIST: [], gpu_number: 0, root_user: defaultUser });
+    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SHARED_MEM: 0, GPU_LIST: [], gpu_number: 0, root_user: defaultUser });
     setAddContainerVisible(true);
   };
 
@@ -660,6 +660,18 @@ const ManageMachine = () => {
   const handleAddContainerConfirm = async () => {
     try {
       const values = await addContainerForm.validateFields();
+      // quick client-side guard: shared must not exceed memory
+      try {
+        const mem = Number(values.MEMORY || 0);
+        const shared = Number(values.SHARED_MEM || 0);
+        if (shared > mem) {
+          setAddContainerFieldErrors(prev => ({ ...(prev || {}), SHARED_MEM: `共享空间不得大于内存 (${mem} GB)` }));
+          message.error('共享空间不得大于内存');
+          return;
+        }
+      } catch (e) {
+        // ignore parse errors and continue to server-side validation
+      }
       setAddContainerLoading(true);
       const machineId = values.machine_id || addContainerMachineId;
       const toAddUserName = values.root_user || localStorage.getItem('currentUserName') || '';
@@ -689,7 +701,7 @@ const ManageMachine = () => {
             MEMORY: values.MEMORY || 1,
             NAME: values.NAME || `container-${Date.now()}`,
             image: values.image || '',
-            swap_memory: values.SWAP_MEM || 0
+            shared_memory: values.SHARED_MEM || 0
           },
           public_key: values.public_key || ''
         };
@@ -796,7 +808,7 @@ const ManageMachine = () => {
         max_memory_gb: src.max_memory_gb ?? machine.max_memory_gb ?? 0,
         max_gpu_number: src.max_gpu_number ?? machine.max_gpu_number ?? 0,
         max_cpu_core_number: src.max_cpu_core_number ?? machine.max_cpu_core_number ?? 0,
-        max_swap_gb: src.max_swap_gb ?? machine.max_swap_gb ?? null,
+        max_shared_gb: src.max_shared_gb ?? machine.max_shared_gb ?? null,
         disk_size: src.disk_size_gb ?? machine.disk_size_gb ?? null,
         machine_description: src.machine_description || machine.machine_description || ''
       });
@@ -829,8 +841,7 @@ const ManageMachine = () => {
         max_memory_gb: values.max_memory_gb || 0,
         max_gpu_number: values.max_gpu_number || 0,
         max_cpu_core_number: values.max_cpu_core_number || 0,
-        max_swap_gb: values.max_swap_gb || null,
-        swap_size: values.swap_size || null,
+        max_shared_gb: values.max_shared_gb || null,
         disk_size: values.disk_size || null,
       };
 
@@ -855,7 +866,7 @@ const ManageMachine = () => {
             max_memory_gb: payload.max_memory_gb,
             max_gpu_number: payload.max_gpu_number,
             max_cpu_core_number: payload.max_cpu_core_number,
-            max_swap_gb: payload.max_swap_gb,
+            max_shared_gb: payload.max_shared_gb,
             gpu_number: payload.gpu_number,
             gpu_type: payload.gpu_type,
             disk_size_gb: payload.disk_size,
@@ -1475,7 +1486,7 @@ const ManageMachine = () => {
                 );
               }}
             />
-            <Column title="最大Swap(GB)" dataIndex="max_swap_gb" key="max_swap_gb" />
+            <Column title="最大共享(GB)" dataIndex="max_shared_gb" key="max_shared_gb" />
             <Column
               title="GPU数量"
               dataIndex="gpu_number"
@@ -1540,7 +1551,7 @@ const ManageMachine = () => {
           <Form
             form={addHostForm}
             layout="vertical"
-            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance', max_memory_gb: 0, max_gpu_number: 0, max_cpu_core_number: 0, max_swap_gb: 0, swap_size: 0 }}
+            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance', max_memory_gb: 0, max_gpu_number: 0, max_cpu_core_number: 0, max_shared_gb: 0 }}
               onValuesChange={(changedValues) => {
                 if (changedValues.machine_type) {
                   if (changedValues.machine_type !== 'GPU') {
@@ -1623,13 +1634,17 @@ const ManageMachine = () => {
                                     <span style={{ visibility: 'hidden' }}>占位</span>
                                   )}
                                 </div>
-                                <Slider
-                                  min={0}
-                                  max={Math.max(1, cpuMax)}
-                                  step={1}
-                                  value={typeof val === 'number' ? val : 0}
-                                  onChange={(v) => addHostForm.setFieldsValue({ max_cpu_core_number: v })}
-                                />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
+                                  <Slider
+                                    min={0}
+                                    max={Math.max(1, cpuMax)}
+                                    step={1}
+                                    value={typeof val === 'number' ? val : 0}
+                                    onChange={(v) => addHostForm.setFieldsValue({ max_cpu_core_number: v })}
+                                    style={{ flex: 1, minWidth: 0 }}
+                                  />
+                                  <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val} 核` : '0 核'}</div>
+                                </div>
                               </div>
                             </>
                           </Form.Item>
@@ -1672,13 +1687,17 @@ const ManageMachine = () => {
                                 <span style={{ visibility: 'hidden' }}>占位</span>
                               )}
                             </div>
-                            <Slider
-                              min={0}
-                              max={Math.max(1, memMax)}
-                              step={1}
-                              value={typeof val === 'number' ? val : 0}
-                              onChange={(v) => addHostForm.setFieldsValue({ max_memory_gb: v })}
-                            />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
+                              <Slider
+                                min={0}
+                                max={Math.max(1, memMax)}
+                                step={1}
+                                value={typeof val === 'number' ? val : 0}
+                                onChange={(v) => addHostForm.setFieldsValue({ max_memory_gb: v })}
+                                style={{ flex: 1, minWidth: 0 }}
+                              />
+                              <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val} GB` : '0 GB'}</div>
+                            </div>
                           </div>
                         </>
                       </Form.Item>
@@ -1711,14 +1730,18 @@ const ManageMachine = () => {
                                 <span style={{ visibility: 'hidden' }}>占位</span>
                               )}
                             </div>
-                            <Slider
-                              min={0}
-                              max={Math.max(0, gpuMax)}
-                              step={1}
-                              value={typeof val === 'number' ? val : 0}
-                              onChange={(v) => addHostForm.setFieldsValue({ max_gpu_number: v })}
-                              disabled={mt !== 'GPU'}
-                            />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
+                              <Slider
+                                min={0}
+                                max={Math.max(0, gpuMax)}
+                                step={1}
+                                value={typeof val === 'number' ? val : 0}
+                                onChange={(v) => addHostForm.setFieldsValue({ max_gpu_number: v })}
+                                disabled={mt !== 'GPU'}
+                                style={{ flex: 1, minWidth: 0 }}
+                              />
+                              <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val}` : '0'}</div>
+                            </div>
                           </div>
                         </>
                       </Form.Item>
@@ -1776,25 +1799,31 @@ const ManageMachine = () => {
                   <Form.Item shouldUpdate noStyle>
                     {() => {
                       const base = addHostForm.getFieldValue('memory_size') || 1;
-                      const val = addHostForm.getFieldValue('max_swap_gb') || 0;
+                      const val = addHostForm.getFieldValue('max_shared_gb') || 0;
+                      const maxMemoryField = addHostForm.getFieldValue('max_memory_gb');
+                      const sliderMax = (typeof maxMemoryField === 'number' && maxMemoryField > 0) ? Math.max(1, Math.floor(maxMemoryField)) : Math.max(1, Math.floor(base * 2));
                       return (
-                        <Form.Item name="max_swap_gb" label={`交换空间 最大允许分配（GB，整数）`}>
+                        <Form.Item name="max_shared_gb" label={`共享空间 最大允许分配（GB，整数）`}>
                           <>
                             <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                               <div style={{ minHeight: 22, marginBottom: 8 }}>
-                                {(base > 0 && val > Math.floor(base * 2)) ? (
+                                {(sliderMax > 0 && val > Math.floor(sliderMax * 0.8)) ? (
                                   <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
                                 ) : (
                                   <span style={{ visibility: 'hidden' }}>占位</span>
                                 )}
                               </div>
-                              <Slider
-                                min={0}
-                                max={Math.max(1, Math.floor(base * 2))}
-                                step={1}
-                                value={typeof val === 'number' ? val : 0}
-                                onChange={(v) => addHostForm.setFieldsValue({ max_swap_gb: v })}
-                              />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
+                                <Slider
+                                  min={0}
+                                  max={sliderMax}
+                                  step={1}
+                                  value={typeof val === 'number' ? val : 0}
+                                  onChange={(v) => addHostForm.setFieldsValue({ max_shared_gb: v })}
+                                  style={{ flex: 1, minWidth: 0 }}
+                                />
+                                <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val} GB` : '0 GB'}</div>
+                              </div>
                             </div>
                           </>
                         </Form.Item>
@@ -1802,11 +1831,7 @@ const ManageMachine = () => {
                     }}
                   </Form.Item>
                 </Col>
-                <Col xs={24} sm={6} md={6} lg={6} xl={6}>
-                  <Form.Item name="swap_size" label="交换空间 (GB)">
-                    <InputNumber min={0} style={{ width: '100%', maxWidth: 110 }} />
-                  </Form.Item>
-                </Col>
+                {/* removed individual shared_size field per API; only slider `max_shared_gb` is used */}
               </Row>
 
             <Row>
@@ -2000,7 +2025,7 @@ const ManageMachine = () => {
           <Form
             form={addContainerForm}
             layout="vertical"
-            initialValues={{ CPU_NUMBER: 1, MEMORY: 1, SWAP_MEM: 0, GPU_LIST: [], gpu_number: 0 }}
+            initialValues={{ CPU_NUMBER: 1, MEMORY: 1, SHARED_MEM: 0, GPU_LIST: [], gpu_number: 0 }}
             onValuesChange={(_changed, allVals) => {
               try {
                 const vals = allVals || addContainerForm.getFieldsValue();
@@ -2015,15 +2040,17 @@ const ManageMachine = () => {
                 const m = addContainerMachine || {};
                 const cpu = Number(vals.CPU_NUMBER || 0);
                 const mem = Number(vals.MEMORY || 0);
-                const swap = Number(vals.SWAP_MEM || 0);
+                const shared = Number(vals.SHARED_MEM || 0);
                 const gnum = Number(vals.gpu_number || 0);
                 const maxCpu = m.max_cpu_core_number ?? m.cpu_core_number ?? null;
                 const maxMem = m.max_memory_gb ?? m.memory_size_gb ?? null;
-                const maxSwap = m.max_swap_gb ?? m.max_swap_gb ?? null;
+                const maxShared = m.max_shared_gb ?? m.max_shared_gb ?? null;
                 const maxGpu = m.max_gpu_number ?? m.gpu_number ?? null;
                 if (maxCpu != null && cpu > Number(maxCpu)) errs.CPU_NUMBER = `超出最大 CPU (${maxCpu})`;
                 if (maxMem != null && mem > Number(maxMem)) errs.MEMORY = `超出最大内存 (${maxMem} GB)`;
-                if (maxSwap != null && swap > Number(maxSwap)) errs.SWAP_MEM = `超出最大交换空间 (${maxSwap} GB)`;
+                // shared should also not exceed requested memory
+                if (maxShared != null && shared > Number(maxShared)) errs.SHARED_MEM = `超出最大共享空间 (${maxShared} GB)`;
+                if (shared > mem) errs.SHARED_MEM = `共享空间不得大于内存 (${mem} GB)`;
                 if ((addContainerMachineType || '').toUpperCase() === 'GPU' && maxGpu != null && gnum > Number(maxGpu)) errs.gpu_number = `超出最大 GPU (${maxGpu})`;
                 setAddContainerFieldErrors(errs);
               } catch (e) {
@@ -2049,7 +2076,7 @@ const ManageMachine = () => {
               </Col>
             </Row>
 
-            <Typography.Text type="secondary">请注意：下面的资源参数用于校验并限制容器申请，请不要超过宿主机的算力/内存/交换空间上限。</Typography.Text>
+            <Typography.Text type="secondary">请注意：下面的资源参数用于校验并限制容器申请，请不要超过宿主机的算力/内存/共享空间上限。</Typography.Text>
             <br />
             <br />
 
@@ -2091,10 +2118,10 @@ const ManageMachine = () => {
                 </Col>
                 <Col span={12}>
                   <Form.Item
-                    name="SWAP_MEM"
-                    label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? addContainerMachine?.max_swap_gb ?? '-'})</span></span>}
-                    validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
-                    help={addContainerFieldErrors.SWAP_MEM || null}
+                    name="SHARED_MEM"
+                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_shared_gb ?? addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
+                    validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
+                    help={addContainerFieldErrors.SHARED_MEM || null}
                   >
                     <InputNumber min={0} className="mm-width-100" />
                   </Form.Item>
@@ -2106,10 +2133,10 @@ const ManageMachine = () => {
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item
-                    name="SWAP_MEM"
-                    label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? '-'})</span></span>}
-                    validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
-                    help={addContainerFieldErrors.SWAP_MEM || null}
+                    name="SHARED_MEM"
+                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
+                    validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
+                    help={addContainerFieldErrors.SHARED_MEM || null}
                   >
                     <InputNumber min={0} className="mm-width-100" />
                   </Form.Item>

@@ -99,8 +99,8 @@ const MachineDetailModal = ({ visible, machine, onClose, loading = false }) => {
 
             <Col xs={12} sm={12} md={6}>
               <div>
-                <Typography.Text strong className="cdm-item-label">交换分区 (GB)</Typography.Text>
-                <div><Typography.Text className="cdm-machine-text">{machine.max_swap_gb ?? '-'}</Typography.Text></div>
+                <Typography.Text strong className="cdm-item-label">共享空间 (GB)</Typography.Text>
+                <div><Typography.Text className="cdm-machine-text">{machine.max_shared_gb ?? '-'}</Typography.Text></div>
               </div>
             </Col>
           </Row>
