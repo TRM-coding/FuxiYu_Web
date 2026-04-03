@@ -525,6 +525,16 @@ const Home = () => {
         message.success(`已变更 ${data.username} 的角色`);
       } else if (type === 'invite') {
         message.success(`已发送邀请`);
+      } else if (type === 'stop') {
+        // stop container (high-risk)
+        const cid = data?.record?.key || data?.record?.container_id;
+        await handleStopContainer(data.record);
+        message.success(`容器 ${data.record.container_name} 停止请求已发送`);
+      } else if (type === 'restart') {
+        // restart container (high-risk)
+        const cid = data?.record?.key || data?.record?.container_id;
+        await handleRestartContainer(data.record);
+        message.success(`容器 ${data.record.container_name} 重启请求已发送`);
       }
     } catch (err) {
       console.error('modal action failed', err);
@@ -663,6 +673,31 @@ const Home = () => {
         iconColor: '#52c41a',
         confirmText: '确认邀请'
       }
+      ,
+      stop: {
+        title: '确认停止容器',
+        message: `确定要停止容器 ${data?.record?.container_name} 吗？`,
+        content: (
+          <div className="home-modal-danger">
+            <Typography.Text type="danger">停止容器是高风险操作，可能导致服务中断或数据不可用。</Typography.Text>
+          </div>
+        ),
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认停止'
+      },
+      restart: {
+        title: '确认重启容器',
+        message: `确定要重启容器 ${data?.record?.container_name} 吗？`,
+        content: (
+          <div className="home-modal-danger">
+            <Typography.Text type="danger">重启容器是高风险操作，可能会中断正在运行的任务。</Typography.Text>
+          </div>
+        ),
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认重启'
+      }
     };
     
     return configs[type] || {};
@@ -760,13 +795,13 @@ const Home = () => {
                         启动
                       </a>
                       <a
-                        onClick={() => { if (!restartDisabled) handleRestartContainer(record); }}
+                        onClick={() => { if (!restartDisabled) openConfirm('restart', { record }); }}
                         className={restartDisabled ? 'home-action-link home-action-disabled' : 'home-action-link'}
                       >
                         重启
                       </a>
                       <a
-                        onClick={() => { if (!stopDisabled) handleStopContainer(record); }}
+                        onClick={() => { if (!stopDisabled) openConfirm('stop', { record }); }}
                         className={stopDisabled ? 'home-action-link home-action-disabled' : 'home-action-link home-action-stop'}
                       >
                         停止

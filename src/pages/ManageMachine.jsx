@@ -198,6 +198,8 @@ const ManageMachine = () => {
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState(null);
+  // 高风险操作确认弹窗（停止/重启）
+  const [actionModal, setActionModal] = useState({ visible: false, type: '', loading: false, data: null });
   // 添加宿主机弹窗
   const [addHostVisible, setAddHostVisible] = useState(false);
   const [addHostLoading, setAddHostLoading] = useState(false);
@@ -222,6 +224,64 @@ const ManageMachine = () => {
   const [containerDeleteConfirmVisible, setContainerDeleteConfirmVisible] = useState(false);
   const [deleteTargetContainer, setDeleteTargetContainer] = useState(null);
   const [containerDeleteLoading, setContainerDeleteLoading] = useState(false);
+
+  const openActionConfirm = (type, data) => {
+    setActionModal({ visible: true, type, loading: false, data });
+  };
+
+  const closeActionModal = () => {
+    setActionModal({ visible: false, type: '', loading: false, data: null });
+  };
+
+  const handleActionConfirm = async () => {
+    setActionModal(prev => ({ ...prev, loading: true }));
+    try {
+      const { type, data } = actionModal;
+      if (type === 'stop') {
+        await handleStopContainer(data.record || data);
+        message.success(`容器 ${data.record?.container_name || ''} 停止请求已发送`);
+      } else if (type === 'restart') {
+        await handleRestartContainer(data.record || data);
+        message.success(`容器 ${data.record?.container_name || ''} 重启请求已发送`);
+      }
+    } catch (err) {
+      console.error('action confirm failed', err);
+      await showErrorModal({ message: err?.body || err || '操作失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setActionModal({ visible: false, type: '', loading: false, data: null });
+    }
+  };
+
+  const getActionModalConfig = () => {
+    const { type, data } = actionModal;
+    const configs = {
+      stop: {
+        title: '确认停止容器',
+        message: `确定要停止容器 ${data?.record?.container_name || ''} 吗？`,
+        content: (
+          <div className="home-modal-danger">
+            <Typography.Text type="danger">停止容器是高风险操作，可能导致服务中断或数据不可用。</Typography.Text>
+          </div>
+        ),
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认停止'
+      },
+      restart: {
+        title: '确认重启容器',
+        message: `确定要重启容器 ${data?.record?.container_name || ''} 吗？`,
+        content: (
+          <div className="home-modal-danger">
+            <Typography.Text type="danger">重启容器是高风险操作，可能会中断正在运行的任务。</Typography.Text>
+          </div>
+        ),
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认重启'
+      }
+    };
+    return configs[type] || {};
+  };
 
   //加载机器列表
   const fetchMachinesFromApi = async () => {
@@ -1256,8 +1316,8 @@ const ManageMachine = () => {
                 return (
                   <Space size="middle">
                     <Button type="primary" size="small" onClick={() => handleStartContainer(containerRecord)} disabled={startDisabled}>启动</Button>
-                    <Button danger size="small" onClick={() => handleStopContainer(containerRecord)} disabled={stopDisabled}>停止</Button>
-                    <Button size="small" onClick={() => handleRestartContainer(containerRecord)} disabled={restartDisabled}>重启</Button>
+                    <Button danger size="small" onClick={() => openActionConfirm('stop', { record: containerRecord })} disabled={stopDisabled}>停止</Button>
+                    <Button size="small" onClick={() => openActionConfirm('restart', { record: containerRecord })} disabled={restartDisabled}>重启</Button>
                     <Button 
                       size="small" 
                       type="primary"
@@ -1299,6 +1359,18 @@ const ManageMachine = () => {
 
   return (
     <>
+      <ConfirmModal
+        visible={actionModal.visible}
+        title={getActionModalConfig().title}
+        message={getActionModalConfig().message}
+        content={getActionModalConfig().content}
+        danger={getActionModalConfig().danger}
+        iconColor={getActionModalConfig().iconColor}
+        confirmText={getActionModalConfig().confirmText}
+        onConfirm={handleActionConfirm}
+        onCancel={closeActionModal}
+        loading={actionModal.loading}
+      />
       <div className="mm-root">
         {/* 1. 搜索区域 */}
         <div ref={searchBarRef} style={searchBarStyle} className="mm-search-bar mm-auto-hide-bar">
