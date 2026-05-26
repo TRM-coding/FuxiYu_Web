@@ -5,6 +5,7 @@
 .user-msg-wrapper { margin-top: 8px; }
 .user-msg-success { color: #14532d; }
 .user-msg-error { color: #a8071a; }
+.user-stats-row { margin-bottom: 20px; }
 
 @media (max-width: 768px) {
 	.user-root-row {

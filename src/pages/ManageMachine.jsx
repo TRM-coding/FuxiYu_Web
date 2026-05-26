@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination, Slider, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
@@ -77,6 +77,7 @@ const ManageMachine = () => {
   const [containerSearch, setContainerSearch] = useState({});
   // containers per machine cache: { [machineId]: { loading: bool, data: [] } }
   const [containerMap, setContainerMap] = useState({});
+  const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   // cache machine's container names for top-level search: { [machineId]: string[] }
   const [machineContainerNamesMap, setMachineContainerNamesMap] = useState({});
   // top-level container-name search loading
@@ -412,13 +413,57 @@ const ManageMachine = () => {
         machine_id: mid,
         machine_ip: c.machine_ip || '',
         owners: c.owners || [],
-        accounts: c.accounts || []
+        accounts: c.accounts || [],
+        is_long_term: c.is_long_term === true,
+        long_term_container_can_enable: c.long_term_container_can_enable !== false,
+        long_term_container_blocked_user_ids: c.long_term_container_blocked_user_ids || [],
+        long_term_container_remaining_by_user: c.long_term_container_remaining_by_user || {},
       }));
       setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: mapped, page: pageNumber, total_page: total_page, page_size: pageSize } }));
     } catch (err) {
       console.error('fetchContainersForMachine failed', machineId, err);
       // fallback: keep loading false but no data so UI will use local mock
       setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: [], page: pageNumber, total_page: 1 } }));
+    }
+  };
+
+  const handleLongTermChange = async (containerRecord, checked) => {
+    const cid = containerRecord?.key || containerRecord?.container_id;
+    const mid = containerRecord?.machine_id;
+    if (!cid) return;
+    setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: true }));
+    try {
+      const res = await setLongTermContainer({ container_id: Number(cid), is_long_term: checked });
+      const nextIsLongTerm = res?.is_long_term === true;
+      const nextCanEnable = res?.long_term_container_can_enable !== false;
+      const nextBlockedUserIds = res?.long_term_container_blocked_user_ids || [];
+      const nextRemainingByUser = res?.long_term_container_remaining_by_user || {};
+      setContainerMap(prev => {
+        const machineEntry = prev[String(mid)];
+        if (!machineEntry) return prev;
+        return {
+          ...prev,
+          [String(mid)]: {
+            ...machineEntry,
+            data: (machineEntry.data || []).map(c => (
+              String(c.key) === String(cid)
+                ? {
+                  ...c,
+                  is_long_term: nextIsLongTerm,
+                  long_term_container_can_enable: nextCanEnable,
+                  long_term_container_blocked_user_ids: nextBlockedUserIds,
+                  long_term_container_remaining_by_user: nextRemainingByUser,
+                }
+                : c
+            )),
+          },
+        };
+      });
+      message.success(nextIsLongTerm ? '已设为长期容器' : '已取消长期容器');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '设置长期容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: false }));
     }
   };
 
@@ -1324,8 +1369,19 @@ const ManageMachine = () => {
                 const startDisabled = status !== 'offline';
                 const restartDisabled = status !== 'online';
                 const stopDisabled = status !== 'online';
+                const longTermLoading = !!longTermUpdatingMap[String(containerRecord?.key)];
+                const longTermChecked = containerRecord?.is_long_term === true;
+                const longTermDisabled = longTermLoading || (!longTermChecked && containerRecord?.long_term_container_can_enable === false);
                 return (
                   <Space size="middle">
+                    <Checkbox
+                      checked={longTermChecked}
+                      disabled={longTermDisabled}
+                      title={longTermDisabled && !longTermLoading ? '绑定用户已达到长期容器上限' : undefined}
+                      onChange={e => handleLongTermChange(containerRecord, e.target.checked)}
+                    >
+                      长期容器
+                    </Checkbox>
                     <Button type="primary" size="small" onClick={() => handleStartContainer(containerRecord)} disabled={startDisabled}>启动</Button>
                     <Button danger size="small" onClick={() => openActionConfirm('stop', { record: containerRecord })} disabled={stopDisabled}>停止</Button>
                     <Button size="small" onClick={() => openActionConfirm('restart', { record: containerRecord })} disabled={restartDisabled}>重启</Button>

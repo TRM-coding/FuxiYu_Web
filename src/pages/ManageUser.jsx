@@ -1,12 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message, InputNumber } from 'antd';
+import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message, InputNumber, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { listAllUserBrefInformation, getUserDetailInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator, setLongTermContainer } from '../api/container_api';
 const { Column } = Table;
 import './ManageUser.css';
 import TableComponent from '../components/TableComponent';
@@ -111,6 +111,7 @@ const ManageUser = () => {
 
   // container cache per user id: { [userId]: { loading, data } }
   const [containerMap, setContainerMap] = useState({});
+  const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   // matched user ids from top-level container name search
   const [matchedUserIds, setMatchedUserIds] = useState(null);
   // top-level container-name search loading
@@ -189,6 +190,7 @@ const ManageUser = () => {
           amount_of_container: u.amount_of_container ?? u.amount_of_containers ?? 0,
           amount_of_functional_container: u.amount_of_functional_container ?? 0,
           amount_of_managed_container: u.amount_of_managed_container ?? 0,
+          amount_of_long_term_container: u.amount_of_long_term_container ?? 0,
         }));
         if (mounted) setUsers(mapped);
       } catch (err) {
@@ -383,6 +385,12 @@ const ManageUser = () => {
     try {
       const res = await listAllContainerBrefInformation({ machine_id: null, user_id: Number(userId), page_number: 0, page_size: 200 });
       const items = (res && (res.containers_info || res.containers)) || [];
+      const longTermRemaining = Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_remaining')
+        ? Number(res.long_term_container_remaining)
+        : null;
+      const longTermLimit = Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_limit')
+        ? Number(res.long_term_container_limit)
+        : null;
       const mapped = items.map((c, idx) => ({
         key: c.container_id ? String(c.container_id) : `c-${idx}`,
         container_name: c.container_name || c.name || `container-${idx}`,
@@ -391,6 +399,10 @@ const ManageUser = () => {
         container_status: (c.container_status || '').toLowerCase(),
         machine_id: c.machine_id ? String(c.machine_id) : null,
         accounts: c.accounts || [],
+        is_long_term: c.is_long_term === true,
+        long_term_container_can_enable: c.long_term_container_can_enable !== false,
+        long_term_container_blocked_user_ids: c.long_term_container_blocked_user_ids || [],
+        long_term_container_remaining_by_user: c.long_term_container_remaining_by_user || {},
       }));
       // fetch detail per container to enrich with image and account role info for this user
       const userObj = users.find(u => String(u.key) === String(userId));
@@ -423,14 +435,18 @@ const ManageUser = () => {
             cpu_number: det?.cpu_number ?? c.cpu_number ?? null,
             gpu_number: det?.gpu_number ?? c.gpu_number ?? 0,
             memory_gb: det?.memory_gb ?? c.memory_gb ?? null,
-            shared_gb: det?.shared_gb ?? c.shared_gb ?? null
+            shared_gb: det?.shared_gb ?? c.shared_gb ?? null,
+            is_long_term: det?.is_long_term === true || c.is_long_term === true,
+            long_term_container_can_enable: det?.long_term_container_can_enable !== false && c.long_term_container_can_enable !== false,
+            long_term_container_blocked_user_ids: det?.long_term_container_blocked_user_ids || c.long_term_container_blocked_user_ids || [],
+            long_term_container_remaining_by_user: det?.long_term_container_remaining_by_user || c.long_term_container_remaining_by_user || {},
           };
         } catch (e) {
           // if detail fetch fails, do not attempt old fallback — keep bref info but no userRole
           return { ...c, accounts: c.accounts || [], userRole: null };
         }
       }));
-      setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: detailed } }));
+      setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: detailed, long_term_container_remaining: longTermRemaining, long_term_container_limit: longTermLimit } }));
     } catch (err) {
       console.error('fetchContainersForUser failed', userId, err);
       setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: [] } }));
@@ -447,6 +463,59 @@ const ManageUser = () => {
     }
     const data = containerMap[id].data || [];
     return data; // `userRole` is provided by detail fetch and stored in cache
+  };
+
+  const handleLongTermChange = async (userRecord, containerRecord, checked) => {
+    const cid = containerRecord?.key || containerRecord?.container_id;
+    const uid = userRecord?.key || userRecord?.user_id;
+    if (!cid || !uid) return;
+    const currentlyLongTerm = containerRecord?.is_long_term === true;
+    setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: true }));
+    try {
+      const res = await setLongTermContainer({ container_id: Number(cid), is_long_term: checked });
+      const nextIsLongTerm = res?.is_long_term === true;
+      const nextCanEnable = res?.long_term_container_can_enable !== false;
+      const nextBlockedUserIds = res?.long_term_container_blocked_user_ids || [];
+      const nextRemainingByUser = res?.long_term_container_remaining_by_user || {};
+      const userRemaining = Object.prototype.hasOwnProperty.call(nextRemainingByUser, String(uid))
+        ? Number(nextRemainingByUser[String(uid)])
+        : (Object.prototype.hasOwnProperty.call(nextRemainingByUser, Number(uid))
+          ? Number(nextRemainingByUser[Number(uid)])
+          : null);
+      setContainerMap(prev => {
+        const entry = prev[String(uid)] || { data: [] };
+        return {
+          ...prev,
+          [String(uid)]: {
+            ...entry,
+            long_term_container_remaining: userRemaining === null ? entry.long_term_container_remaining : userRemaining,
+            data: (entry.data || []).map(c => (
+              String(c.key) === String(cid)
+                ? {
+                  ...c,
+                  is_long_term: nextIsLongTerm,
+                  long_term_container_can_enable: nextCanEnable,
+                  long_term_container_blocked_user_ids: nextBlockedUserIds,
+                  long_term_container_remaining_by_user: nextRemainingByUser,
+                }
+                : c
+            )),
+          },
+        };
+      });
+      setUsers(prev => prev.map(u => {
+        if (String(u.key) !== String(uid)) return u;
+        let nextCount = Number(u.amount_of_long_term_container || 0);
+        if (nextIsLongTerm && !currentlyLongTerm) nextCount += 1;
+        if (!nextIsLongTerm && currentlyLongTerm) nextCount = Math.max(0, nextCount - 1);
+        return { ...u, amount_of_long_term_container: nextCount };
+      }));
+      message.success(nextIsLongTerm ? '已设为长期容器' : '已取消长期容器');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '设置长期容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: false }));
+    }
   };
 
   // 顶部“容器名”搜索：全局查找容器 -> 获取 container_id -> 获取 detail -> 收集 accounts 中的 user_id
@@ -814,6 +883,28 @@ const ManageUser = () => {
                               render={renderContainerRoleTag}
                             />
                             <Column
+                              title="长期容器"
+                              dataIndex="is_long_term"
+                              key="is_long_term"
+                              render={(_, containerRecord) => {
+                                const cid = containerRecord?.key || containerRecord?.container_id;
+                                const entry = containerMap[String(record.key)] || {};
+                                const longTermChecked = containerRecord?.is_long_term === true;
+                                const remaining = entry.long_term_container_remaining;
+                                const limitReached = remaining !== null && remaining !== undefined && Number(remaining) <= 0;
+                                const blockedByRelatedUser = containerRecord?.long_term_container_can_enable === false;
+                                const disabled = !!longTermUpdatingMap[String(cid)] || (!longTermChecked && (limitReached || blockedByRelatedUser));
+                                return (
+                                  <Checkbox
+                                    checked={longTermChecked}
+                                    disabled={disabled}
+                                    title={disabled && !longTermUpdatingMap[String(cid)] ? '绑定用户已达到长期容器上限' : undefined}
+                                    onChange={e => handleLongTermChange(record, containerRecord, e.target.checked)}
+                                  />
+                                );
+                              }}
+                            />
+                            <Column
                               title="操作"
                               key="action"
                               render={(_, containerRecord) => {
@@ -888,6 +979,7 @@ const ManageUser = () => {
                 const totalContainers = record.amount_of_container ?? record.amountOfContainer ?? (record.containers ? record.containers.length : 0) ?? 0;
                 const runningContainers = record.amount_of_functional_container ?? record.amountOfFunctionalContainer ?? 0;
                 const managedContainers = record.amount_of_managed_container ?? record.amountOfManagedContainer ?? 0;
+                const longTermContainers = record.amount_of_long_term_container ?? record.amountOfLongTermContainer ?? 0;
 
                 return (
                   <span className="manage-user-stats">
@@ -899,6 +991,9 @@ const ManageUser = () => {
                     <span className="manage-user-stats-sep">·</span>
                     <span className="manage-user-stats-key">由ta管理: </span>
                     <span className="manage-user-stats-value-yellow">{managedContainers}</span>
+                    <span className="manage-user-stats-sep">·</span>
+                    <span className="manage-user-stats-key">长期: </span>
+                    <span className="manage-user-stats-value-purple">{longTermContainers}</span>
                   </span>
                 );
               }}

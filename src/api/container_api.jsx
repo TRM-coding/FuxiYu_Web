@@ -329,6 +329,32 @@ export const refreshLastSshLoginTime = async (container_id = 0, timeout = null) 
 	}
 };
 
+export const setLongTermContainer = async ({ container_id = 0, is_long_term = false } = {}, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_SET_LONG_TERM, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...getAuthTokenHeader(),
+			},
+			body: JSON.stringify({ container_id, is_long_term }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Set long-term container');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Set long-term container request timed out');
+		throw err;
+	}
+};
+
 export default {
 	createContainer,
 	deleteContainer,
@@ -341,4 +367,5 @@ export default {
 	stopContainer,
 	restartContainer,
 	refreshLastSshLoginTime,
+	setLongTermContainer,
 };

@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
-import { Flex, Typography, Row, Col, Button, Input, Space, Table, Tag, message } from 'antd';
+import { Flex, Typography, Row, Col, Button, Input, Space, Table, Tag, message, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 import TableComponent from '../components/TableComponent';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
-import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -81,6 +81,9 @@ const Home = () => {
   const [containers, setContainers] = useState(initialContainers);
   const [loadingContainers, setLoadingContainers] = useState(false);
   const [sshRefreshingMap, setSshRefreshingMap] = useState({});
+  const [longTermRemaining, setLongTermRemaining] = useState(null);
+  const [longTermLimit, setLongTermLimit] = useState(null);
+  const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
 
   const parseSshTimeToDate = (raw) => {
     if (!raw || typeof raw !== 'string') return null;
@@ -207,12 +210,19 @@ const Home = () => {
           machine_id: c.machine_id ? String(c.machine_id) : null,
           machine_ip: c.machine_ip || '',
           accounts: c.accounts || [],
+          is_long_term: c.is_long_term === true,
           last_ssh_login_time: c.last_ssh_login_time ?? null,
           cleanup_after_days: c.cleanup_after_days ?? null,
           cleanup_at: c.cleanup_at ?? null,
           seconds_until_cleanup: c.seconds_until_cleanup ?? null,
           cleanup_status: c.cleanup_status ?? null,
         }));
+        if (Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_remaining')) {
+          setLongTermRemaining(Number(res.long_term_container_remaining));
+        }
+        if (Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_limit')) {
+          setLongTermLimit(Number(res.long_term_container_limit));
+        }
         if (mounted) setContainers(mapped);
         if (mounted) await refreshSshTimeForAllContainers(mapped);
       } catch (err) {
@@ -225,6 +235,38 @@ const Home = () => {
     load();
     return () => { mounted = false; };
   }, [currentUserId]);
+
+  const handleLongTermChange = async (record, checked) => {
+    const cid = record?.key || record?.container_id;
+    if (!cid) return;
+    const currentlyLongTerm = record?.is_long_term === true;
+    if (checked && !currentlyLongTerm && Number(longTermRemaining) <= 0) return;
+
+    setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: true }));
+    try {
+      const res = await setLongTermContainer({ container_id: Number(cid), is_long_term: checked });
+      const nextIsLongTerm = res?.is_long_term === true;
+      setContainers(prev => prev.map(c => (
+        String(c.key) === String(cid)
+          ? { ...c, is_long_term: nextIsLongTerm }
+          : c
+      )));
+      const remainingByUser = res?.long_term_container_remaining_by_user || {};
+      const nextRemaining = remainingByUser?.[String(currentUserId)] ?? remainingByUser?.[Number(currentUserId)];
+      if (nextRemaining !== undefined) {
+        setLongTermRemaining(Number(nextRemaining));
+      } else if (checked && !currentlyLongTerm) {
+        setLongTermRemaining(prev => (prev === null ? prev : Math.max(0, Number(prev) - 1)));
+      } else if (!checked && currentlyLongTerm) {
+        setLongTermRemaining(prev => (prev === null ? prev : Number(prev) + 1));
+      }
+      message.success(nextIsLongTerm ? '已设为长期容器' : '已取消长期容器');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '设置长期容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: false }));
+    }
+  };
 
   // If navigated here with a startHeartbeat request (from Apply), start the heartbeat and refresh list when ONLINE
   const location = useLocation();
@@ -448,21 +490,25 @@ const Home = () => {
   };
 
   // helpers
-  const getRoleForUser = (accounts, username) => {
+  const getRoleForUser = (accounts, username, userId = null) => {
     if (!accounts) return null;
     if (Array.isArray(accounts)) {
       for (const item of accounts) {
         if (Array.isArray(item)) {
           if (item[0] === username) return item[1];
         } else if (item && typeof item === 'object') {
+          if (userId !== null && item.user_id !== undefined && String(item.user_id) === String(userId)) return item.type ?? item.role ?? null;
           if ((item.name ?? item.username) === username) return item.type ?? item.role ?? null;
         }
       }
     } else if (accounts && typeof accounts === 'object') {
+      if (userId !== null && accounts.user_id !== undefined && String(accounts.user_id) === String(userId)) return accounts.type ?? accounts.role ?? null;
       if ((accounts.name ?? accounts.username) === username) return accounts.type ?? accounts.role ?? null;
     }
     return null;
   };
+
+  const isRootRole = (role) => String(role || '').toUpperCase() === 'ROOT';
 
   const openConfirm = (type, data) => {
     // hide parent modal (detail/edit) if open and remember which
@@ -779,15 +825,28 @@ const Home = () => {
               title="操作"
               key="action"
               render={(_, record) => {
-                const myRole = getRoleForUser(record.accounts, currentUserName);
+                const myRole = getRoleForUser(record.accounts, currentUserName, currentUserId);
                 const status = (record?.container_status || '').toLowerCase();
                 const startDisabled = status !== 'offline';
                 const restartDisabled = status !== 'online';
                 const stopDisabled = status !== 'online';
                 const sshRefreshLoading = !!sshRefreshingMap[String(record?.key)];
+                const isRootOwner = isRootRole(myRole);
+                const longTermChecked = record?.is_long_term === true;
+                const longTermLoading = !!longTermUpdatingMap[String(record?.key)];
+                const longTermDisabled = longTermLoading || (!longTermChecked && longTermRemaining !== null && Number(longTermRemaining) <= 0);
 
                 const ActionButtons = (
                   <Space size="small">
+                    {isRootOwner ? (
+                      <Checkbox
+                        checked={longTermChecked}
+                        disabled={longTermDisabled}
+                        onChange={e => handleLongTermChange(record, e.target.checked)}
+                      >
+                        长期容器
+                      </Checkbox>
+                    ) : null}
                       <a
                         onClick={() => { if (!startDisabled) handleStartContainer(record); }}
                         className={startDisabled ? 'home-action-link home-action-disabled' : 'home-action-link'}

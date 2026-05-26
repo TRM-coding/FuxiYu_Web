@@ -48,6 +48,7 @@ export const API_ROUTES = {
 	CONTAINERS_STOP: '/api/containers/stop_container',
 	CONTAINERS_RESTART: '/api/containers/restart_container',
 	CONTAINERS_REFRESH_LAST_SSH_TIME: '/api/containers/refresh_last_ssh_login_time',
+	CONTAINERS_SET_LONG_TERM: '/api/containers/set_long_term_container',
 	
 };
 

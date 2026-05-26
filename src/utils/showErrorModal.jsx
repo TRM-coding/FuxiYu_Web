@@ -155,6 +155,13 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
     '/containers/update_role': { update_role_failed: '更新角色失败', container_offline: '容器未在线，无法更新角色' },
     '/containers/get_container_detail_information': { get_detail_failed: '获取容器详情失败' },
     '/containers/list_all_container_bref_information': { list_failed: '获取容器列表失败' },
+    '/containers/set_long_term_container': {
+      container_not_found: '容器不存在',
+      machine_permission_denied: '权限不足，无法操作该机器上的容器',
+      container_permission_denied: '只有容器所有者可以设置长期容器',
+      long_term_limit_reached: '已达到长期容器上限',
+      invalid_payload: '长期容器设置参数无效',
+    },
 
     // 机器相关
     '/machines/add_machine': { duplicate_entry: '机器已存在', internal_error: '内部错误，添加失败', create_failed: '添加机器失败' },
@@ -177,7 +184,8 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
       NODE_error: '节点错误',
       machine_maintenance: '机器正在维护中',
       machine_offline: '机器离线',
-      machine_not_found: '机器不存在'
+      machine_not_found: '机器不存在',
+      long_term_limit_reached: '已达到长期容器上限'
     }
   };
 
@@ -227,7 +235,9 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
       hint = '资源未找到，请确认请求的内容是否存在。';
       break;
     case 409:
-      hint = '请求冲突，相同名称的内容已存在。';
+      hint = errorReason === 'long_term_limit_reached'
+        ? '请先取消其他长期容器，或调整长期容器上限。'
+        : '请求冲突，请检查是否存在重复内容。';
       break;
     case 422:
       hint = '请求参数校验失败，请修正后重试。';
