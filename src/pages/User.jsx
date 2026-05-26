@@ -184,7 +184,7 @@ const User = () => {
               <Statistic title="容器" value={containerStats.total} />
             </Col>
             <Col xs={12} md={8}>
-              <Statistic title="可用容器" value={containerStats.functional} />
+              <Statistic title="正常运行" value={containerStats.functional} />
             </Col>
             <Col xs={12} md={8}>
               <Statistic title="管理容器" value={containerStats.managed} />

@@ -136,7 +136,7 @@ const Home = () => {
   };
 
   const formatCleanupCountdown = (raw, record = null) => {
-    if (record?.is_long_term === true) return '-';
+    if (record?.is_long_term === true) return '长期容器';
     if (!raw && (!record || record.cleanup_status === 'unknown' || record.seconds_until_cleanup == null)) {
       return '从未登录';
     }
