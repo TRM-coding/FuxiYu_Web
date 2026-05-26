@@ -110,38 +110,52 @@ const Home = () => {
     return null;
   };
 
+  const formatBeijingDateTime = (date) => date.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    hour12: false,
+  });
+
+  const formatDuration = (seconds) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return null;
+    if (seconds < 3600) {
+      return `${Math.max(1, Math.ceil(seconds / 60))}分钟`;
+    }
+    const hours = Math.floor(seconds / 3600);
+    const days = Math.floor(hours / 24);
+    const remainHours = hours % 24;
+    if (days > 0 && remainHours > 0) return `${days}天${remainHours}小时`;
+    if (days > 0) return `${days}天`;
+    return `${Math.max(1, hours)}小时`;
+  };
+
   const formatLastSshTime = (raw) => {
-    if (!raw) return '-';
+    if (!raw) return '从未登录';
     const d = parseSshTimeToDate(raw);
     if (!d) return String(raw);
-    return d.toLocaleString();
+    return formatBeijingDateTime(d);
   };
 
   const formatCleanupCountdown = (raw, record = null) => {
+    if (record?.is_long_term === true) return '-';
+    if (!raw && (!record || record.cleanup_status === 'unknown' || record.seconds_until_cleanup == null)) {
+      return '从未登录';
+    }
     // Prefer backend-calculated fields (authoritative and format-independent).
     if (record && typeof record === 'object') {
       const status = record.cleanup_status;
       const seconds = Number(record.seconds_until_cleanup);
       if (status === 'due') return '可清理';
       if (Number.isFinite(seconds) && seconds >= 0) {
-        const hours = Math.ceil(seconds / 3600);
-        const days = Math.floor(hours / 24);
-        const remainHours = hours % 24;
-        if (days > 0) return `${days}天${remainHours}小时`;
-        return `${hours}小时`;
+        return formatDuration(seconds);
       }
     }
 
     const d = parseSshTimeToDate(raw);
-    if (!d) return '-';
+    if (!d) return '从未登录';
     const expireAt = d.getTime() + SSH_CLEANUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
     const diff = expireAt - Date.now();
     if (diff <= 0) return '可清理';
-    const hours = Math.ceil(diff / (60 * 60 * 1000));
-    const days = Math.floor(hours / 24);
-    const remainHours = hours % 24;
-    if (days > 0) return `${days}天${remainHours}小时`;
-    return `${hours}小时`;
+    return formatDuration(Math.floor(diff / 1000));
   };
 
   const refreshSshTimeForContainer = async (containerId, options = {}) => {
@@ -767,28 +781,34 @@ const Home = () => {
       <div className="home-root">
         <div ref={statsBarRef} style={statsBarStyle} className="home-hero home-auto-hide-bar">
           <Row gutter={16} className="home-row-bottom">
-            <Col xs={12} sm={12} md={6}>
+            <Col xs={12} sm={12} md={5}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">总容器数</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-blue">{containers.length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={12} sm={12} md={6}>
+            <Col xs={12} sm={12} md={5}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">运行中</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-green">{containers.filter(c => c.container_status === 'online').length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={12} sm={12} md={6}>
+            <Col xs={12} sm={12} md={4}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">异常</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-warning">{containers.filter(c => c.container_status === 'failed').length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={12} sm={12} md={6}>
+            <Col xs={12} sm={12} md={5}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">离线</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-red">{containers.filter(c => c.container_status === 'offline').length}</Typography.Title>
+              </div>
+            </Col>
+            <Col xs={12} sm={12} md={5}>
+              <div className="home-stat-card">
+                <Typography.Text type="secondary" className="home-stat-label">长期容器</Typography.Text>
+                <Typography.Title level={2} className="home-stat-number home-purple">{containers.filter(c => c.is_long_term === true).length}</Typography.Title>
               </div>
             </Col>
           </Row>

@@ -31,7 +31,6 @@ const User = () => {
     total: 0,
     functional: 0,
     managed: 0,
-    longTerm: 0,
   });
 
   // 读取当前用户信息，如果缺失则清除 auth 并重定向到登录
@@ -88,7 +87,6 @@ const User = () => {
           total: Number(info.amount_of_container || 0),
           functional: Number(info.amount_of_functional_container || 0),
           managed: Number(info.amount_of_managed_container || 0),
-          longTerm: Number(info.amount_of_long_term_container || 0),
         });
         const isOp = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
         setIsOperator(Boolean(isOp));
@@ -182,17 +180,14 @@ const User = () => {
           className="user-card"
         >
           <Row gutter={[16, 12]} className="user-stats-row">
-            <Col xs={12} md={6}>
+            <Col xs={12} md={8}>
               <Statistic title="容器" value={containerStats.total} />
             </Col>
-            <Col xs={12} md={6}>
+            <Col xs={12} md={8}>
               <Statistic title="可用容器" value={containerStats.functional} />
             </Col>
-            <Col xs={12} md={6}>
+            <Col xs={12} md={8}>
               <Statistic title="管理容器" value={containerStats.managed} />
-            </Col>
-            <Col xs={12} md={6}>
-              <Statistic title="长期容器" value={containerStats.longTerm} />
             </Col>
           </Row>
           <Form form={form} layout="vertical" initialValues={{}}>
