@@ -1,0 +1,11 @@
+.tm-root {
+  padding: 0;
+}
+
+.tm-top-bar {
+  margin-bottom: 0;
+}
+
+.tm-card {
+  min-height: 180px;
+}

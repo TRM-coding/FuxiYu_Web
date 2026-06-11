@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { InfoCircleOutlined, UserOutlined } from '@ant-design/icons';
+import { InfoCircleOutlined, UserOutlined, SendOutlined } from '@ant-design/icons';
 import { Menu } from 'antd';
 import './Navbar.css'; // 复用了同样的样式
 
@@ -14,6 +14,11 @@ const items = [
     label: '宿主机管理',
     key: '/admin/machines',
     icon: <InfoCircleOutlined />,
+  },
+  {
+    label: '公告管理',
+    key: '/admin/announcements',
+    icon: <SendOutlined />,
   }
 ];
 

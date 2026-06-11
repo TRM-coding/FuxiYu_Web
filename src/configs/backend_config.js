@@ -49,6 +49,15 @@ export const API_ROUTES = {
 	CONTAINERS_RESTART: '/api/containers/restart_container',
 	CONTAINERS_REFRESH_LAST_SSH_TIME: '/api/containers/refresh_last_ssh_login_time',
 	CONTAINERS_SET_LONG_TERM: '/api/containers/set_long_term_container',
+
+	// Announcement routes
+	ANNOUNCEMENTS_TEMPLATES: '/api/announcements/templates',
+	ANNOUNCEMENTS_RESOLVE_TARGETS: '/api/announcements/resolve-targets',
+	ANNOUNCEMENTS_LIST: '/api/announcements/list',
+	ANNOUNCEMENTS_BASE: '/api/announcements',
+	ANNOUNCEMENTS_DRAFTS: '/api/announcements/drafts',
+	ANNOUNCEMENTS_DRAFTS_SAVE: '/api/announcements/drafts/save',
+	ANNOUNCEMENTS_DRAFTS_BATCH_SEND: '/api/announcements/drafts/batch-send',
 	
 };
 

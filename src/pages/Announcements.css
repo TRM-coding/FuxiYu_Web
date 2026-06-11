@@ -1,0 +1,51 @@
+.ann-root {
+  padding: 0;
+}
+
+.ann-top-bar {
+  margin-bottom: 0;
+}
+
+.ann-recipient-bar {
+  margin-bottom: 16px;
+  border: 1px solid #1890ff;
+  background: #e6f7ff;
+}
+
+.ann-section-card {
+  margin-bottom: 16px;
+}
+
+.ann-draft-card {
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #d9d9d9;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.ann-draft-card:hover {
+  border-color: #1890ff;
+}
+
+.ann-draft-checked {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.ann-card-preview {
+  margin: 8px 0;
+  min-height: 40px;
+  color: #8c8c8c;
+  font-size: 13px;
+}
+
+.ann-sent-card {
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+}
+
+.ann-card-meta {
+  margin-top: 4px;
+}
