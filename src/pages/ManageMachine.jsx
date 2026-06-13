@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination, Slider, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
@@ -57,6 +57,82 @@ const ROLE_CONFIG = {
   }
 };
 
+const SSH_CLEANUP_WINDOW_DAYS = 7;
+
+// ── SSH 清理时间 辅助函数 ──────────────────────────────────────────
+
+const parseSshTimeToDate = (raw) => {
+  if (!raw || typeof raw !== 'string') return null;
+  const t = raw.trim();
+  const d0 = new Date(t);
+  if (!Number.isNaN(d0.getTime())) return d0;
+
+  // fallback A: parse syslog-like prefix, e.g. "Mar 20 10:35:20 ..."
+  const m = t.match(/^([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2})/);
+  if (m) {
+    const year = new Date().getFullYear();
+    const d1 = new Date(`${m[1]} ${m[2]} ${year} ${m[3]}`);
+    if (!Number.isNaN(d1.getTime())) return d1;
+  }
+
+  // fallback B: parse `last` output snippet, e.g. "... Fri Mar 20 12:39 ..."
+  const m2 = t.match(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2})(?::(\d{2}))?\b/);
+  if (m2) {
+    const year = new Date().getFullYear();
+    const hhmmss = `${m2[3]}:${m2[4] || '00'}`;
+    const d2 = new Date(`${m2[1]} ${m2[2]} ${year} ${hhmmss}`);
+    if (!Number.isNaN(d2.getTime())) return d2;
+  }
+  return null;
+};
+
+const formatBeijingDateTime = (date) => date.toLocaleString('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  hour12: false,
+});
+
+const formatDuration = (seconds) => {
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  if (seconds < 3600) {
+    return `${Math.max(1, Math.ceil(seconds / 60))}分钟`;
+  }
+  const hours = Math.floor(seconds / 3600);
+  const days = Math.floor(hours / 24);
+  const remainHours = hours % 24;
+  if (days > 0 && remainHours > 0) return `${days}天${remainHours}小时`;
+  if (days > 0) return `${days}天`;
+  return `${Math.max(1, hours)}小时`;
+};
+
+const formatLastSshTime = (raw) => {
+  if (!raw) return '从未登录';
+  const d = parseSshTimeToDate(raw);
+  if (!d) return String(raw);
+  return formatBeijingDateTime(d);
+};
+
+const formatCleanupCountdown = (raw, record = null) => {
+  if (record?.is_long_term === true) return '长期容器';
+  if (!raw && (!record || record.cleanup_status === 'unknown' || record.seconds_until_cleanup == null)) {
+    return '从未登录';
+  }
+  if (record && typeof record === 'object') {
+    const status = record.cleanup_status;
+    const seconds = Number(record.seconds_until_cleanup);
+    if (status === 'due') return '可清理';
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return formatDuration(seconds);
+    }
+  }
+
+  const d = parseSshTimeToDate(raw);
+  if (!d) return '从未登录';
+  const expireAt = d.getTime() + SSH_CLEANUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const diff = expireAt - Date.now();
+  if (diff <= 0) return '可清理';
+  return formatDuration(Math.floor(diff / 1000));
+};
+
 const ManageMachine = () => {
   // 机器搜索状态
   const [searchName, setSearchName] = useState('');
@@ -78,6 +154,7 @@ const ManageMachine = () => {
   // containers per machine cache: { [machineId]: { loading: bool, data: [] } }
   const [containerMap, setContainerMap] = useState({});
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
+  const [sshRefreshingMap, setSshRefreshingMap] = useState({});
   // cache machine's container names for top-level search: { [machineId]: string[] }
   const [machineContainerNamesMap, setMachineContainerNamesMap] = useState({});
   // top-level container-name search loading
@@ -418,6 +495,11 @@ const ManageMachine = () => {
         long_term_container_can_enable: c.long_term_container_can_enable !== false,
         long_term_container_blocked_user_ids: c.long_term_container_blocked_user_ids || [],
         long_term_container_remaining_by_user: c.long_term_container_remaining_by_user || {},
+        last_ssh_login_time: c.last_ssh_login_time ?? null,
+        cleanup_after_days: c.cleanup_after_days ?? null,
+        cleanup_at: c.cleanup_at ?? null,
+        seconds_until_cleanup: c.seconds_until_cleanup ?? null,
+        cleanup_status: c.cleanup_status ?? null,
       }));
       setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: mapped, page: pageNumber, total_page: total_page, page_size: pageSize } }));
     } catch (err) {
@@ -467,7 +549,46 @@ const ManageMachine = () => {
     }
   };
 
-  // 顶部“容器名”搜索：按机器维度缓存容器名
+  // ── SSH 刷新 ─────────────────────────────────────────────
+
+  const refreshSshTimeForContainer = async (containerRecord) => {
+    const cid = containerRecord?.key || containerRecord?.container_id;
+    const mid = String(containerRecord?.machine_id || '');
+    if (!cid) return;
+    setSshRefreshingMap(prev => ({ ...prev, [String(cid)]: true }));
+    try {
+      const res = await refreshLastSshLoginTime(Number(cid));
+      const value = (res && Object.prototype.hasOwnProperty.call(res, 'last_ssh_login_time'))
+        ? res.last_ssh_login_time
+        : null;
+      const cleanup_after_days = res?.cleanup_after_days ?? null;
+      const cleanup_at = res?.cleanup_at ?? null;
+      const seconds_until_cleanup = res?.seconds_until_cleanup ?? null;
+      const cleanup_status = res?.cleanup_status ?? null;
+      setContainerMap(prev => {
+        const entry = prev[mid];
+        if (!entry) return prev;
+        return {
+          ...prev,
+          [mid]: {
+            ...entry,
+            data: (entry.data || []).map(c => (
+              String(c.key) === String(cid)
+                ? { ...c, last_ssh_login_time: value, cleanup_after_days, cleanup_at, seconds_until_cleanup, cleanup_status }
+                : c
+            )),
+          },
+        };
+      });
+      message.success('SSH 登录时间已刷新');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '刷新 SSH 登录时间失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setSshRefreshingMap(prev => ({ ...prev, [String(cid)]: false }));
+    }
+  };
+
+  // 顶部”容器名”搜索：按机器维度缓存容器名
   useEffect(() => {
     const keyword = (searchContainerName || '').trim().toLowerCase();
     if (!keyword) {
@@ -1355,11 +1476,23 @@ const ManageMachine = () => {
             <Column title="容器ID" dataIndex="key" key="key" />
             <Column title="容器名" dataIndex="container_name" key="container_name" />
             <Column title="端口" dataIndex="port" key="port" />
-            <Column 
-              title="状态" 
-              dataIndex="container_status" 
-              key="container_status" 
-              render={renderContainerStatus} 
+            <Column
+              title="状态"
+              dataIndex="container_status"
+              key="container_status"
+              render={renderContainerStatus}
+            />
+            <Column
+              title="上次SSH登录"
+              dataIndex="last_ssh_login_time"
+              key="last_ssh_login_time"
+              render={(_, record) => formatLastSshTime(record?.last_ssh_login_time)}
+            />
+            <Column
+              title="距清理时间"
+              dataIndex="ssh_cleanup_countdown"
+              key="ssh_cleanup_countdown"
+              render={(_, record) => formatCleanupCountdown(record?.last_ssh_login_time, record)}
             />
             <Column
               title="操作"
@@ -1372,6 +1505,7 @@ const ManageMachine = () => {
                 const longTermLoading = !!longTermUpdatingMap[String(containerRecord?.key)];
                 const longTermChecked = containerRecord?.is_long_term === true;
                 const longTermDisabled = longTermLoading || (!longTermChecked && containerRecord?.long_term_container_can_enable === false);
+                const sshRefreshLoading = !!sshRefreshingMap[String(containerRecord?.key)];
                 return (
                   <Space size="middle">
                     <Checkbox
@@ -1385,8 +1519,15 @@ const ManageMachine = () => {
                     <Button type="primary" size="small" onClick={() => handleStartContainer(containerRecord)} disabled={startDisabled}>启动</Button>
                     <Button danger size="small" onClick={() => openActionConfirm('stop', { record: containerRecord })} disabled={stopDisabled}>停止</Button>
                     <Button size="small" onClick={() => openActionConfirm('restart', { record: containerRecord })} disabled={restartDisabled}>重启</Button>
-                    <Button 
-                      size="small" 
+                    <Button
+                      size="small"
+                      onClick={() => refreshSshTimeForContainer(containerRecord)}
+                      loading={sshRefreshLoading}
+                    >
+                      刷新SSH
+                    </Button>
+                    <Button
+                      size="small"
                       type="primary"
                       ghost
                       onClick={() => openContainerDetail(containerRecord)}

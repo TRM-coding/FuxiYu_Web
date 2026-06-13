@@ -12,7 +12,7 @@ export const BACKEND_ORIGIN = (typeof window !== 'undefined' ? window.location.o
 // when launching Vite to indicate HTTPS mode.
 // Default to true (HTTPS enabled) unless explicitly disabled by VITE_ENABLE_SSL='false'
 export const ENABLE_SSL = (import.meta.env.VITE_ENABLE_SSL === 'false') ? false : true;
-export const REQUEST_TIMEOUT = 5000;
+export const REQUEST_TIMEOUT = 15000;
 export const CREDENTIALS = 'include'; // 携带 cookies
 
 export const API_ROUTES = {
