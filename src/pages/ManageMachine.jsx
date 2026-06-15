@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination, Slider, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
@@ -500,6 +500,9 @@ const ManageMachine = () => {
         cleanup_at: c.cleanup_at ?? null,
         seconds_until_cleanup: c.seconds_until_cleanup ?? null,
         cleanup_status: c.cleanup_status ?? null,
+        disk_total_gb: c.disk_total_gb ?? null,
+        disk_limit_gb: c.disk_limit_gb ?? null,
+        disk_usage_percent: c.disk_usage_percent ?? null,
       }));
       setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: mapped, page: pageNumber, total_page: total_page, page_size: pageSize } }));
     } catch (err) {
@@ -633,8 +636,8 @@ const ManageMachine = () => {
 
   // 容器状态标签
   const renderContainerStatus = (status) => {
-    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
-    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status}</Tag>;
+    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'paused' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
+    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'paused' ? '磁盘已冻结' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status}</Tag>;
   };
 
   // 切换展开状态并关联选中态
@@ -1171,6 +1174,21 @@ const ManageMachine = () => {
   };
 
   // 打开删除容器的确认弹窗
+  const handleUnpauseContainer = async (container) => {
+    const cid = Number(container?.key || container?.container_id);
+    if (!cid) return;
+    try {
+      await unpauseContainer(cid);
+      message.success('容器已解冻');
+      // refresh container list
+      const mid = container?.machine_id;
+      if (mid) fetchContainersForMachine(mid);
+    } catch (err) {
+      message.error('解冻失败');
+      await showErrorModal({ message: err?.body || err || '解冻失败' });
+    }
+  };
+
   const openDeleteContainerConfirm = (container) => {
     setDeleteTargetContainer(container);
     // 隐藏详情弹窗以展示二次确认
@@ -1493,6 +1511,26 @@ const ManageMachine = () => {
               dataIndex="ssh_cleanup_countdown"
               key="ssh_cleanup_countdown"
               render={(_, record) => formatCleanupCountdown(record?.last_ssh_login_time, record)}
+            />
+            <Column
+              title="磁盘用量"
+              dataIndex="disk_usage_percent"
+              key="disk_usage_percent"
+              render={(_, record) => {
+                const pct = record.disk_usage_percent;
+                const total = record.disk_total_gb;
+                const limit = record.disk_limit_gb;
+                if (total == null) return <Typography.Text type="secondary">-</Typography.Text>;
+                const color = pct >= 100 ? '#ff4d4f' : pct >= 80 ? '#faad14' : '#52c41a';
+                return (
+                  <div style={{ minWidth: 80 }}>
+                    <div style={{ fontSize: 12, marginBottom: 2 }}>{total}G / {limit != null ? `${limit}G` : '-'}</div>
+                    <div style={{ background: '#f0f0f0', borderRadius: 2, height: 4, width: '100%', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(pct || 0, 100)}%`, height: '100%', background: color, borderRadius: 2 }} />
+                    </div>
+                  </div>
+                );
+              }}
             />
             <Column
               title="操作"
@@ -2128,6 +2166,7 @@ const ManageMachine = () => {
         container={selectedContainer}
         onClose={closeAllModals}
         onEdit={openEditModal}
+        onUnpause={handleUnpauseContainer}
         onDelete={openDeleteContainerConfirm}
         usersList={usersList}
         currentUserName={localStorage.getItem('currentUserName')}

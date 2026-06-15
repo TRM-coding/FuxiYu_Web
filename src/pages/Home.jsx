@@ -8,7 +8,7 @@ import TableComponent from '../components/TableComponent';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
-import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer, unpauseContainer } from '../api/container_api';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -230,6 +230,9 @@ const Home = () => {
           cleanup_at: c.cleanup_at ?? null,
           seconds_until_cleanup: c.seconds_until_cleanup ?? null,
           cleanup_status: c.cleanup_status ?? null,
+          disk_total_gb: c.disk_total_gb ?? null,
+          disk_limit_gb: c.disk_limit_gb ?? null,
+          disk_usage_percent: c.disk_usage_percent ?? null,
         }));
         if (Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_remaining')) {
           setLongTermRemaining(Number(res.long_term_container_remaining));
@@ -430,6 +433,18 @@ const Home = () => {
       setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)));
       try { await showErrorModal({ message: e?.body || e || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('启动失败');
+    }
+  };
+
+  const handleUnpause = async (container) => {
+    const cid = Number(container?.key || container?.container_id);
+    if (!cid) return;
+    try {
+      await unpauseContainer(cid);
+      message.success('容器已解冻');
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+    } catch (err) {
+      message.error('解冻失败');
     }
   };
 
@@ -823,8 +838,8 @@ const Home = () => {
               dataIndex="container_status"
               key="container_status"
               render={status => {
-                let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
-                let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status;
+                let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'paused' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
+                let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'paused' ? '磁盘已冻结' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status;
                 return <Tag color={color}>{text}</Tag>;
               }}
             />
@@ -841,6 +856,26 @@ const Home = () => {
               render={(_, record) => formatCleanupCountdown(record?.last_ssh_login_time, record)}
             />
             <Column title="端口" dataIndex="port" key="port" />
+            <Column
+              title="磁盘用量"
+              dataIndex="disk_usage_percent"
+              key="disk_usage_percent"
+              render={(_, record) => {
+                const pct = record.disk_usage_percent;
+                const total = record.disk_total_gb;
+                const limit = record.disk_limit_gb;
+                if (total == null) return <Typography.Text type="secondary">-</Typography.Text>;
+                const color = pct >= 100 ? '#ff4d4f' : pct >= 80 ? '#faad14' : '#52c41a';
+                return (
+                  <div style={{ minWidth: 80 }}>
+                    <div style={{ fontSize: 12, marginBottom: 2 }}>{total}G / {limit != null ? `${limit}G` : '-'}</div>
+                    <div style={{ background: '#f0f0f0', borderRadius: 2, height: 4, width: '100%', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(pct || 0, 100)}%`, height: '100%', background: color, borderRadius: 2 }} />
+                    </div>
+                  </div>
+                );
+              }}
+            />
             <Column
               title="操作"
               key="action"
@@ -930,6 +965,7 @@ const Home = () => {
             visible={detailVisible}
             container={detailContainer}
             onClose={() => setDetailVisible(false)}
+            onUnpause={handleUnpause}
             onDelete={handleDetailDelete}
             onLeave={handleLeave}
             onEdit={openEditModal}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Button, Typography, Row, Col, Space, Tag, Avatar } from 'antd';
-import { SettingOutlined, GlobalOutlined, ClockCircleOutlined, TeamOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { SettingOutlined, GlobalOutlined, ClockCircleOutlined, TeamOutlined, EditOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import './ContainerDetailModal.css';
 
 const ROLE = {
@@ -19,7 +19,7 @@ const getAvatarUrl = (username) => `https://api.dicebear.com/7.x/miniavs/svg?see
 const formatRole = (role) => (ROLE_CONFIG[role] ? ROLE_CONFIG[role].label : role);
 const getRoleColor = (role) => (ROLE_CONFIG[role] ? ROLE_CONFIG[role].color : 'default');
 
-const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, usersList = [], currentUserName = null, currentUserId = null, forceSystemAdmin = false }) => {
+const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, onUnpause, usersList = [], currentUserName = null, currentUserId = null, forceSystemAdmin = false }) => {
   if (!container) return null;
 
   const accountsByRole = container.accounts?.reduce((acc, account) => {
@@ -62,6 +62,9 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
 
   return (
     <Modal title="容器详细信息" open={visible} onCancel={onClose} width="min(750px, calc(100vw - 24px))" className="cdm-modal" footer={[
+      container.container_status === 'paused' ? (
+        <Button key="unpause" type="primary" icon={<PlayCircleOutlined />} onClick={() => onUnpause && onUnpause(container)}>解冻容器</Button>
+      ) : null,
       <Button key="close" onClick={onClose}>关闭</Button>,
       isRoot ? (
         <Button key="deleteContainer" danger icon={<DeleteOutlined />} onClick={() => onDelete && onDelete(container)}>删除容器</Button>

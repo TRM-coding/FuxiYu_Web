@@ -79,14 +79,13 @@ const LoginBlock = () => {
 				initialValues={{ remember: true }}
 				onFinish={onFinish}
 				onFinishFailed={onFinishFailed}
-				autoComplete="off"
 			>
 				<Form.Item
 					label="用户名"
 					name="username"
 					rules={[{ required: true, message: 'Please input your username!' }]}
 				>
-					<Input placeholder="请输入用户名" />
+					<Input placeholder="请输入用户名" autoComplete="username" />
 				</Form.Item>
 
 				<Form.Item
@@ -94,7 +93,7 @@ const LoginBlock = () => {
 					name="password"
 					rules={[{ required: true, message: 'Please input your password!' }]}
 				>
-					<Input.Password placeholder="请输入密码" />
+					<Input.Password placeholder="请输入密码" autoComplete="current-password" />
 				</Form.Item>
 
 				<Form.Item name="remember" valuePropName="checked" label={null}>

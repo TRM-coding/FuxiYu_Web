@@ -355,6 +355,28 @@ export const setLongTermContainer = async ({ container_id = 0, is_long_term = fa
 	}
 };
 
+export const unpauseContainer = async (container_id = 0, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_UNPAUSE, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', ...getAuthTokenHeader() },
+			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Unpause container');
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		throw err;
+	} finally {
+		unregisterController(controller);
+	}
+};
+
 export default {
 	createContainer,
 	deleteContainer,
