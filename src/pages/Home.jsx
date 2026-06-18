@@ -136,6 +136,15 @@ const Home = () => {
   };
 
   const formatCleanupCountdown = (raw, record = null) => {
+    // 长期容器被冻结 → 显示升级倒计时
+    if (record?.is_long_term === true && record?.freeze_days_frozen != null) {
+      const daysFrozen = Number(record.freeze_days_frozen);
+      const escalationDays = Number(record.freeze_escalation_days) || 7;
+      const remaining = escalationDays - daysFrozen;
+      if (remaining <= 0) return '即将清除';
+      if (record.freeze_grace_until) return `宽限中 · 冻结第${daysFrozen}天`;
+      return `冻结第${daysFrozen}天 (${remaining}天后清除)`;
+    }
     if (record?.is_long_term === true) return '长期容器';
     if (!raw && (!record || record.cleanup_status === 'unknown' || record.seconds_until_cleanup == null)) {
       return '从未登录';
@@ -233,6 +242,10 @@ const Home = () => {
           disk_total_gb: c.disk_total_gb ?? null,
           disk_limit_gb: c.disk_limit_gb ?? null,
           disk_usage_percent: c.disk_usage_percent ?? null,
+          freeze_first_frozen_at: c.freeze_first_frozen_at ?? null,
+          freeze_grace_until: c.freeze_grace_until ?? null,
+          freeze_days_frozen: c.freeze_days_frozen ?? null,
+          freeze_escalation_days: c.freeze_escalation_days ?? null,
         }));
         if (Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_remaining')) {
           setLongTermRemaining(Number(res.long_term_container_remaining));
