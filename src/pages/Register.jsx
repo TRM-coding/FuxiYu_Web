@@ -23,7 +23,7 @@ const validateMessages = {
   },
 };
 
-const ALLOWED_EMAIL_HINT = '仅支持 bjtu.edu.cn / tsinghua.edu.cn / bupt.edu.cn / mails.tsinghua.edu.cn';
+const ALLOWED_EMAIL_HINT = '仅支持 bjtu.edu.cn / tsinghua.edu.cn / bupt.edu.cn / mails.tsinghua.edu.cn / mail.tsinghua.edu.cn';
 
 const RegisterBlock = () => {
   const [form] = Form.useForm();
@@ -42,7 +42,7 @@ const RegisterBlock = () => {
 
   const isAllowedEmail = (email = '') => {
     const domain = getEmailDomain(email);
-    return ['bjtu.edu.cn', 'tsinghua.edu.cn', 'bupt.edu.cn', 'mails.tsinghua.edu.cn'].includes(domain);
+    return ['bjtu.edu.cn', 'tsinghua.edu.cn', 'bupt.edu.cn', 'mails.tsinghua.edu.cn', 'mail.tsinghua.edu.cn'].includes(domain);
   };
 
   const handleSendCode = async () => {
