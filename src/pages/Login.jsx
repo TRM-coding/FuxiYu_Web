@@ -17,31 +17,10 @@ const LoginBlock = () => {
 		try {
 			const data = await loginUser(values);
 			// 假设后端返回 { token: '...', success: true } 或类似结构
-			if (data && (data.token || data.success !== false)) {
-				if (data.token) {
-					const remember = values?.remember === true;
-					const encodedToken = encodeURIComponent(String(data.token));
-					const maxAge = 60 * 60 * 24 * 30; // 30天
-					// remember=true => persistent cookie; remember=false => session cookie
-					document.cookie = remember
-						? `auth_token=${encodedToken}; Max-Age=${maxAge}; Path=/; SameSite=Lax`
-						: `auth_token=${encodedToken}; Path=/; SameSite=Lax`;
-
-					if (remember) {
-						localStorage.setItem('authToken', data.token);
-						try { sessionStorage.removeItem('authToken'); } catch (e) {}
-					} else {
-						try { localStorage.removeItem('authToken'); } catch (e) {}
-						try { sessionStorage.setItem('authToken', data.token); } catch (e) {}
-					}
-				}
-				// store basic user info returned by backend for later UI usage
+			if (data && (data.success !== false)) {
+				// 后端返回 { success, user_id, username, permission }；token 已由 httpOnly cookie 承载
 				if (data.user_id) localStorage.setItem('currentUserId', String(data.user_id));
 				if (data.username) localStorage.setItem('currentUserName', String(data.username));
-
-      // if (data && Number(data.success) === 1) {
-			// 	// Cookie 为 HttpOnly
-        
 				message.success('登录成功');
 				navigate('/index');
 			} else {

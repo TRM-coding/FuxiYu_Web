@@ -1,6 +1,5 @@
 import { BACKEND_ORIGIN, REQUEST_TIMEOUT, CREDENTIALS, API_ROUTES } from '../configs/backend_config';
 import { createController, unregisterController } from '../utils/requestManager';
-import { getAuthTokenHeader } from '../utils/authToken';
 
 const createTimeoutController = (timeout) => {
   const controller = createController();
@@ -23,8 +22,6 @@ const ensureOk = async (res, action) => {
       try { const { abortAll } = await import('../utils/requestManager'); abortAll('auth'); } catch (e) {}
       if (typeof window !== 'undefined' && res.status === 401) {
         try {
-          localStorage.removeItem('authToken');
-          sessionStorage.removeItem('authToken');
           localStorage.removeItem('currentUserId');
           localStorage.removeItem('currentUserName');
           document.cookie = 'auth_token=; Max-Age=0; path=/';
@@ -48,7 +45,6 @@ export const listTemplates = async ({ category, limit, offset } = {}, timeout = 
     if (offset) url.searchParams.set('offset', String(offset));
     const res = await fetch(url.toString(), {
       method: 'GET',
-      headers: { ...getAuthTokenHeader() },
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -70,7 +66,7 @@ export const createTemplate = async (data = {}, timeout = null) => {
     const url = new URL(API_ROUTES.ANNOUNCEMENTS_TEMPLATES, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthTokenHeader() },
+      headers: { 'Content-Type': 'application/json'},
       body: JSON.stringify(data),
       signal: controller.signal,
       credentials: CREDENTIALS,
@@ -93,7 +89,6 @@ export const getTemplate = async (templateId, timeout = null) => {
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_TEMPLATES}/${templateId}`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'GET',
-      headers: { ...getAuthTokenHeader() },
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -115,7 +110,7 @@ export const updateTemplate = async (templateId, data = {}, timeout = null) => {
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_TEMPLATES}/${templateId}`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthTokenHeader() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
       signal: controller.signal,
       credentials: CREDENTIALS,
@@ -138,7 +133,6 @@ export const deleteTemplate = async (templateId, timeout = null) => {
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_TEMPLATES}/${templateId}`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: { ...getAuthTokenHeader() },
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -162,7 +156,7 @@ export const resolveTargets = async (targets = [], timeout = null) => {
     const url = new URL(API_ROUTES.ANNOUNCEMENTS_RESOLVE_TARGETS, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthTokenHeader() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ targets }),
       signal: controller.signal,
       credentials: CREDENTIALS,
@@ -190,7 +184,6 @@ export const listAnnouncements = async ({ status, limit, offset } = {}, timeout 
     if (offset) url.searchParams.set('offset', String(offset));
     const res = await fetch(url.toString(), {
       method: 'GET',
-      headers: { ...getAuthTokenHeader() },
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -212,7 +205,7 @@ export const getAnnouncement = async (announcementId, timeout = null) => {
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_BASE}/${announcementId}`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'GET',
-      headers: { ...getAuthTokenHeader() },
+
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -234,7 +227,6 @@ export const resendAnnouncement = async (announcementId, timeout = null) => {
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_BASE}/${announcementId}/resend`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'POST',
-      headers: { ...getAuthTokenHeader() },
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -256,7 +248,7 @@ export const copyAnnouncementAsDraft = async (announcementId, timeout = null) =>
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_BASE}/${announcementId}/copy-as-draft`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'POST',
-      headers: { ...getAuthTokenHeader() },
+
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -278,7 +270,7 @@ export const convertToTemplate = async (announcementId, timeout = null) => {
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_BASE}/${announcementId}/convert-to-template`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'POST',
-      headers: { ...getAuthTokenHeader() },
+
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -300,7 +292,6 @@ export const deleteAnnouncement = async (announcementId, timeout = null) => {
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_BASE}/${announcementId}`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: { ...getAuthTokenHeader() },
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -322,7 +313,7 @@ export const batchDeleteAnnouncements = async ({ announcement_ids } = {}, timeou
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_BASE}/batch-delete`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthTokenHeader() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ announcement_ids }),
       signal: controller.signal,
       credentials: CREDENTIALS,
@@ -349,7 +340,7 @@ export const listDrafts = async ({ limit, offset } = {}, timeout = null) => {
     if (offset) url.searchParams.set('offset', String(offset));
     const res = await fetch(url.toString(), {
       method: 'GET',
-      headers: { ...getAuthTokenHeader() },
+
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -371,7 +362,7 @@ export const saveDraft = async (data = {}, timeout = null) => {
     const url = new URL(API_ROUTES.ANNOUNCEMENTS_DRAFTS_SAVE, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthTokenHeader() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
       signal: controller.signal,
       credentials: CREDENTIALS,
@@ -394,7 +385,7 @@ export const getDraft = async (draftId, timeout = null) => {
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_DRAFTS}/${draftId}`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'GET',
-      headers: { ...getAuthTokenHeader() },
+
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -416,7 +407,7 @@ export const deleteDraft = async (draftId, timeout = null) => {
     const url = new URL(`${API_ROUTES.ANNOUNCEMENTS_DRAFTS}/${draftId}`, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: { ...getAuthTokenHeader() },
+
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -438,7 +429,7 @@ export const batchSendDrafts = async ({ draft_ids, targets } = {}, timeout = nul
     const url = new URL(API_ROUTES.ANNOUNCEMENTS_DRAFTS_BATCH_SEND, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthTokenHeader() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ draft_ids, targets }),
       signal: controller.signal,
       credentials: CREDENTIALS,

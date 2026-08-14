@@ -1,6 +1,5 @@
 import { BACKEND_ORIGIN, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
-import { getAuthTokenHeader } from '../utils/authToken';
 
 
 const createTimeoutController = (timeout) => {
@@ -29,8 +28,6 @@ const ensureOk = async (res, action) => {
 			// clear local auth and redirect to login for 401
 			if (typeof window !== 'undefined' && res.status === 401) {
 				try {
-					localStorage.removeItem('authToken');
-					sessionStorage.removeItem('authToken');
 					localStorage.removeItem('currentUserId');
 					localStorage.removeItem('currentUserName');
 					document.cookie = 'auth_token=; Max-Age=0; path=/';
@@ -51,7 +48,6 @@ export const createContainer = async (payload = {}, timeout = null) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify(payload),
 			signal: controller.signal,
@@ -77,7 +73,6 @@ export const deleteContainer = async (container_id = 0, timeout = null) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -103,7 +98,6 @@ export const addCollaborator = async ({ user_id = '', container_id = 0, role = '
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ user_id, container_id, role }),
 			signal: controller.signal,
@@ -129,7 +123,6 @@ export const removeCollaborator = async ({ user_id = '', container_id = 0 } = {}
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ user_id, container_id }),
 			signal: controller.signal,
@@ -155,7 +148,6 @@ export const updateRole = async ({ container_id = 0, user_id = '', updated_role 
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id, user_id, updated_role }),
 			signal: controller.signal,
@@ -181,7 +173,6 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -207,7 +198,6 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ machine_id, user_id, page_number, page_size }),
 			signal: controller.signal,
@@ -233,7 +223,6 @@ export const startContainer = async (container_id = 0, timeout = null) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -259,7 +248,6 @@ export const stopContainer = async (container_id = 0, timeout = null, stopTimeou
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
  			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -285,7 +273,6 @@ export const restartContainer = async (container_id = 0, timeout = null, restart
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -311,7 +298,6 @@ export const refreshLastSshLoginTime = async (container_id = 0, timeout = null) 
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
@@ -337,7 +323,6 @@ export const setLongTermContainer = async ({ container_id = 0, is_long_term = fa
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...getAuthTokenHeader(),
 			},
 			body: JSON.stringify({ container_id, is_long_term }),
 			signal: controller.signal,
@@ -361,7 +346,7 @@ export const unpauseContainer = async (container_id = 0, timeout = null) => {
 		const url = new URL(API_ROUTES.CONTAINERS_UNPAUSE, BACKEND_ORIGIN).toString();
 		const res = await fetch(url, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...getAuthTokenHeader() },
+			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ container_id }),
 			signal: controller.signal,
 			credentials: CREDENTIALS,
