@@ -95,7 +95,7 @@ const fmtField = (key) => FIELD_TEXT[key] || key;
 const fmtStatusVal = (v) => (typeof v === 'string' && STATUS_TEXT[v.toLowerCase()]) ? STATUS_TEXT[v.toLowerCase()] : fmtVal(v);
 
 /** 展开行详情：before/after 存在时渲染前→后对比，否则结构化键值；可切换原始 JSON */
-const LogDetail = ({ record }) => {
+export const LogDetail = ({ record }) => {
   const [mode, setMode] = React.useState('structured');
   const detail = record.detail;
   const hasDiff = !!detail && typeof detail === 'object' && (detail.before || detail.after);

@@ -9,6 +9,8 @@ import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
+import { parseSshTimeToDate, formatDuration } from '../utils/timeFormat';
+import { getContainerActionState, getRoleActionSet } from '../utils/containerActions';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -85,48 +87,12 @@ const Home = () => {
   const [longTermLimit, setLongTermLimit] = useState(null);
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
 
-  const parseSshTimeToDate = (raw) => {
-    if (!raw || typeof raw !== 'string') return null;
-    const t = raw.trim();
-    const d0 = new Date(t);
-    if (!Number.isNaN(d0.getTime())) return d0;
-
-    // fallback A: parse syslog-like prefix, e.g. "Mar 20 10:35:20 ..."
-    const m = t.match(/^([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2})/);
-    if (m) {
-      const year = new Date().getFullYear();
-      const d1 = new Date(`${m[1]} ${m[2]} ${year} ${m[3]}`);
-      if (!Number.isNaN(d1.getTime())) return d1;
-    }
-
-    // fallback B: parse `last` output snippet, e.g. "... Fri Mar 20 12:39 ..."
-    const m2 = t.match(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2})(?::(\d{2}))?\b/);
-    if (m2) {
-      const year = new Date().getFullYear();
-      const hhmmss = `${m2[3]}:${m2[4] || '00'}`;
-      const d2 = new Date(`${m2[1]} ${m2[2]} ${year} ${hhmmss}`);
-      if (!Number.isNaN(d2.getTime())) return d2;
-    }
-    return null;
-  };
 
   const formatBeijingDateTime = (date) => date.toLocaleString('zh-CN', {
     timeZone: 'Asia/Shanghai',
     hour12: false,
   });
 
-  const formatDuration = (seconds) => {
-    if (!Number.isFinite(seconds) || seconds < 0) return null;
-    if (seconds < 3600) {
-      return `${Math.max(1, Math.ceil(seconds / 60))}分钟`;
-    }
-    const hours = Math.floor(seconds / 3600);
-    const days = Math.floor(hours / 24);
-    const remainHours = hours % 24;
-    if (days > 0 && remainHours > 0) return `${days}天${remainHours}小时`;
-    if (days > 0) return `${days}天`;
-    return `${Math.max(1, hours)}小时`;
-  };
 
   const formatLastSshTime = (raw) => {
     if (!raw) return '从未登录';
@@ -538,7 +504,7 @@ const Home = () => {
     return null;
   };
 
-  const isRootRole = (role) => String(role || '').toUpperCase() === 'ROOT';
+  const isRootRole = (role) => String(role || '').toUpperCase() === 'ROOT'; // eslint-disable-line no-unused-vars
 
   const openConfirm = (type, data) => {
     // hide parent modal (detail/edit) if open and remember which
@@ -838,7 +804,10 @@ const Home = () => {
               title="容器状态"
               dataIndex="container_status"
               key="container_status"
-              render={status => {
+              render={(status, record) => {
+                if (record?.display_status === 'host_offline') {
+                  return <Tag color="default">宿主机离线</Tag>;
+                }
                 let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'paused' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
                 let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'paused' ? '磁盘已冻结' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status;
                 return <Tag color={color}>{text}</Tag>;
@@ -882,19 +851,19 @@ const Home = () => {
               key="action"
               render={(_, record) => {
                 const myRole = getRoleForUser(record.accounts, currentUserName, currentUserId);
-                const status = (record?.container_status || '').toLowerCase();
-                const startDisabled = status !== 'offline';
-                const restartDisabled = status !== 'online';
-                const stopDisabled = status !== 'online';
+                const actionState = getContainerActionState(record?.container_status, record?.display_status);
+                const roleActions = getRoleActionSet(myRole);
+                const startDisabled = !actionState.canStart;
+                const restartDisabled = !actionState.canRestart;
+                const stopDisabled = !actionState.canStop;
                 const sshRefreshLoading = !!sshRefreshingMap[String(record?.key)];
-                const isRootOwner = isRootRole(myRole);
                 const longTermChecked = record?.is_long_term === true;
                 const longTermLoading = !!longTermUpdatingMap[String(record?.key)];
                 const longTermDisabled = longTermLoading || (!longTermChecked && longTermRemaining !== null && Number(longTermRemaining) <= 0);
 
                 const ActionButtons = (
                   <Space size="small">
-                    {isRootOwner ? (
+                    {roleActions.showLongTerm ? (
                       <Checkbox
                         checked={longTermChecked}
                         disabled={longTermDisabled}
@@ -932,7 +901,7 @@ const Home = () => {
 
                 // Show 查看详情 first, then role-specific links, then the action buttons
                 const detailLink = <a onClick={() => openContainerDetail(record)}>查看详情</a>;
-                if (myRole === 'ADMIN') {
+                if (roleActions.showInvite) {
                   return (
                     <Space size="middle">
                       {detailLink}
@@ -942,7 +911,7 @@ const Home = () => {
                     </Space>
                   );
                 }
-                if (myRole === 'COLLABORATOR') {
+                if (roleActions.showLeave) {
                   return (
                     <Space size="middle">
                       {detailLink}

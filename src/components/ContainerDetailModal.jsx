@@ -33,7 +33,10 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
   // 使用 user_id 精确判断当前用户是否为 ROOT（避免 username 修改导致匹配失败）
   const isRoot = forceSystemAdmin || (container.accounts || []).some(acc => acc.role === ROLE.ROOT && String(acc.user_id) === String(currentUserId));
 
-  const statusColor = container.container_status === 'online'
+  const isHostOffline = container.display_status === 'host_offline';
+  const statusColor = isHostOffline
+    ? 'default'
+    : container.container_status === 'online'
     ? 'green'
     : container.container_status === 'offline'
       ? 'volcano'
@@ -48,7 +51,9 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
               : container.container_status === 'failed'
                 ? 'red'
                 : 'default';
-   const statusText = container.container_status === 'online'
+   const statusText = isHostOffline
+    ? '宿主机离线'
+    : container.container_status === 'online'
     ? '运行中'
     : container.container_status === 'offline'
       ? '已停止'
