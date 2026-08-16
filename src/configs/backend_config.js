@@ -51,6 +51,10 @@ export const API_ROUTES = {
 	CONTAINERS_UNPAUSE: '/api/containers/unpause_container',
 	CONTAINERS_SET_LONG_TERM: '/api/containers/set_long_term_container',
 
+	// Admin routes
+	ADMIN_OPERATION_LOGS: '/api/admin/operation_logs',
+	ADMIN_OPERATION_LOGS_STATS: '/api/admin/operation_logs/stats',
+
 	// Announcement routes
 	ANNOUNCEMENTS_TEMPLATES: '/api/announcements/templates',
 	ANNOUNCEMENTS_RESOLVE_TARGETS: '/api/announcements/resolve-targets',

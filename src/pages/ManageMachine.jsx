@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
-import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined } from '@ant-design/icons';
+import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination, Slider, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import TableComponent from '../components/TableComponent';
@@ -2084,7 +2084,13 @@ const ManageMachine = () => {
       <ConfirmModal
         visible={deleteConfirmVisible}
         title="确认删除宿主机"
-        message={deleteTargetMachine ? `请确认以下信息并删除宿主机 ${deleteTargetMachine.machine_name || deleteTargetMachine.key}` : '确认删除该宿主机？'}
+        icon={<DesktopOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />}
+        message={deleteTargetMachine ? (
+          <div>
+            <div className="mm-delete-headline">你即将删除的是：<span className="mm-delete-headline-type">机器</span></div>
+            <div className="mm-delete-name">名称：{deleteTargetMachine.machine_name || deleteTargetMachine.key}</div>
+          </div>
+        ) : '确认删除该宿主机？'}
         content={
           deleteTargetMachine ? (
             <div className="mm-danger-box">
@@ -2128,7 +2134,13 @@ const ManageMachine = () => {
       <ConfirmModal
         visible={containerDeleteConfirmVisible}
         title="确认删除容器"
-        message={deleteTargetContainer ? `请确认以下信息并删除容器 ${deleteTargetContainer.container_name || deleteTargetContainer.key}` : '确认删除该容器？'}
+        icon={<ContainerOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />}
+        message={deleteTargetContainer ? (
+          <div>
+            <div className="mm-delete-headline">你即将删除的是：<span className="mm-delete-headline-type">容器</span></div>
+            <div className="mm-delete-name">名称：{deleteTargetContainer.container_name || deleteTargetContainer.key}</div>
+          </div>
+        ) : '确认删除该容器？'}
         content={
           deleteTargetContainer ? (
             <div className="mm-danger-box">

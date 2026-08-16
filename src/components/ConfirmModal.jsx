@@ -47,7 +47,8 @@ const ConfirmModal = ({
   confirmText = '确认',
   cancelText = '取消',
   showCancel = true,
-  iconColor = '#faad14'
+  iconColor = '#faad14',
+  icon = null
 }) => {
   const isDangerMode = danger || isDanger;
   const footerButtons = [];
@@ -75,7 +76,7 @@ const ConfirmModal = ({
     <Modal
       title={
         <Space>
-          <ExclamationCircleOutlined style={{ color: iconColor }} />
+          {icon || <ExclamationCircleOutlined style={{ color: iconColor }} />}
           <span>{title}</span>
         </Space>
       }

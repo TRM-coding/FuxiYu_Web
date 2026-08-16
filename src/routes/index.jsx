@@ -16,6 +16,7 @@ import AdminProfile from '../pages/AdminProfile'
 import Announcements from '../pages/Announcements'
 import AnnouncementEditor from '../pages/AnnouncementEditor'
 import TemplateManager from '../pages/TemplateManager'
+import AdminLogs from '../pages/AdminLogs'
 
 
 export default function AppRoutes() {
@@ -38,6 +39,7 @@ export default function AppRoutes() {
         <Route path="announcements" element={<Announcements />} />
         <Route path="announcements/editor" element={<AnnouncementEditor />} />
         <Route path="announcements/templates" element={<TemplateManager />} />
+        <Route path="logs" element={<AdminLogs />} />
       </Route>
 
       {/* 不带导航栏的页面 */}
