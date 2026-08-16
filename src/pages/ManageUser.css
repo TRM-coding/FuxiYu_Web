@@ -42,7 +42,8 @@
 .manage-user-stats-key{color:#8c8c8c}
 .manage-user-stats-value-blue{color:#1890ff;font-weight:500;margin-right:8px}
 .manage-user-stats-value-green{color:#52c41a;font-weight:500;margin-right:8px}
-.manage-user-stats-value-yellow{color:#faad14;font-weight:500}
+.manage-user-stats-value-yellow{color:#faad14;font-weight:500;margin-right:8px}
+.manage-user-stats-value-purple{color:#722ed1;font-weight:500}
 .manage-user-stats-sep{color:#8c8c8c;margin:0 8px}
 
 /* Selected row and expanded panel highlighting */

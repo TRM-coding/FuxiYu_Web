@@ -12,7 +12,7 @@ export const BACKEND_ORIGIN = (typeof window !== 'undefined' ? window.location.o
 // when launching Vite to indicate HTTPS mode.
 // Default to true (HTTPS enabled) unless explicitly disabled by VITE_ENABLE_SSL='false'
 export const ENABLE_SSL = (import.meta.env.VITE_ENABLE_SSL === 'false') ? false : true;
-export const REQUEST_TIMEOUT = 5000;
+export const REQUEST_TIMEOUT = 15000;
 export const CREDENTIALS = 'include'; // 携带 cookies
 
 export const API_ROUTES = {
@@ -48,6 +48,21 @@ export const API_ROUTES = {
 	CONTAINERS_STOP: '/api/containers/stop_container',
 	CONTAINERS_RESTART: '/api/containers/restart_container',
 	CONTAINERS_REFRESH_LAST_SSH_TIME: '/api/containers/refresh_last_ssh_login_time',
+	CONTAINERS_UNPAUSE: '/api/containers/unpause_container',
+	CONTAINERS_SET_LONG_TERM: '/api/containers/set_long_term_container',
+
+	// Admin routes
+	ADMIN_OPERATION_LOGS: '/api/admin/operation_logs',
+	ADMIN_OPERATION_LOGS_STATS: '/api/admin/operation_logs/stats',
+
+	// Announcement routes
+	ANNOUNCEMENTS_TEMPLATES: '/api/announcements/templates',
+	ANNOUNCEMENTS_RESOLVE_TARGETS: '/api/announcements/resolve-targets',
+	ANNOUNCEMENTS_LIST: '/api/announcements/list',
+	ANNOUNCEMENTS_BASE: '/api/announcements',
+	ANNOUNCEMENTS_DRAFTS: '/api/announcements/drafts',
+	ANNOUNCEMENTS_DRAFTS_SAVE: '/api/announcements/drafts/save',
+	ANNOUNCEMENTS_DRAFTS_BATCH_SEND: '/api/announcements/drafts/batch-send',
 	
 };
 

@@ -1,7 +1,7 @@
 // src/pages/User.jsx
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Form, Input, DatePicker, Button, Row, Col, Space, message, InputNumber, Typography } from 'antd';
+import { Card, Form, Input, DatePicker, Button, Row, Col, Space, message, InputNumber, Typography, Statistic } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { getUserDetailInformation, updateUser, changePasswordUser } from '../api/user_api';
@@ -27,6 +27,11 @@ const User = () => {
   const [newPasswordInvalid, setNewPasswordInvalid] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [containerStats, setContainerStats] = useState({
+    total: 0,
+    functional: 0,
+    managed: 0,
+  });
 
   // 读取当前用户信息，如果缺失则清除 auth 并重定向到登录
   useEffect(() => {
@@ -78,6 +83,11 @@ const User = () => {
         setEmail(info.email || '');
         setGraduationYear(info.graduation_year || null);
         setOriginalInfo({ username: info.username || '', email: info.email || '', graduation_year: info.graduation_year || null });
+        setContainerStats({
+          total: Number(info.amount_of_container || 0),
+          functional: Number(info.amount_of_functional_container || 0),
+          managed: Number(info.amount_of_managed_container || 0),
+        });
         const isOp = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
         setIsOperator(Boolean(isOp));
         // clear inline messages when data loads
@@ -169,6 +179,17 @@ const User = () => {
           extra={isOperator ? <Button type="primary" onClick={() => navigate('/admin')}>管理后台</Button> : null}
           className="user-card"
         >
+          <Row gutter={[16, 12]} className="user-stats-row">
+            <Col xs={12} md={8}>
+              <Statistic title="容器" value={containerStats.total} />
+            </Col>
+            <Col xs={12} md={8}>
+              <Statistic title="正常运行" value={containerStats.functional} />
+            </Col>
+            <Col xs={12} md={8}>
+              <Statistic title="管理容器" value={containerStats.managed} />
+            </Col>
+          </Row>
           <Form form={form} layout="vertical" initialValues={{}}>
             {/* 用户名 + 修改按钮 */}
             <Form.Item label="用户名" name="username" className="user-form-item">

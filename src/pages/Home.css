@@ -33,6 +33,7 @@
 .home-green { color: #52c41a; }
 .home-warning { color: #faad14; }
 .home-red { color: #ff4d4f; }
+.home-purple { color: #722ed1; }
 .home-table-wrapper {
   padding: 16px;
 }
@@ -74,6 +75,7 @@
 .home-stat-number.home-green { color: #52c41a !important; }
 .home-stat-number.home-warning { color: #faad14 !important; }
 .home-stat-number.home-red { color: #ff4d4f !important; }
+.home-stat-number.home-purple { color: #722ed1 !important; }
 
 @media (max-width: 768px) {
   .home-auto-hide-bar {

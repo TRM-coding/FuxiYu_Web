@@ -135,3 +135,23 @@
     row-gap: 8px;
   }
 }
+
+/* 删除确认弹窗：醒目提示删除对象类型 */
+.mm-delete-headline {
+  font-size: 16px;
+  font-weight: 700;
+  color: #262626;
+  margin-bottom: 2px;
+}
+
+.mm-delete-headline-type {
+  color: #cf1322;
+  font-weight: 800;
+  border-bottom: 2px solid #cf1322;
+  padding: 0 2px;
+}
+
+.mm-delete-name {
+  font-size: 12px;
+  color: #8c8c8c;
+}

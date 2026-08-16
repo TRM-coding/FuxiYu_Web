@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeOutlined, InfoCircleOutlined, FormOutlined } from '@ant-design/icons';
+import { HomeOutlined, BookOutlined, FormOutlined } from '@ant-design/icons';
 import { Menu } from 'antd';
 import './Navbar.css';
 
@@ -21,9 +21,9 @@ const items = [
   //   icon: <UserOutlined />,
   // },
   {
-    label: '关于',
-    key: '/index/about',
-    icon: <InfoCircleOutlined />,
+    label: '使用说明',
+    key: '/index/docs',
+    icon: <BookOutlined />,
   }
 ];
 
