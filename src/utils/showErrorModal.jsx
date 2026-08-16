@@ -139,12 +139,13 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
   const routeErrorMap = {
     // 用户相关
     '/register': { username_exists: '用户名已存在', email_exists: '邮箱已存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线' },
+    '/request_register_code': { missing_email: '请输入邮箱' },
     '/login': { user_not_found: '用户不存在', password_incorrect: '密码错误' },
     '/users/change_password': { old_password_incorrect: '旧密码不正确', no_none_ascii: '禁止非ASCII字符（请勿输入中文）' },
     '/users/delete_user': { wild_container: '存在无主容器，无法删除用户', missing_user_id: '缺少 user_id' },
     '/users/get_user_detail_information': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
     '/users/list_all_user_bref_information': { list_failed: '获取用户列表失败' },
-    '/users/update_user': { missing_fields: '缺少更新字段', user_not_found: '用户不存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线' },
+    '/users/update_user': { missing_fields: '缺少更新字段', user_not_found: '用户不存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线', invalid_fields: '更新字段不合法' },
     '/users/reset_password': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
 
     // 容器相关
@@ -162,6 +163,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
       long_term_limit_reached: '已达到长期容器上限',
       invalid_payload: '长期容器设置参数无效',
     },
+    '/containers/unpause_container': { unpause_failed: '解冻容器失败' },
 
     // 机器相关
     '/machines/add_machine': { duplicate_entry: '机器已存在', internal_error: '内部错误，添加失败', create_failed: '添加机器失败' },
@@ -185,7 +187,19 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
       machine_maintenance: '机器正在维护中',
       machine_offline: '机器离线',
       machine_not_found: '机器不存在',
-      long_term_limit_reached: '已达到长期容器上限'
+      long_term_limit_reached: '已达到长期容器上限',
+      // 通用兜底：以下 error_reason 可能在多个接口出现，避免路由窄映射漏掉
+      machine_permission_denied: '权限不足，无法操作该机器上的容器',
+      container_permission_denied: '只有容器所有者可以执行此操作',
+      container_offline: '容器未在线',
+      container_not_found: '容器不存在',
+      invalid_payload: '请求参数无效',
+      not_found: '资源不存在',
+      container_exists: '容器已存在',
+      node_endpoint_not_found: '节点不支持该操作',
+      missing_field: '缺少必填字段',
+      empty_targets: '请选择公告目标',
+      cannot_delete_system_template: '系统模板不可删除'
     }
   };
 

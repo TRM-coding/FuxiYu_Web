@@ -8,7 +8,7 @@ import TableComponent from '../components/TableComponent';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
-import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer, unpauseContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -446,18 +446,6 @@ const Home = () => {
       setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)));
       try { await showErrorModal({ message: e?.body || e || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('启动失败');
-    }
-  };
-
-  const handleUnpause = async (container) => {
-    const cid = Number(container?.key || container?.container_id);
-    if (!cid) return;
-    try {
-      await unpauseContainer(cid);
-      message.success('容器已解冻');
-      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
-    } catch (err) {
-      message.error('解冻失败');
     }
   };
 
@@ -978,7 +966,6 @@ const Home = () => {
             visible={detailVisible}
             container={detailContainer}
             onClose={() => setDetailVisible(false)}
-            onUnpause={handleUnpause}
             onDelete={handleDetailDelete}
             onLeave={handleLeave}
             onEdit={openEditModal}

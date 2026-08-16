@@ -10,7 +10,9 @@ const MachineDetailModal = ({ visible, machine, onClose, loading = false }) => {
     ? 'green'
     : machine.machine_status === 'offline'
       ? 'volcano'
-      : 'default';
+      : 'orange';
+
+  const statusText = machine.machine_status === 'online' ? '运行中' : machine.machine_status === 'offline' ? '已停止' : '维护中';
 
   return (
     <Modal
@@ -37,7 +39,7 @@ const MachineDetailModal = ({ visible, machine, onClose, loading = false }) => {
                 <SettingOutlined className="cdm-icon" />
                 <div>
                   <Typography.Text strong className="cdm-item-label">状态</Typography.Text>
-                  <Tag color={statusColor}>{(machine.machine_status || '').toUpperCase()}</Tag>
+                  <Tag color={statusColor}>{statusText}</Tag>
                 </div>
               </Space>
             </Col>

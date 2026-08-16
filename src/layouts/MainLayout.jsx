@@ -12,12 +12,12 @@ export default function MainLayout() {
   const touchStartTimeRef = useRef(0)
   const [menuResetToken, setMenuResetToken] = useState(0)
 
-  const swipePaths = useMemo(() => ['/index', '/index/apply', '/index/about'], [])
+  const swipePaths = useMemo(() => ['/index', '/index/apply', '/index/docs'], [])
 
   const normalizePath = (pathname) => {
     if (pathname === '/index') return '/index'
     if (pathname.startsWith('/index/apply')) return '/index/apply'
-    if (pathname.startsWith('/index/about')) return '/index/about'
+    if (pathname.startsWith('/index/docs')) return '/index/docs'
     return pathname
   }
 

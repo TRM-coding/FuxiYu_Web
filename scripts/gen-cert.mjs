@@ -12,8 +12,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import selfsigned from 'selfsigned'
-
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const certDir = path.join(root, 'certs')
 const certPath = path.join(certDir, 'localhost.pem')
@@ -24,6 +22,11 @@ if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
   console.log('[gen-cert] 证书已存在，跳过（保留现有证书）')
   process.exit(0)
 }
+
+// 仅在证书缺失时才解析 selfsigned：
+// WSL 下 /mnt/e 的 node_modules 解析走 9P 桥极慢（实测 ~15s），
+// 静态导入会让"证书已存在"的日常路径也白付这笔成本。
+const { default: selfsigned } = await import('selfsigned')
 
 const attrs = [
   { name: 'commonName', value: 'localhost' },

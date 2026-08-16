@@ -344,7 +344,8 @@ const Apply = () => {
             key="machine_status"
             render={status => {
               let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
-              return <Tag color={color}>{status.toUpperCase()}</Tag>;
+              let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : '维护中';
+              return <Tag color={color}>{text}</Tag>;
             }}
           />
           <Column

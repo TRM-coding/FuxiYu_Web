@@ -4,7 +4,7 @@ import MainLayout from '../layouts/MainLayout'
 import AdminLayout from '../layouts/AdminLayout'
 import LoginLayout from '../layouts/LoginLayout'
 import Home from '../pages/Home'
-import About from '../pages/About'
+import Docs from '../pages/Docs'
 import NotFound from '../pages/NotFound'
 import LoginBlock from '../pages/Login'
 import RegisterBlock from '../pages/Register'
@@ -24,7 +24,7 @@ export default function AppRoutes() {
       {/* 带导航栏的页面 */}
       <Route path="/index" element={<MainLayout />}>
         <Route index element={<Home />} />
-        <Route path="about" element={<About />} />
+        <Route path="docs" element={<Docs />} />
         <Route path="apply" element={<Apply />} />
         <Route path="user" element={<User />} />
       </Route>

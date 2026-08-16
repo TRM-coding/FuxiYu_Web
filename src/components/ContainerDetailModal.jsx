@@ -43,9 +43,11 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
           ? 'cyan'
           : container.container_status === 'stopping'
             ? 'orange'
-            : container.container_status === 'failed'
-              ? 'red'
-              : 'default';
+            : container.container_status === 'paused'
+              ? 'volcano'
+              : container.container_status === 'failed'
+                ? 'red'
+                : 'default';
    const statusText = container.container_status === 'online'
     ? '运行中'
     : container.container_status === 'offline'
@@ -56,14 +58,21 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
           ? '启动中'
           : container.container_status === 'stopping'
             ? '停止中'
-            : container.container_status === 'failed'
-              ? '异常'
-              : container.container_status;
+            : container.container_status === 'paused'
+              ? '磁盘已冻结'
+              : container.container_status === 'failed'
+                ? '异常'
+                : container.container_status;
 
   return (
     <Modal title="容器详细信息" open={visible} onCancel={onClose} width="min(750px, calc(100vw - 24px))" className="cdm-modal" footer={[
-      container.container_status === 'paused' ? (
-        <Button key="unpause" type="primary" icon={<PlayCircleOutlined />} onClick={() => onUnpause && onUnpause(container)}>解冻容器</Button>
+      container.container_status === 'paused' && onUnpause ? (
+        <Button key="unpause" type="primary" icon={<PlayCircleOutlined />} onClick={() => onUnpause(container)}>解冻容器</Button>
+      ) : null,
+      container.container_status === 'paused' && !onUnpause ? (
+        <Typography.Text key="frozen-hint" type="secondary" style={{ marginRight: 12, alignSelf: 'center', fontSize: 12 }}>
+          磁盘已冻结，请联系管理员解冻
+        </Typography.Text>
       ) : null,
       <Button key="close" onClick={onClose}>关闭</Button>,
       isRoot ? (
