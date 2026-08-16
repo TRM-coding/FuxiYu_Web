@@ -25,6 +25,16 @@ const { Text, Title } = Typography;
 const STATUS_COLOR = { sent: 'green', partial: 'orange', failed: 'red' };
 const STATUS_LABEL = { sent: '已发送', partial: '部分失败', failed: '发送失败' };
 
+/** 后端 naive UTC → 北京时间（UTC+8，固定，不随浏览器时区）展示 */
+const formatBeijingTime = (v) => {
+  if (!v) return '-';
+  const s = String(v);
+  const hasZone = s.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(s);
+  const d = new Date(hasZone ? s : `${s}Z`);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
+};
+
 export default function Announcements() {
   const navigate = useNavigate();
 
@@ -491,7 +501,7 @@ export default function Announcements() {
                       {STATUS_LABEL[ann.status] || ann.status}
                     </Tag>
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {ann.sent_at ? new Date(ann.sent_at).toLocaleString() : '-'}
+                      {formatBeijingTime(ann.sent_at)}
                     </Text>
                   </div>
                   <Divider style={{ margin: '8px 0' }} />

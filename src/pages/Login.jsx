@@ -60,11 +60,11 @@ const LoginBlock = () => {
 				onFinishFailed={onFinishFailed}
 			>
 				<Form.Item
-					label="用户名"
+					label="用户名 / 邮箱"
 					name="username"
-					rules={[{ required: true, message: 'Please input your username!' }]}
+					rules={[{ required: true, message: '请输入用户名或邮箱' }]}
 				>
-					<Input placeholder="请输入用户名" autoComplete="username" />
+					<Input placeholder="用户名或邮箱" autoComplete="username" />
 				</Form.Item>
 
 				<Form.Item

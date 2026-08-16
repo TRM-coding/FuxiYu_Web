@@ -14,7 +14,6 @@ import { saveDraft, getDraft, listTemplates } from '../api/announcement_api';
 import { listAllMachineBrefInformation, getDetailInformation } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation } from '../api/container_api';
 import showErrorModal from '../utils/showErrorModal';
-import dayjs from 'dayjs';
 import './AnnouncementEditor.css';
 
 const { Text, Title } = Typography;
@@ -60,6 +59,15 @@ const CONTAINER_ATTRS = [
   { key: 'container_memory', label: '内存(GB)', get: c => String(c.memory_gb ?? '-') },
   { key: 'container_gpu', label: 'GPU 数', get: c => String(c.gpu_number ?? 0) },
 ];
+
+/** 当前北京时间字面值（固定 UTC+8，用于插入公告模板），形如 "2026-08-17 00:03:33" */
+const beijingNowText = () => new Date()
+  .toLocaleString('sv-SE', { timeZone: 'Asia/Shanghai', hour12: false })
+  .replace(',', '');
+
+/** 把 picker 选中的瞬时转北京时间日期/时间字面值（与浏览器时区解耦） */
+const beijingDateText = (d) => new Date(d.toDate()).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+const beijingTimeText = (d) => new Date(d.toDate()).toLocaleTimeString('sv-SE', { timeZone: 'Asia/Shanghai', hour12: false });
 
 export default function AnnouncementEditor() {
   const navigate = useNavigate();
@@ -426,7 +434,7 @@ export default function AnnouncementEditor() {
                   onOpenChange={setDatePickerOpen}
                   onChange={(d) => {
                     if (d) {
-                      insertAtCursor(d.format('YYYY-MM-DD'));
+                      insertAtCursor(beijingDateText(d));
                       setDatePickerOpen(false);
                     }
                   }}
@@ -438,7 +446,7 @@ export default function AnnouncementEditor() {
                   onOpenChange={setTimePickerOpen}
                   onChange={(t) => {
                     if (t) {
-                      insertAtCursor(t.format('HH:mm:ss'));
+                      insertAtCursor(beijingTimeText(t));
                       setTimePickerOpen(false);
                     }
                   }}
@@ -448,10 +456,10 @@ export default function AnnouncementEditor() {
                 />
               </Space>
               <Space wrap size={[4, 4]}>
-                <Button size="small" onClick={() => insertAtCursor(dayjs().format('YYYY-MM-DD'))}>
+                <Button size="small" onClick={() => insertAtCursor(beijingNowText().slice(0, 10))}>
                   今天日期
                 </Button>
-                <Button size="small" onClick={() => insertAtCursor(dayjs().format('YYYY-MM-DD HH:mm:ss'))}>
+                <Button size="small" onClick={() => insertAtCursor(beijingNowText())}>
                   当前日期时间
                 </Button>
               </Space>

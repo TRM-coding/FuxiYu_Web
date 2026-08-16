@@ -156,16 +156,43 @@
   background: #ffffff;
 }
 
+/* 左墙右数：绿墙自然宽度在左；数据（统计卡叠柱状图上方）在右。窄屏换行、绿墙自滚动。 */
+.als-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.als-wall-side {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.als-side {
+  flex: 1;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 统计卡（总操作数 / 成功 / 失败） */
 .admin-logs-stat-card {
-  text-align: center;
-  padding: 8px 4px;
-  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 6px;
   background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
 }
 
 .admin-logs-stat-num {
-  font-size: 22px;
-  font-weight: bold;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
   color: #262626;
 }
 
@@ -178,14 +205,52 @@
 }
 
 .admin-logs-stat-label {
+  margin-top: 4px;
   font-size: 12px;
   color: #8c8c8c;
 }
 
+/* 三个关键操作的横向柱状图 */
 .admin-logs-bars {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+}
+
+/* 绿墙：CSS Grid 固定尺寸网格（GitHub 贡献图同款）。
+   列 = 16px 星期标签列 + 52 个 11px 方格周列；行 = 14px 月份标签行 + 7 个 11px 方格。
+   方格恒为 11×11 正方形，任何容器宽度下都不拉伸；窄屏只横向滚动本区域。 */
+.als-wall-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.als-wall {
+  display: grid;
+  grid-template-columns: 16px repeat(52, 11px);
+  grid-template-rows: 14px repeat(7, 11px);
+  column-gap: 3px;
+  row-gap: 3px;
+}
+
+.als-wall-month {
+  font-size: 10px;
+  line-height: 14px;
+  color: #8c8c8c;
+  white-space: nowrap;
+}
+
+.als-wall-day {
+  font-size: 10px;
+  line-height: 11px;
+  color: #8c8c8c;
+  text-align: center;
+}
+
+.als-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
 }
 
 .admin-logs-bar-row {
@@ -195,7 +260,7 @@
 }
 
 .admin-logs-bar-label {
-  flex: 0 0 140px;
+  flex: 0 0 96px; /* 6 个中文字 ≈ 72px，留出右对齐余量 */
   font-size: 12px;
   color: #595959;
   text-align: right;
@@ -222,4 +287,44 @@
   flex: 0 0 32px;
   font-size: 12px;
   color: #8c8c8c;
+}
+
+
+/* 绿墙图例（置于绿墙右下，GitHub 同款） */
+.als-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #8c8c8c;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.als-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.als-legend-item .als-cell {
+  flex: 0 0 auto;
+}
+
+.als-lg-none {
+  background: #f0f0f0;
+  border: 1px solid #e0e0e0;
+}
+
+.als-lg-green {
+  background: #52c41a;
+}
+
+.als-lg-red {
+  background: #ff4d4f;
+}
+
+.als-lg-mix {
+  background: linear-gradient(135deg, #ff4d4f 0%, #ff4d4f 49%, #52c41a 51%, #52c41a 100%);
 }

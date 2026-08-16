@@ -19,7 +19,7 @@ const getAvatarUrl = (username) => `https://api.dicebear.com/7.x/miniavs/svg?see
 const formatRole = (role) => (ROLE_CONFIG[role] ? ROLE_CONFIG[role].label : role);
 const getRoleColor = (role) => (ROLE_CONFIG[role] ? ROLE_CONFIG[role].color : 'default');
 
-const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, onUnpause, usersList = [], currentUserName = null, currentUserId = null, forceSystemAdmin = false }) => {
+const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, onUnpause, usersList = [], currentUserName = null, currentUserId = null, forceSystemAdmin = false, readOnly = false }) => {
   if (!container) return null;
 
   const accountsByRole = container.accounts?.reduce((acc, account) => {
@@ -71,23 +71,23 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
 
   return (
     <Modal title="容器详细信息" open={visible} onCancel={onClose} width="min(750px, calc(100vw - 24px))" className="cdm-modal" footer={[
-      container.container_status === 'paused' && onUnpause ? (
+      !readOnly && container.container_status === 'paused' && onUnpause ? (
         <Button key="unpause" type="primary" icon={<PlayCircleOutlined />} onClick={() => onUnpause(container)}>解冻容器</Button>
       ) : null,
-      container.container_status === 'paused' && !onUnpause ? (
+      !readOnly && container.container_status === 'paused' && !onUnpause ? (
         <Typography.Text key="frozen-hint" type="secondary" style={{ marginRight: 12, alignSelf: 'center', fontSize: 12 }}>
           磁盘已冻结，请联系管理员解冻
         </Typography.Text>
       ) : null,
       <Button key="close" onClick={onClose}>关闭</Button>,
-      isRoot ? (
+      !readOnly && (isRoot ? (
         <Button key="deleteContainer" danger icon={<DeleteOutlined />} onClick={() => onDelete && onDelete(container)}>删除容器</Button>
       ) : (
         <Button key="leave" icon={<DeleteOutlined />} disabled={container.container_status !== 'online'} onClick={() => onLeave && onLeave(container)}>解除关联</Button>
-      ),
-      isRoot ? (
+      )),
+      !readOnly && (isRoot ? (
         <Button key="edit" type="primary" icon={<EditOutlined />} disabled={container.container_status !== 'online'} onClick={() => { onEdit && onEdit(container); }}>编辑用户</Button>
-      ) : null
+      ) : null)
     ]}>
       <div className="cdm-body">
         <div className="cdm-header">

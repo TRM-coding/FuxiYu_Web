@@ -88,4 +88,27 @@ describe('AdminLogs 日志页', () => {
     expect(lastCall.start).toBeTruthy();
     expect(lastCall.end).toBeTruthy();
   });
+
+  it('「本周」初始禁用；翻到上周后可用且点击跳回本周', async () => {
+    render(<MemoryRouter><AdminLogs /></MemoryRouter>);
+
+    await waitPageLoaded();
+    // antd 会给两字按钮自动插空格（渲染为「本 周」），用正则匹配
+    const weekBtn = screen.getByRole('button', { name: /本\s*周/ });
+    expect(weekBtn).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: /上一周/ }));
+    await waitFor(() => {
+      expect(listOperationLogs.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    // 状态更新与重渲染提交是异步的，DOM 断言也要等
+    await waitFor(() => expect(weekBtn).toBeEnabled());
+
+    const callsBefore = listOperationLogs.mock.calls.length;
+    await userEvent.click(weekBtn);
+    await waitFor(() => {
+      expect(listOperationLogs.mock.calls.length).toBe(callsBefore + 1);
+    });
+    await waitFor(() => expect(weekBtn).toBeDisabled()); // 已回到本周
+  });
 });
