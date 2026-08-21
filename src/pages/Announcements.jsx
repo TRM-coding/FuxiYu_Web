@@ -143,7 +143,7 @@ export default function Announcements() {
           type: 'container'
         }));
       } else {
-        const res = await listAllUserBrefInformation({ page_number: 0, page_size: 500 });
+        const res = await listAllUserBrefInformation({ page_number: 1, page_size: 500 });
         items = (res?.users || res?.users_info || []).map(u => ({
           id: u.user_id || u.id,
           label: `${u.username || u.name} (${u.email || ''})`,

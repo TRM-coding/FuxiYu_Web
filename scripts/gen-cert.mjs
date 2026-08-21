@@ -6,7 +6,7 @@
  *   本脚本会永远让位，互不干扰。
  *
  * mkcert 口岸：
- *   mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem localhost 127.0.0.1
+ *   mkcert -cert-file certs/web.pem -key-file certs/web-key.pem localhost 127.0.0.1
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const certDir = path.join(root, 'certs')
-const certPath = path.join(certDir, 'localhost.pem')
-const keyPath = path.join(certDir, 'localhost-key.pem')
+const certPath = path.join(certDir, 'web.pem')
+const keyPath = path.join(certDir, 'web-key.pem')
 
 // 已存在（用户自备或 mkcert 产物）→ 什么都不做，直接让位
 if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
@@ -57,5 +57,5 @@ fs.mkdirSync(certDir, { recursive: true })
 const pems = await selfsigned.generate(attrs, opts)
 fs.writeFileSync(certPath, pems.cert)
 fs.writeFileSync(keyPath, pems.private)
-console.log('[gen-cert] 已生成自签名证书 certs/localhost.pem + certs/localhost-key.pem')
+console.log('[gen-cert] 已生成自签名证书 certs/web.pem + certs/web-key.pem')
 console.log('[gen-cert] 首次访问浏览器会提示不受信任 —— 本地开发常态。换正式证书直接覆盖这两个文件即可。')

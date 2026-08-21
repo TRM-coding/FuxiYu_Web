@@ -7,10 +7,11 @@ import ConfirmModal from '../components/ConfirmModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { listAllUserBrefInformation, getUserDetailInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator, setLongTermContainer } from '../api/container_api';
-const { Column } = Table;
 import './ManageUser.css';
 import TableComponent from '../components/TableComponent';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
+
+const { Column } = Table;
 
 // users and containers will be fetched from backend
 const initialUsers = [];
@@ -808,7 +809,123 @@ const ManageUser = () => {
         </div>
 
       {/* 2. 下方区域：用户表格 */}
+        <section className="manage-user-card-overview">
+          <div className="manage-user-section-heading">
+            <div>
+              <Typography.Text type="secondary">用户分组视图</Typography.Text>
+              <Typography.Title level={4}>用户与容器关系</Typography.Title>
+            </div>
+            <Typography.Text type="secondary">{filteredUserData.length} 个用户</Typography.Text>
+          </div>
+
+          <div className="manage-user-card-grid">
+            {filteredUserData.map(record => {
+              const isExpanded = expandedRowKeys.includes(record.key);
+              const childData = getUserContainers(record.username);
+              const entry = containerMap[String(record.key)] || {};
+              const previewContainers = childData.slice(0, 4);
+              const totalContainers = record.amount_of_container ?? record.amountOfContainer ?? childData.length ?? 0;
+              const runningContainers = record.amount_of_functional_container ?? record.amountOfFunctionalContainer ?? 0;
+              const longTermContainers = record.amount_of_long_term_container ?? record.amountOfLongTermContainer ?? 0;
+
+              return (
+                <article
+                  className={"manage-user-card" + (String(record.key) === String(selectedRowKey) ? ' manage-user-card-selected' : '')}
+                  key={record.key}
+                  onClick={() => setSelectedRowKey(String(record.key))}
+                >
+                  <div className="manage-user-card-head">
+                    <div className="manage-user-person-title">
+                      <Typography.Title level={5}>{record.username}</Typography.Title>
+                      <Typography.Text type="secondary">ID {record.key}</Typography.Text>
+                    </div>
+                    <Tag color="blue">{totalContainers} 容器</Tag>
+                  </div>
+
+                  <div className="manage-user-card-meta">
+                    <span>{record.email || '未记录邮箱'}</span>
+                    <span>{record.graduation_year || '未记录毕业年份'}</span>
+                  </div>
+
+                  <div className="manage-user-card-stats-grid">
+                    <div>
+                      <Typography.Text type="secondary">正常</Typography.Text>
+                      <strong>{runningContainers}</strong>
+                    </div>
+                    <div>
+                      <Typography.Text type="secondary">长期</Typography.Text>
+                      <strong>{longTermContainers}</strong>
+                    </div>
+                  </div>
+
+                  <div className="manage-user-container-preview">
+                    {entry.loading ? (
+                      <div className="manage-user-container-empty">加载容器中</div>
+                    ) : previewContainers.length > 0 ? (
+                      previewContainers.map(containerRecord => (
+                        <div className="manage-user-container-card" key={containerRecord.key}>
+                          <div className="manage-user-container-card-head">
+                            <Typography.Text strong ellipsis>{containerRecord.container_name}</Typography.Text>
+                            {renderContainerStatus(containerRecord.container_status)}
+                          </div>
+                          <div className="manage-user-container-card-meta">
+                            <span>{containerRecord.container_image || '未记录镜像'}</span>
+                            {renderContainerRoleTag(containerRecord.userRole)}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="manage-user-container-empty">
+                        {isExpanded ? '暂无容器' : '展开后加载容器'}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="manage-user-card-actions">
+                    <Button
+                      size="small"
+                      type={isExpanded ? 'default' : 'primary'}
+                      icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleExpand(record.key);
+                      }}
+                    >
+                      {isExpanded ? '收起' : '展开容器'}
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleResetPassword(record);
+                      }}
+                    >
+                      重置密码
+                    </Button>
+                    <Button
+                      size="small"
+                      danger
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDeleteUser(record);
+                      }}
+                    >
+                      删除
+                    </Button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
         <div className="manage-user-table-wrap">
+          <div className="manage-user-section-heading manage-user-section-heading-compact">
+            <div>
+              <Typography.Text type="secondary">详细视图</Typography.Text>
+              <Typography.Title level={4}>用户列表</Typography.Title>
+            </div>
+          </div>
           <TableComponent
             dataSource={filteredUserData}
             rowKey="key"

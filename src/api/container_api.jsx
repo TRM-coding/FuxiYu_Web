@@ -10,6 +10,12 @@ const createTimeoutController = (timeout) => {
 	return { controller, timer };
 };
 
+const toOptionalId = (value) => {
+	if (value === '' || value === null || value === undefined) return null;
+	const id = Number(value);
+	return Number.isInteger(id) && id >= 0 ? id : null;
+};
+
 const ensureOk = async (res, action) => {
 	if (!res.ok) {
 		let body = null;
@@ -193,13 +199,15 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 export const listAllContainerBrefInformation = async ({ machine_id = '', user_id = '', page_number = 1, page_size = 10 } = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
+		const machineId = toOptionalId(machine_id);
+		const userId = toOptionalId(user_id);
 		const url = new URL(API_ROUTES.CONTAINERS_LIST, BACKEND_ORIGIN).toString();
 		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({ machine_id, user_id, page_number, page_size }),
+			body: JSON.stringify({ machine_id: machineId, user_id: userId, page_number, page_size }),
 			signal: controller.signal,
 			credentials: CREDENTIALS,
 		});

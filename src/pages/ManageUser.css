@@ -13,6 +13,29 @@
 .manage-user-section-title-text{font-size:14px}
 .manage-user-card-title{display:flex;align-items:center;gap:8px}
 .manage-user-table-wrap{padding:16px}
+.manage-user-card-overview{padding:16px}
+.manage-user-section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:12px}
+.manage-user-section-heading .ant-typography{margin-bottom:0}
+.manage-user-section-heading-compact{margin-bottom:10px}
+.manage-user-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.manage-user-card{min-width:0;padding:14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;transition:border-color 160ms ease,box-shadow 160ms ease}
+.manage-user-card:hover{border-color:#b6c2d2;box-shadow:0 8px 24px rgba(15,23,42,0.06)}
+.manage-user-card-selected{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,0.12)}
+.manage-user-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+.manage-user-person-title{min-width:0}
+.manage-user-person-title .ant-typography{margin:0}
+.manage-user-card-meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;color:#6b7280;font-size:12px}
+.manage-user-card-meta span{max-width:100%;padding:2px 7px;border-radius:6px;background:#f6f7f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.manage-user-card-stats-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.manage-user-card-stats-grid>div{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:8px;background:#f8fafc}
+.manage-user-container-preview{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;min-height:48px}
+.manage-user-container-card{min-width:0;padding:10px;border:1px solid #edf0f3;border-radius:8px;background:#fafbfc}
+.manage-user-container-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.manage-user-container-card-head .ant-typography{min-width:0}
+.manage-user-container-card-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;color:#6b7280;font-size:12px}
+.manage-user-container-card-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.manage-user-container-empty{display:flex;align-items:center;justify-content:center;min-height:48px;border:1px dashed #d1d5db;border-radius:8px;color:#6b7280;background:#fafafa}
+.manage-user-card-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .manage-user-text-gap{margin-left:8px}
 .manage-user-modal-save{background:#fafafa;padding:16px;border-radius:4px;border:1px solid #f0f0f0}
 .manage-user-modal-delete{background:#fff2f0;padding:16px;border-radius:4px;border:1px solid #ffccc7}
@@ -112,5 +135,17 @@
 	}
 	.manage-user-table-wrap {
 		padding: 10px;
+	}
+	.manage-user-card-overview {
+		padding: 10px;
+	}
+	.manage-user-section-heading {
+		align-items: flex-start;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.manage-user-card-grid,
+	.manage-user-container-preview {
+		grid-template-columns: 1fr;
 	}
 }

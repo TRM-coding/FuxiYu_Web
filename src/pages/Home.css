@@ -34,11 +34,105 @@
 .home-warning { color: #faad14; }
 .home-red { color: #ff4d4f; }
 .home-purple { color: #722ed1; }
-.home-table-wrapper {
+.home-grid-overview {
   padding: 16px;
 }
-.home-table {
-  padding: 16px;
+.home-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.home-section-heading .ant-typography {
+  margin-bottom: 0;
+}
+.home-section-heading-compact {
+  margin-bottom: 10px;
+}
+.home-machine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+.home-machine-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+.home-machine-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.home-machine-card-head .ant-typography {
+  margin: 0;
+}
+.home-container-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+.home-container-card {
+  min-width: 0;
+  height: 142px;
+  padding: 12px;
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.home-container-card-head,
+.home-container-card-foot {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.home-card-title-button {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1f2937;
+  font-weight: 600;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.home-container-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+.home-container-card-meta span {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #ffffff;
+}
+.home-show-more-button {
+  margin-top: 10px;
+  padding-left: 0;
+}
+.home-empty-card {
+  padding: 24px;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #6b7280;
+  text-align: center;
 }
 .home-modal-danger { /*这个是危险状态的样式*/
   background: #fff2f0;
@@ -111,8 +205,16 @@
     font-size: 20px !important;
     line-height: 1;
   }
-  .home-table-wrapper,
-  .home-table {
+  .home-grid-overview {
     padding: 10px;
+  }
+  .home-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .home-machine-grid,
+  .home-container-card-grid {
+    grid-template-columns: 1fr;
   }
 }

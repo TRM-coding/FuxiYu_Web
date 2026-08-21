@@ -8,15 +8,9 @@ const envViteEnable = process.env.VITE_ENABLE_SSL
 const envEnable = process.env.ENABLE_SSL
 const enableSsl = (envViteEnable !== undefined) ? (envViteEnable === 'true') : (envEnable !== undefined ? (envEnable === 'true') : true)
 const projectRoot = path.resolve(__dirname)
-// prefer certs placed under the front-end project (FuxiYu_Web/certs)
-const frontendCertPath = path.resolve(projectRoot, 'certs', 'localhost.pem')
-const frontendKeyPath = path.resolve(projectRoot, 'certs', 'localhost-key.pem')
-// fallback to the certs generated under backend project
-const backendCertPath = path.resolve(projectRoot, '..', 'FuxiYu_CtrKernel', 'certs', 'localhost.pem')
-const backendKeyPath = path.resolve(projectRoot, '..', 'FuxiYu_CtrKernel', 'certs', 'localhost-key.pem')
-
-const certPath = fs.existsSync(frontendCertPath) ? frontendCertPath : backendCertPath
-const keyPath = fs.existsSync(frontendKeyPath) ? frontendKeyPath : backendKeyPath
+// web 自己终止 browser -> web 的 HTTPS，只读取 Web 仓库 certs 下的证书。
+const certPath = path.resolve(projectRoot, 'certs', 'web.pem')
+const keyPath = path.resolve(projectRoot, 'certs', 'web-key.pem')
 
 export default defineConfig(({ mode }) => {
   // 三仓库统一网络键名（.env）：只填裸 IP 与端口。loadEnv 用空前缀，

@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
-import { Flex, Typography, Row, Col, Button, Input, Space, Table, Tag, message, Checkbox } from 'antd';
+import { Flex, Typography, Row, Col, Button, Input, Space, Tag, message, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
-import TableComponent from '../components/TableComponent';
-import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
@@ -17,7 +15,6 @@ import { listAllUserBrefInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
-const { Column, ColumnGroup } = Table;
 import './Home.css';
 
 const Desc = props => (
@@ -619,7 +616,7 @@ const Home = () => {
       // fetch users for mapping owner names
       setUsersLoading(true);
       try {
-        const ures = await listAllUserBrefInformation({ page_number: 0, page_size: 500 });
+        const ures = await listAllUserBrefInformation({ page_number: 1, page_size: 500 });
         const items = (ures && (ures.users || ures.users_info || ures.data || ures.users_list)) || [];
         const mappedUsers = items.map(u => ({ id: u.user_id || u.id || u.uid || u.userId, username: u.username || u.name || String(u.id), name: u.display_name || u.name || u.username }));
         setUsersList(mappedUsers);
@@ -745,6 +742,58 @@ const Home = () => {
     return configs[type] || {};
   };
 
+  const groupedContainers = containers.reduce((groups, container) => {
+    const machineKey = container.machine_id || container.machine_ip || 'unassigned';
+    if (!groups[machineKey]) {
+      groups[machineKey] = {
+        key: machineKey,
+        machine_id: container.machine_id,
+        machine_ip: container.machine_ip || '-',
+        containers: [],
+      };
+    }
+    groups[machineKey].containers.push(container);
+    return groups;
+  }, {});
+
+  const machineGroups = Object.values(groupedContainers);
+
+  const renderContainerCard = (record) => {
+    const status = (record?.container_status || '').toLowerCase();
+    const color = status === 'online'
+      ? 'green'
+      : status === 'offline'
+        ? 'volcano'
+        : status === 'failed'
+          ? 'red'
+          : status === 'starting'
+            ? 'cyan'
+            : status === 'stopping'
+              ? 'orange'
+              : 'default';
+    const myRole = getRoleForUser(record.accounts, currentUserName, currentUserId);
+
+    return (
+      <article className="home-container-card" key={record.key}>
+        <div className="home-container-card-head">
+          <button type="button" className="home-card-title-button" onClick={() => openContainerDetail(record)}>
+            {record.container_name}
+          </button>
+          <Tag color={color}>{status || 'unknown'}</Tag>
+        </div>
+        <div className="home-container-card-meta">
+          <span>ID {record.key}</span>
+          <span>{record.port ? `:${record.port}` : '无端口'}</span>
+          <span>{myRole || '未授权'}</span>
+        </div>
+        <div className="home-container-card-foot">
+          <Typography.Text type="secondary" ellipsis>{record.container_image || '未记录镜像'}</Typography.Text>
+          <Button size="small" onClick={() => openContainerDetail(record)}>详情</Button>
+        </div>
+      </article>
+    );
+  };
+
   return (
     <div>
       <ConfirmModal
@@ -795,163 +844,60 @@ const Home = () => {
             </Col>
           </Row>
         </div>
-        <div className="home-table-wrapper">
-          <TableComponent dataSource={containers} loading={loadingContainers} className="home-table">
-            <Column title="容器名称" dataIndex="container_name" key="container_name" render={(text, record) => <a onClick={() => openContainerDetail(record)}>{text}</a>} />
-            <Column title="容器ID" dataIndex="key" key="key" />
-            <Column title="机器 IP" dataIndex="machine_ip" key="machine_ip" render={(text, record) => (record.machine_ip  || '-')} />
-            <Column
-              title="容器状态"
-              dataIndex="container_status"
-              key="container_status"
-              render={(status, record) => {
-                if (record?.display_status === 'host_offline') {
-                  return <Tag color="default">宿主机离线</Tag>;
-                }
-                let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'paused' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
-                let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'paused' ? '磁盘已冻结' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status;
-                return <Tag color={color}>{text}</Tag>;
-              }}
-            />
-            <Column
-              title="上次SSH登录"
-              dataIndex="last_ssh_login_time"
-              key="last_ssh_login_time"
-              render={(_, record) => formatLastSshTime(record?.last_ssh_login_time)}
-            />
-            <Column
-              title="距清理时间"
-              dataIndex="ssh_cleanup_countdown"
-              key="ssh_cleanup_countdown"
-              render={(_, record) => formatCleanupCountdown(record?.last_ssh_login_time, record)}
-            />
-            <Column title="端口" dataIndex="port" key="port" />
-            <Column
-              title="磁盘用量"
-              dataIndex="disk_usage_percent"
-              key="disk_usage_percent"
-              render={(_, record) => {
-                const pct = record.disk_usage_percent;
-                const total = record.disk_total_gb;
-                const limit = record.disk_limit_gb;
-                if (total == null) return <Typography.Text type="secondary">-</Typography.Text>;
-                const color = pct >= 100 ? '#ff4d4f' : pct >= 80 ? '#faad14' : '#52c41a';
-                return (
-                  <div style={{ minWidth: 80 }}>
-                    <div style={{ fontSize: 12, marginBottom: 2 }}>{total}G / {limit != null ? `${limit}G` : '-'}</div>
-                    <div style={{ background: '#f0f0f0', borderRadius: 2, height: 4, width: '100%', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(pct || 0, 100)}%`, height: '100%', background: color, borderRadius: 2 }} />
-                    </div>
+        <section className="home-grid-overview">
+          <div className="home-section-heading">
+            <div>
+              <Typography.Text type="secondary">容器分组视图</Typography.Text>
+              <Typography.Title level={4}>按机器查看容器</Typography.Title>
+            </div>
+            <Typography.Text type="secondary">{machineGroups.length} 台机器 / {containers.length} 个容器</Typography.Text>
+          </div>
+
+          <div className="home-machine-grid">
+            {machineGroups.map(group => (
+              <section className="home-machine-card" key={group.key}>
+                <div className="home-machine-card-head">
+                  <div>
+                    <Typography.Text type="secondary">机器</Typography.Text>
+                    <Typography.Title level={5}>{group.machine_ip}</Typography.Title>
                   </div>
-                );
-              }}
-            />
-            <Column
-              title="操作"
-              key="action"
-              render={(_, record) => {
-                const myRole = getRoleForUser(record.accounts, currentUserName, currentUserId);
-                const actionState = getContainerActionState(record?.container_status, record?.display_status);
-                const roleActions = getRoleActionSet(myRole);
-                const startDisabled = !actionState.canStart;
-                const restartDisabled = !actionState.canRestart;
-                const stopDisabled = !actionState.canStop;
-                const sshRefreshLoading = !!sshRefreshingMap[String(record?.key)];
-                const longTermChecked = record?.is_long_term === true;
-                const longTermLoading = !!longTermUpdatingMap[String(record?.key)];
-                const longTermDisabled = longTermLoading || (!longTermChecked && longTermRemaining !== null && Number(longTermRemaining) <= 0);
+                  <Tag color="blue">{group.containers.length} 个容器</Tag>
+                </div>
+                <div className="home-container-card-grid">
+                  {group.containers.slice(0, 4).map(renderContainerCard)}
+                </div>
+                {group.containers.length > 4 ? (
+                  <Button type="link" className="home-show-more-button">
+                    查看全部 {group.containers.length} 个
+                  </Button>
+                ) : null}
+              </section>
+            ))}
+            {!loadingContainers && machineGroups.length === 0 ? (
+              <div className="home-empty-card">暂无容器</div>
+            ) : null}
+          </div>
+        </section>
+        <ContainerDetailModal
+          visible={detailVisible}
+          container={detailContainer}
+          onClose={() => setDetailVisible(false)}
+          onDelete={handleDetailDelete}
+          onLeave={handleLeave}
+          onEdit={openEditModal}
+          usersList={usersList}
+          currentUserName={currentUserName}
+          currentUserId={currentUserId}
+        />
 
-                const ActionButtons = (
-                  <Space size="small">
-                    {roleActions.showLongTerm ? (
-                      <Checkbox
-                        checked={longTermChecked}
-                        disabled={longTermDisabled}
-                        onChange={e => handleLongTermChange(record, e.target.checked)}
-                      >
-                        长期容器
-                      </Checkbox>
-                    ) : null}
-                      <a
-                        onClick={() => { if (!startDisabled) handleStartContainer(record); }}
-                        className={startDisabled ? 'home-action-link home-action-disabled' : 'home-action-link'}
-                      >
-                        启动
-                      </a>
-                      <a
-                        onClick={() => { if (!restartDisabled) openConfirm('restart', { record }); }}
-                        className={restartDisabled ? 'home-action-link home-action-disabled' : 'home-action-link'}
-                      >
-                        重启
-                      </a>
-                      <a
-                        onClick={() => { if (!stopDisabled) openConfirm('stop', { record }); }}
-                        className={stopDisabled ? 'home-action-link home-action-disabled' : 'home-action-link home-action-stop'}
-                      >
-                        停止
-                      </a>
-                      <a
-                        onClick={() => { if (!sshRefreshLoading) refreshSshTimeForContainer(record?.key); }}
-                        className={sshRefreshLoading ? 'home-action-link home-action-disabled' : 'home-action-link'}
-                      >
-                        {sshRefreshLoading ? '刷新中' : '刷新SSH'}
-                      </a>
-                    </Space>
-                );
-
-                // Show 查看详情 first, then role-specific links, then the action buttons
-                const detailLink = <a onClick={() => openContainerDetail(record)}>查看详情</a>;
-                if (roleActions.showInvite) {
-                  return (
-                    <Space size="middle">
-                      {detailLink}
-                      <a onClick={() => handleInvite(record)}>邀请</a>
-                      <a onClick={() => handleDeleteContainer(record)}>删除容器</a>
-                      {ActionButtons}
-                    </Space>
-                  );
-                }
-                if (roleActions.showLeave) {
-                  return (
-                    <Space size="middle">
-                      {detailLink}
-                      <a onClick={() => handleLeave(record)}>退出</a>
-                      {ActionButtons}
-                    </Space>
-                  );
-                }
-                // default actions for others
-                return (
-                  <Space size="middle">
-                    {detailLink}
-                    {ActionButtons}
-                  </Space>
-                );
-              }}
-            />
-          </TableComponent>
-
-          <ContainerDetailModal
-            visible={detailVisible}
-            container={detailContainer}
-            onClose={() => setDetailVisible(false)}
-            onDelete={handleDetailDelete}
-            onLeave={handleLeave}
-            onEdit={openEditModal}
-            usersList={usersList}
-            currentUserName={currentUserName}
-            currentUserId={currentUserId}
-          />
-
-          <EditUserModal
-            visible={editModalVisible}
-            container={selectedContainer}
-            onClose={closeAllModals}
-            onBack={returnToDetail}
-            usersList={usersList}
-            usersLoading={usersLoading}
-          />
-        </div>
+        <EditUserModal
+          visible={editModalVisible}
+          container={selectedContainer}
+          onClose={closeAllModals}
+          onBack={returnToDetail}
+          usersList={usersList}
+          usersLoading={usersLoading}
+        />
       </div>
     </div>
   );

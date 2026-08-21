@@ -29,8 +29,10 @@ export const API_ROUTES = {
 
 	// Machine routes
 	MACHINES_ADD: '/api/machines/add_machine',
+	MACHINES_REGISTER: '/api/machines/register_machine',
 	MACHINES_REMOVE: '/api/machines/remove_machine',
 	MACHINES_UPDATE: '/api/machines/update_machine',
+	MACHINES_SET_MAINTENANCE: '/api/machines/set_maintenance',
 	MACHINES_GET_DETAIL: '/api/machines/get_detail_information',
 	MACHINES_LIST: '/api/machines/list_all_machine_bref_information',
 	MACHINES_ADD_PERMISSION: '/api/machines/add_machine_permission',

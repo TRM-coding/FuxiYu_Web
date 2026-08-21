@@ -64,6 +64,31 @@ export const addMachine = async (machineData = {}, timeout = null) => {
   }
 };
 
+export const registerMachine = async (machineData = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.MACHINES_REGISTER, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(machineData),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Register machine');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Register machine request timed out');
+    throw err;
+  }
+};
+
 export const removeMachine = async (machine_ids = [], timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
@@ -110,6 +135,31 @@ export const updateMachine = async (machine_id = 0, fields = {}, timeout = null)
     clearTimeout(timer);
     try { unregisterController(controller); } catch (e) {}
     if (err.name === 'AbortError') throw new Error('Update machine request timed out');
+    throw err;
+  }
+};
+
+export const setMachineMaintenance = async (machine_id = 0, is_maintenance = false, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.MACHINES_SET_MAINTENANCE, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ machine_id, is_maintenance }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Set machine maintenance');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Set machine maintenance request timed out');
     throw err;
   }
 };

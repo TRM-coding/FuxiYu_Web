@@ -1,7 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import NavbarAdmin from '../components/NavbarAdmin';
+import {
+  DatabaseOutlined,
+  FileTextOutlined,
+  InfoCircleOutlined,
+  SendOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
+import { Menu, Typography } from 'antd';
 import AdminAvatar from '../components/AdminAvatar';
+import './AdminLayout.css';
+
+const adminMenuItems = [
+  { label: '用户管理', key: '/admin/users', icon: <UserOutlined /> },
+  { label: '机器管理', key: '/admin/machines', icon: <DatabaseOutlined /> },
+  { label: '公告管理', key: '/admin/announcements', icon: <SendOutlined /> },
+  { label: '操作日志', key: '/admin/logs', icon: <FileTextOutlined /> },
+];
 
 export default function AdminLayout() {
   const navigate = useNavigate();
@@ -9,22 +24,20 @@ export default function AdminLayout() {
   const touchStartXRef = useRef(0);
   const touchStartYRef = useRef(0);
   const touchStartTargetRef = useRef(null);
-  const touchStartTimeRef = useRef(0);
-  const [menuResetToken, setMenuResetToken] = useState(0);
   const swipePaths = useMemo(() => ['/admin/users', '/admin/machines'], []);
 
   const normalizePath = (pathname) => {
     if (pathname.startsWith('/admin/users')) return '/admin/users';
     if (pathname.startsWith('/admin/machines')) return '/admin/machines';
+    if (pathname.startsWith('/admin/announcements')) return '/admin/announcements';
+    if (pathname.startsWith('/admin/logs')) return '/admin/logs';
     if (pathname.startsWith('/admin/profile')) return '/admin/profile';
     return pathname;
   };
 
-  // 点击导航菜单或头像时的路由跳转逻辑
   const handleNavigate = (path) => {
     navigate(path);
   };
-
 
   const handleTouchStart = (e) => {
     if (window.innerWidth > 768) return;
@@ -33,7 +46,6 @@ export default function AdminLayout() {
     touchStartXRef.current = touch.clientX;
     touchStartYRef.current = touch.clientY;
     touchStartTargetRef.current = e.target;
-    touchStartTimeRef.current = Date.now();
   };
 
   const handleTouchEnd = (e) => {
@@ -46,15 +58,9 @@ export default function AdminLayout() {
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
 
-    // 忽略很小水平移动
-    if (absDx < 50) return;
-    // 要求水平移动明显大于垂直移动
-    if (absDx < absDy * 1.5) return;
-    // 如果触摸起点在输入/选择/按钮等控件上，忽略导航
+    if (absDx < 50 || absDx < absDy * 1.5) return;
     const startTag = touchStartTargetRef.current?.tagName?.toLowerCase();
     if (['input', 'textarea', 'select', 'button'].includes(startTag)) return;
-
-    if (dx === 0) return;
 
     const currentPath = normalizePath(location.pathname);
     const currentIndex = swipePaths.indexOf(currentPath);
@@ -63,51 +69,62 @@ export default function AdminLayout() {
     const nextIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1;
     if (nextIndex < 0 || nextIndex >= swipePaths.length) return;
 
-    if (document?.activeElement && typeof document.activeElement.blur === 'function') {
-      document.activeElement.blur();
-    }
-    setMenuResetToken((v) => v + 1);
+    document?.activeElement?.blur?.();
     navigate(swipePaths[nextIndex]);
-
-    // 清理 touch refs
-    touchStartXRef.current = 0;
-    touchStartYRef.current = 0;
-    touchStartTargetRef.current = null;
-    touchStartTimeRef.current = 0;
   };
 
+  const selectedKeys = location.pathname === '/admin/profile'
+    ? []
+    : [normalizePath(location.pathname)];
+
   return (
-    <div>
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 999,
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        padding: '0 20px',
-        borderBottom: '1px solid #e8e8e8',
-        backgroundColor: '#ffffff',
-        height: '64px'
-      }}>
-        <NavbarAdmin menuResetToken={menuResetToken} />
+    <div className="admin-shell">
+      <aside className="admin-sidebar">
+        <button className="admin-brand" type="button" onClick={() => navigate('/admin/users')}>
+          <InfoCircleOutlined className="admin-brand-icon" />
+          <span className="admin-brand-copy">
+            <Typography.Text strong className="admin-brand-title">Fuxi</Typography.Text>
+            <Typography.Text type="secondary" className="admin-brand-subtitle">管理控制台</Typography.Text>
+          </span>
+        </button>
+
+        <Menu
+          className="admin-side-menu"
+          mode="inline"
+          selectedKeys={selectedKeys}
+          items={adminMenuItems}
+          onClick={(e) => navigate(e.key)}
+        />
+      </aside>
+
+      <div className="admin-mobile-topbar">
+        <Menu
+          className="admin-mobile-menu"
+          mode="horizontal"
+          selectedKeys={selectedKeys}
+          items={adminMenuItems}
+          onClick={(e) => navigate(e.key)}
+        />
         <AdminAvatar onNavigate={handleNavigate} />
       </div>
 
-      <main
-        style={{ padding: '20px', marginTop: '64px', position: 'relative' }}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
-        <Outlet />
-      </main>
+      <section className="admin-main">
+        <header className="admin-topbar">
+          <div>
+            <Typography.Text type="secondary" className="admin-topbar-kicker">Fuxi 控制台</Typography.Text>
+            <Typography.Title level={4} className="admin-topbar-title">资源与用户管理</Typography.Title>
+          </div>
+          <AdminAvatar onNavigate={handleNavigate} />
+        </header>
 
-      {/* 全局页脚：时区说明（如备案号一般存在于每页底部） */}
-      <footer style={{ textAlign: 'center', fontSize: '12px', color: '#8c8c8c', padding: '8px 20px 20px' }}>
-        本平台所有时间均以北京时间（UTC+8）显示
-      </footer>
+        <main
+          className="admin-content"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <Outlet />
+        </main>
+      </section>
     </div>
   );
 }

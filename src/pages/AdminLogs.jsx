@@ -303,7 +303,7 @@ export default function AdminLogs() {
         }
         setPermitted(true);
         try {
-          const ures = await listAllUserBrefInformation({ page_number: 0, page_size: 500 });
+          const ures = await listAllUserBrefInformation({ page_number: 1, page_size: 500 });
           const items = (ures && (ures.users || ures.users_info || ures.data || ures.users_list)) || [];
           setUsers(items.map(u => ({ id: u.user_id || u.id || u.uid, username: u.username || u.name || String(u.id) })));
         } catch (e) {

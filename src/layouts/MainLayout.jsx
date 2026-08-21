@@ -1,116 +1,128 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import Navbar from '../components/Navbar'
-import UserAvatar from '../components/UserAvatar'
+import { useMemo, useRef } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import {
+  BookOutlined,
+  FormOutlined,
+  HomeOutlined,
+  InfoCircleOutlined,
+} from '@ant-design/icons';
+import { Menu, Typography } from 'antd';
+import UserAvatar from '../components/UserAvatar';
+import './MainLayout.css';
+
+const userMenuItems = [
+  { label: 'Home', key: '/index', icon: <HomeOutlined /> },
+  { label: 'Apply', key: '/index/apply', icon: <FormOutlined /> },
+  { label: 'Docs', key: '/index/docs', icon: <BookOutlined /> },
+];
 
 export default function MainLayout() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const touchStartXRef = useRef(0)
-  const touchStartYRef = useRef(0)
-  const touchStartTargetRef = useRef(null)
-  const touchStartTimeRef = useRef(0)
-  const [menuResetToken, setMenuResetToken] = useState(0)
-
-  const swipePaths = useMemo(() => ['/index', '/index/apply', '/index/docs'], [])
+  const navigate = useNavigate();
+  const location = useLocation();
+  const touchStartXRef = useRef(0);
+  const touchStartYRef = useRef(0);
+  const touchStartTargetRef = useRef(null);
+  const swipePaths = useMemo(() => ['/index', '/index/apply', '/index/docs'], []);
 
   const normalizePath = (pathname) => {
-    if (pathname === '/index') return '/index'
-    if (pathname.startsWith('/index/apply')) return '/index/apply'
-    if (pathname.startsWith('/index/docs')) return '/index/docs'
-    return pathname
-  }
+    if (pathname === '/index') return '/index';
+    if (pathname.startsWith('/index/apply')) return '/index/apply';
+    if (pathname.startsWith('/index/docs')) return '/index/docs';
+    return pathname;
+  };
 
-  // 导航处理函数
   const handleNavigate = (path) => {
-    navigate(path)
-  }
-
+    navigate(path);
+  };
 
   const handleTouchStart = (e) => {
-    if (window.innerWidth > 768) return
-    const touch = e.touches?.[0]
-    if (!touch) return
-    touchStartXRef.current = touch.clientX
-    touchStartYRef.current = touch.clientY
-    touchStartTargetRef.current = e.target
-    touchStartTimeRef.current = Date.now()
-  }
+    if (window.innerWidth > 768) return;
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    touchStartXRef.current = touch.clientX;
+    touchStartYRef.current = touch.clientY;
+    touchStartTargetRef.current = e.target;
+  };
 
   const handleTouchEnd = (e) => {
-    if (window.innerWidth > 768) return
-    const touch = e.changedTouches?.[0]
-    if (!touch) return
+    if (window.innerWidth > 768) return;
+    const touch = e.changedTouches?.[0];
+    if (!touch) return;
 
-    const dx = touch.clientX - touchStartXRef.current
-    const dy = touch.clientY - touchStartYRef.current
-    const absDx = Math.abs(dx)
-    const absDy = Math.abs(dy)
+    const dx = touch.clientX - touchStartXRef.current;
+    const dy = touch.clientY - touchStartYRef.current;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
 
-    // 忽略很小的水平移动（避免误触）
-    if (absDx < 50) return
-    // 要求水平移动明显大于垂直移动
-    if (absDx < absDy * 1.5) return
-    // 如果触摸起点在输入/选择/按钮等控件上，忽略导航（避免误触）
-    const startTag = touchStartTargetRef.current?.tagName?.toLowerCase()
-    if (['input', 'textarea', 'select', 'button'].includes(startTag)) return
+    if (absDx < 50 || absDx < absDy * 1.5) return;
+    const startTag = touchStartTargetRef.current?.tagName?.toLowerCase();
+    if (['input', 'textarea', 'select', 'button'].includes(startTag)) return;
 
-    if (dx === 0) return
+    const currentPath = normalizePath(location.pathname);
+    const currentIndex = swipePaths.indexOf(currentPath);
+    if (currentIndex < 0) return;
 
-    const currentPath = normalizePath(location.pathname)
-    const currentIndex = swipePaths.indexOf(currentPath)
-    if (currentIndex < 0) return
+    const nextIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1;
+    if (nextIndex < 0 || nextIndex >= swipePaths.length) return;
 
-    // 左滑 => 下一个页面；右滑 => 上一个页面
-    const nextIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1
-    if (nextIndex < 0 || nextIndex >= swipePaths.length) return
+    document?.activeElement?.blur?.();
+    navigate(swipePaths[nextIndex]);
+  };
 
-    // 清理点击后残留焦点态，并立即切页
-    if (document?.activeElement && typeof document.activeElement.blur === 'function') {
-      document.activeElement.blur()
-    }
-    setMenuResetToken((v) => v + 1)
-    navigate(swipePaths[nextIndex])
-
-    // 清理 touch refs
-    touchStartXRef.current = 0
-    touchStartYRef.current = 0
-    touchStartTargetRef.current = null
-    touchStartTimeRef.current = 0
-  }
+  const selectedKeys = [normalizePath(location.pathname)];
 
   return (
-    <div>
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 999,
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        padding: '0 20px',
-        borderBottom: '1px solid #e8e8e8',
-        backgroundColor: '#ffffff',
-        height: '64px'
-      }}>
-        <Navbar menuResetToken={menuResetToken} />
+    <div className="main-shell">
+      <aside className="main-sidebar">
+        <button className="main-brand" type="button" onClick={() => navigate('/index')}>
+          <InfoCircleOutlined className="main-brand-icon" />
+          <span className="main-brand-copy">
+            <Typography.Text strong className="main-brand-title">Fuxi</Typography.Text>
+            <Typography.Text type="secondary" className="main-brand-subtitle">用户工作区</Typography.Text>
+          </span>
+        </button>
+
+        <Menu
+          className="main-side-menu"
+          mode="inline"
+          selectedKeys={selectedKeys}
+          items={userMenuItems}
+          onClick={(e) => navigate(e.key)}
+        />
+      </aside>
+
+      <div className="main-mobile-topbar">
+        <Menu
+          className="main-mobile-menu"
+          mode="horizontal"
+          selectedKeys={selectedKeys}
+          items={userMenuItems}
+          onClick={(e) => navigate(e.key)}
+        />
         <UserAvatar onNavigate={handleNavigate} />
       </div>
 
-      <main
-        style={{ padding: '20px', marginTop: '64px', position: 'relative' }}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
-        <Outlet /> {/* 渲染嵌套的子路由内容 */}
-      </main>
+      <section className="main-panel">
+        <header className="main-topbar">
+          <div>
+            <Typography.Text type="secondary" className="main-topbar-kicker">Fuxi</Typography.Text>
+            <Typography.Title level={4} className="main-topbar-title">容器与申请</Typography.Title>
+          </div>
+          <UserAvatar onNavigate={handleNavigate} />
+        </header>
 
-      {/* 全局页脚：时区说明（如备案号一般存在于每页底部） */}
-      <footer style={{ textAlign: 'center', fontSize: '12px', color: '#8c8c8c', padding: '8px 20px 20px' }}>
-        本平台所有时间均以北京时间（UTC+8）显示
-      </footer>
+        <main
+          className="main-content"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <Outlet />
+        </main>
+
+        <footer className="main-footer">
+          本平台所有时间均以北京时间（UTC+8）显示
+        </footer>
+      </section>
     </div>
-  )
+  );
 }

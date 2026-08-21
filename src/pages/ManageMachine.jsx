@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
+import { listAllMachineBrefInformation, getDetailInformation, registerMachine, removeMachine, updateMachine, setMachineMaintenance, addMachinePermission, listMachinePermissions } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
-import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined } from '@ant-design/icons';
-import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination, Slider, Checkbox } from 'antd';
+import { SearchOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined } from '@ant-design/icons';
+import { Typography, Row, Col, Button, Input, Space, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Slider, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
-import TableComponent from '../components/TableComponent';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import ContainerDetailModal from '../components/ContainerDetailModal';
@@ -13,7 +12,6 @@ import { getUserDetailInformation, listAllUserBrefInformation } from '../api/use
 import { isAbortError } from '../utils/requestManager';
 import { useNavigate } from 'react-router-dom';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
-const { Column } = Table;
 const { Option } = Select;
 
 import { startContainerStatusHeartbeat, startMachineStatusHeartbeat } from '../utils/heartbeat';
@@ -104,8 +102,6 @@ const ManageMachine = () => {
   const [searchIP, setSearchIP] = useState('');
   const [searchContainerName, setSearchContainerName] = useState('');
 
-  // 展开的行key
-  const [expandedRowKeys, setExpandedRowKeys] = useState([]);
   // machines from backend
   const [machines, setMachines] = useState([]);
   const [machinesLoading, setMachinesLoading] = useState(false);
@@ -185,7 +181,6 @@ const ManageMachine = () => {
   const navigate = useNavigate();
   const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
 
-  // auth + permission check: ensure logged in and operator permission
   useEffect(() => {
     const checkAuthAndPerm = async () => {
       try {
@@ -200,7 +195,6 @@ const ManageMachine = () => {
               sessionStorage.removeItem('auth_modal_shown');
             }
           }
-          // 401: clear auth and navigate to login
           handleAuthError(401, navigate);
           return;
         }
@@ -217,9 +211,7 @@ const ManageMachine = () => {
               sessionStorage.removeItem('auth_modal_shown');
             }
           }
-          // 403: do NOT clear auth; only navigate to /index
           handleAuthError(403, navigate);
-          return;
         }
       } catch (e) {
         if (!sessionStorage.getItem('auth_modal_shown')) {
@@ -230,7 +222,6 @@ const ManageMachine = () => {
             sessionStorage.removeItem('auth_modal_shown');
           }
         }
-        // 401: clear auth and navigate to login
         handleAuthError(401, navigate);
       }
     };
@@ -271,12 +262,11 @@ const ManageMachine = () => {
   const openActionConfirm = (type, data) => {
     setActionModal({ visible: true, type, loading: false, data });
   };
-
   const closeActionModal = () => {
     setActionModal({ visible: false, type: '', loading: false, data: null });
   };
-
   const handleActionConfirm = async () => {
+    if (!actionModal.visible || !actionModal.data) return;
     setActionModal(prev => ({ ...prev, loading: true }));
     try {
       const { type, data } = actionModal;
@@ -410,7 +400,7 @@ const ManageMachine = () => {
     const loadUsers = async () => {
       setUsersLoading(true);
       try {
-        const res = await listAllUserBrefInformation({ page_number: 0, page_size: 500 });
+        const res = await listAllUserBrefInformation({ page_number: 1, page_size: 500 });
         const items = (res && (res.users || res.users_info || res.data || res.users_list)) || [];
         const mapped = items.map(u => ({ id: u.user_id || u.id || u.uid || u.userId, username: u.username || u.name || String(u.id), name: u.display_name || u.name || u.username }));
         if (mounted) setUsersList(mapped);
@@ -425,7 +415,6 @@ const ManageMachine = () => {
     return () => { mounted = false; };
   }, []);
 
-  // 基础过滤（不含容器名）
   const baseFilteredMachineData = machines.filter(machine => {
     const matchName = (machine.machine_name || '').toLowerCase().includes(searchName.toLowerCase());
     const matchIP = (machine.machine_ip || '').includes(searchIP);
@@ -442,7 +431,7 @@ const ManageMachine = () => {
     // mark loading
     setContainerMap(prev => ({ ...prev, [mid]: { ...(prev[mid] || {}), loading: true, data: [], page: pageNumber, total_page: prev[mid]?.total_page || 1 } }));
     try {
-      const pageSize = 5;
+      const pageSize = 4;
       const res = await listAllContainerBrefInformation({ machine_id: mid, page_number: pageNumber, page_size: pageSize });
       const items = (res && (res.containers_info || res.containers)) || [];
       const total_page = (res && (res.total_page || res.totalPages || res.total_pages)) || 1;
@@ -526,9 +515,7 @@ const ManageMachine = () => {
     setSshRefreshingMap(prev => ({ ...prev, [String(cid)]: true }));
     try {
       const res = await refreshLastSshLoginTime(Number(cid));
-      const value = (res && Object.prototype.hasOwnProperty.call(res, 'last_ssh_login_time'))
-        ? res.last_ssh_login_time
-        : null;
+      const value = Object.prototype.hasOwnProperty.call(res || {}, 'last_ssh_login_time') ? res.last_ssh_login_time : null;
       const cleanup_after_days = res?.cleanup_after_days ?? null;
       const cleanup_at = res?.cleanup_at ?? null;
       const seconds_until_cleanup = res?.seconds_until_cleanup ?? null;
@@ -548,7 +535,7 @@ const ManageMachine = () => {
           },
         };
       });
-      message.success('SSH 登录时间已刷新');
+      message.success('SSH time refreshed');
     } catch (err) {
       await showErrorModal({ message: err?.body || err || '刷新 SSH 登录时间失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
     } finally {
@@ -559,21 +546,13 @@ const ManageMachine = () => {
   // 顶部”容器名”搜索：按机器维度缓存容器名
   useEffect(() => {
     const keyword = (searchContainerName || '').trim().toLowerCase();
-    if (!keyword) {
-      // clear previous per-machine matches when search cleared
-      return;
-    }
-
-    let cancelled = false;
-    // debounce via ref timer
+    if (!keyword) return;
     if (containerSearchTimerRef.current) clearTimeout(containerSearchTimerRef.current);
     containerSearchTimerRef.current = setTimeout(() => {
       performMachineContainerSearch(keyword);
       containerSearchTimerRef.current = null;
     }, 300);
-
     return () => {
-      cancelled = true;
       if (containerSearchTimerRef.current) {
         clearTimeout(containerSearchTimerRef.current);
         containerSearchTimerRef.current = null;
@@ -581,55 +560,38 @@ const ManageMachine = () => {
     };
   }, [searchContainerName, machines]);
 
-  // 最终过滤（含容器名）
   const filteredMachineData = baseFilteredMachineData.filter(machine => {
     const keyword = (searchContainerName || '').trim().toLowerCase();
     if (!keyword) return true;
     const names = machineContainerNamesMap[String(machine.key)] || [];
-    return names.some(n => n.includes(keyword));
+    return names.some(name => String(name || '').toLowerCase().includes(keyword));
   });
 
-  // 机器状态标签
-  const renderStatusTag = (status, record) => {
+  const renderStatusTag = (status, record = null) => {
+    const displayStatus = record?.display_status || (record?.is_maintenance ? 'maintenance' : status);
+    const normalized = String(displayStatus || status || '').toLowerCase();
     const mid = String(record?.machine_id || record?.key || '');
-    if (mid && machineStatusLoadingMap[mid]) {
-      return <Tag color="processing">处理中</Tag>;
-    }
-    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
-    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : '维护中'}</Tag>;
+    if (mid && machineStatusLoadingMap[mid]) return <Tag color="processing">处理中</Tag>;
+    const color = normalized === 'online' ? 'green' : normalized === 'offline' ? 'volcano' : 'orange';
+    return <Tag color={color}>{normalized === 'online' ? '运行中' : normalized === 'offline' ? '已停止' : '维护中'}</Tag>;
   };
 
-  // 容器状态标签
   const renderContainerStatus = (status) => {
-    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'paused' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
-    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'paused' ? '磁盘已冻结' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status}</Tag>;
+    const normalized = String(status || '').toLowerCase();
+    const color = normalized === 'online' ? 'green' : normalized === 'offline' ? 'volcano' : normalized === 'paused' ? 'volcano' : normalized === 'creating' ? 'blue' : normalized === 'starting' ? 'cyan' : normalized === 'stopping' ? 'orange' : normalized === 'failed' ? 'red' : 'default';
+    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', creating: '创建中', starting: '启动中', stopping: '停止中', failed: '异常' };
+    return <Tag color={color}>{labelMap[normalized] || status}</Tag>;
   };
 
-  // 切换展开状态并关联选中态
-  const toggleExpand = (machineId) => {
-    setExpandedRowKeys(prev => {
-      const mid = machineId;
-      const exists = prev.includes(mid);
-      if (exists) {
-        // collapse: remove from expanded list
-        // if collapsing the selected row, clear selection
-        setSelectedRowKey(prevSel => (String(prevSel) === String(mid) ? null : prevSel));
-        return prev.filter(key => key !== mid);
-      } else {
-        // expand: add and mark as selected
-        setSelectedRowKey(String(mid));
-        return [...prev, mid];
-      }
-    });
-  };
-
-  // When rows expand, fetch containers for those machines.
+  // 机器列表加载后：每台机器拉取第一页容器（4 卡预览 + 翻页）
   useEffect(() => {
-    if (!expandedRowKeys || expandedRowKeys.length === 0) return;
-    expandedRowKeys.forEach(mid => {
-      if (mid) fetchContainersForMachine(String(mid), 0);
+    machines.forEach(machine => {
+      const mid = String(machine.key);
+      const entry = containerMap[mid];
+      if (entry && Array.isArray(entry.data)) return; // 已有数据不重复拉
+      fetchContainersForMachine(mid, 0);
     });
-  }, [expandedRowKeys]);
+  }, [machines]);
 
   // 处理容器搜索输入
   const handleContainerSearch = (machineId, value) => {
@@ -769,7 +731,7 @@ const ManageMachine = () => {
   const openAddHostModal = () => {
     addHostForm.resetFields();
     // set defaults for add mode: default status = maintenance
-    addHostForm.setFieldsValue({ machine_status: 'maintenance', machine_type: 'CPU', gpu_number: 0, max_shared_gb: 0 });
+    addHostForm.setFieldsValue({ maintenance_mode: 'normal', machine_type: 'CPU', gpu_number: 0, max_shared_gb: 0 });
     setIsEditMode(false);
     setEditTargetMachine(null);
     setAddHostVisible(true);
@@ -842,10 +804,9 @@ const ManageMachine = () => {
       let success = false;
       try {
         const res = await createContainer(payload);
-        // refresh container list for the machine and ensure row expanded
+        // refresh container list for the machine（回到第一页）
         if (machineId) {
           const mid = String(machineId);
-          setExpandedRowKeys(prev => (prev.includes(mid) ? prev : [...prev, mid]));
           await fetchContainersForMachine(mid, 0);
         }
         message.success('容器添加成功');
@@ -935,6 +896,7 @@ const ManageMachine = () => {
         machine_ip: src.machine_ip || machine.machine_ip || '',
         machine_type: (src.machine_type || machine.machine_type || 'CPU').toUpperCase() === 'GPU' ? 'GPU' : 'CPU',
         machine_status: (src.machine_status || machine.machine_status || 'online').toLowerCase(),
+        maintenance_mode: (src.is_maintenance ?? machine.is_maintenance) ? 'maintenance' : 'normal',
         cpu_core_number: src.cpu_core_number ?? machine.cpu_core_number ?? null,
         gpu_number: src.gpu_number ?? machine.gpu_number ?? 0,
         gpu_type: src.gpu_type || machine.gpu_type || '',
@@ -965,8 +927,6 @@ const ManageMachine = () => {
         machine_ip: values.machine_ip,
         // send machine_type as uppercase (per request)
         machine_type: (values.machine_type || 'CPU').toUpperCase(),
-        // send status as lowercase
-        machine_status: (values.machine_status || 'online').toLowerCase(),
         machine_description: values.machine_description || '',
         cpu_core_number: values.cpu_core_number || null,
         gpu_number: values.gpu_number || 0,
@@ -985,16 +945,20 @@ const ManageMachine = () => {
         try {
           const mid = editTargetMachine.machine_id || editTargetMachine.key;
           await updateMachine(mid, payload);
-          const oldStatus = String(editTargetMachine.machine_status || '').toLowerCase();
-          const requestedStatus = String(values.machine_status || editTargetMachine.machine_status || 'online').toLowerCase();
-          const isOnlineToMaintenance = oldStatus === 'online' && requestedStatus === 'maintenance';
+          const requestedMaintenance = values.maintenance_mode === 'maintenance';
+          const oldMaintenance = Boolean(editTargetMachine.is_maintenance);
+          if (requestedMaintenance !== oldMaintenance) {
+            await setMachineMaintenance(mid, requestedMaintenance);
+          }
+          const realStatus = String(editTargetMachine.machine_status || 'offline').toLowerCase();
           const updatedMachine = {
             ...editTargetMachine,
             machine_name: payload.machine_name,
             machine_ip: payload.machine_ip,
             machine_type: (payload.machine_type || '').toUpperCase(),
-            // ONLINE -> MAINTENANCE is async on Ctrl; keep current UI status until heartbeat confirms terminal status.
-            machine_status: isOnlineToMaintenance ? oldStatus : requestedStatus,
+            machine_status: realStatus,
+            is_maintenance: requestedMaintenance,
+            display_status: requestedMaintenance ? 'maintenance' : realStatus,
             cpu_core_number: payload.cpu_core_number,
             memory_size_gb: payload.memory_size,
             max_memory_gb: payload.max_memory_gb,
@@ -1007,47 +971,6 @@ const ManageMachine = () => {
             machine_description: payload.machine_description || ''
           };
           setMachines(prev => prev.map(m => (m.key === editTargetMachine.key ? updatedMachine : m)));
-          // ONLINE -> MAINTENANCE transition is handled by Ctrl; web only starts machine-status heartbeat.
-          try {
-            if (isOnlineToMaintenance) {
-              const midStr = String(mid);
-              setMachineStatusLoadingMap(prev => ({ ...prev, [midStr]: true }));
-              // safety timeout: clear loading even if heartbeat times out silently
-              setTimeout(() => {
-                setMachineStatusLoadingMap(prev => {
-                  if (!prev[midStr]) return prev;
-                  const copy = { ...prev };
-                  delete copy[midStr];
-                  return copy;
-                });
-              }, 250000);
-              startMachineStatusHeartbeat({
-                machine_id: mid,
-                terminalState: 'maintenance',
-                onTerminal: async (m) => {
-                  try {
-                    const finalStatus = String(m?.machine_status || 'maintenance').toLowerCase();
-                    setMachineStatusLoadingMap(prev => {
-                      const copy = { ...prev };
-                      delete copy[String(mid)];
-                      return copy;
-                    });
-                    setMachines(prev => prev.map(item => (
-                      String(item.machine_id || item.key) === String(mid)
-                        ? { ...item, machine_status: finalStatus }
-                        : item
-                    )));
-                    // also refresh this machine's containers after transition converges
-                    await fetchContainersForMachine(String(mid), 0);
-                  } catch (e) {
-                    // ignore
-                  }
-                }
-              });
-            }
-          } catch (e) {
-            // ignore heartbeat start errors
-          }
           message.success('宿主机已更新');
           success = true;
           } catch (err) {
@@ -1066,19 +989,22 @@ const ManageMachine = () => {
           }
         }
       } else {
-        // 添加模式
+        // 添加模式：机器建档走 register_machine，硬件信息由 node 首连返回。
         let success = false;
         try {
-          const res = await addMachine(payload);
-          // after successful add, reload the machine list from backend to avoid showing a mocked id
+          await registerMachine({
+            machine_name: payload.machine_name,
+            machine_ip: payload.machine_ip,
+            machine_description: payload.machine_description || '',
+          });
           const refreshed = await fetchMachinesFromApi();
           setMachines(refreshed);
-          message.success('宿主机已添加');
+          message.success('机器已完成注册建档');
           success = true;
         } catch (err) {
-          console.error('addMachine failed', err);
+          console.error('registerMachine failed', err);
           const status = err?.response?.status || err?.status;
-          await showErrorModal({ message: err?.body || err || '添加宿主机失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+          await showErrorModal({ message: err?.body || err || '注册机器失败，请检查 node 是否可达', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
           if (status === 403) {
             handleAuthError(403, navigate);
           }
@@ -1207,7 +1133,7 @@ const ManageMachine = () => {
     setEditModalVisible(true);
   };
 
-  // 从编辑返回详情页（编辑为实时更新）——重新拉取容器详情并显示
+  // 这里的容器操作函数（启动/停止/重启）有互锁的状态更新
   const returnToDetail = async () => {
     setEditModalVisible(false);
     if (!selectedContainer) {
@@ -1222,14 +1148,14 @@ const ManageMachine = () => {
     }
   };
 
-  // 关闭所有弹窗
+  // 打开编辑弹窗
   const closeAllModals = () => {
     setDetailModalVisible(false);
     setEditModalVisible(false);
     setSelectedContainer(null);
   };
 
-  // 这里的容器操作函数（启动/停止/重启）有互锁的状态更新
+  // 从编辑返回详情页（编辑为实时更新）——重新拉取容器详情并显示
   const handleStartContainer = async (container) => {
     if (!container) return;
     const cid = container.key;
@@ -1413,159 +1339,197 @@ const ManageMachine = () => {
     }
   };
 
+  const formatLimitPair = (current, limit, unit = '') => {
+    const cur = current === null || current === undefined || current === '' ? '-' : current;
+    const max = limit === null || limit === undefined || limit === '' ? '-' : limit;
+    return `${cur}${unit} / ${max}${unit}`;
+  };
 
-  // 展开行的配置
-  const expandable = {
-    expandedRowKeys,
-    onExpandedRowsChange: (expandedKeys) => {
-      setExpandedRowKeys(expandedKeys);
-    },
-    expandedRowRender: (record) => {
-      const mid = String(record.key);
-      const entry = containerMap[mid] || {};
-      const containers = entry.data || [];
+  const renderResourceMeter = (label, current, limit, className = '') => {
+    const cur = Number(current || 0);
+    const max = Number(limit || 0);
+    const pct = max > 0 ? Math.min(Math.round((cur / max) * 100), 100) : 0;
+    return (
+      <div className="mm-resource-meter">
+        <div className="mm-resource-meter-head">
+          <Typography.Text type="secondary">{label}</Typography.Text>
+          <Typography.Text>{formatLimitPair(current, limit)}</Typography.Text>
+        </div>
+        <div className="mm-resource-meter-track">
+          <div className={`mm-resource-meter-fill ${className}`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+    );
+  };
 
+  const renderDiskUsage = (containerRecord) => {
+    const total = containerRecord?.disk_total_gb;
+    const limit = containerRecord?.disk_limit_gb;
+    const pct = Number(containerRecord?.disk_usage_percent || 0);
+    return (
+      <div className="mm-container-disk-line">
+        <span>{total == null ? '磁盘 -' : `磁盘 ${total}G / ${limit != null ? `${limit}G` : '-'}`}</span>
+        <Checkbox
+          checked={containerRecord?.is_long_term === true}
+          disabled={
+            !!longTermUpdatingMap[String(containerRecord?.key)] ||
+            (containerRecord?.is_long_term !== true && containerRecord?.long_term_container_can_enable === false)
+          }
+          onChange={e => handleLongTermChange(containerRecord, e.target.checked)}
+          onClick={e => e.stopPropagation()}
+        >
+          长期
+        </Checkbox>
+        <div className="mm-container-disk-track">
+          <div
+            className={pct >= 90 ? 'mm-container-disk-fill danger' : pct >= 75 ? 'mm-container-disk-fill warn' : 'mm-container-disk-fill'}
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const renderContainerCard = (containerRecord, machine) => {
+    if (!containerRecord) {
       return (
-        <div className={`mm-expand-container ${String(record.key) === String(selectedRowKey) ? 'mm-expanded-selected' : ''}`}>
-          <Row gutter={[16, 16]} className="mm-row-bottom">
-            <Col flex="auto">
-              <Input
-                placeholder={`在 ${record.machine_name} 中搜索容器`}
-                value={containerSearch[record.key] || ''}
-                onChange={(e) => handleContainerSearch(record.key, e.target.value)}
-                allowClear
-                prefix={<SearchOutlined />}
-              />
-            </Col>
-            <Col>
-              <Button type="primary" icon={<SearchOutlined />}>搜索</Button>
-            </Col>
-          </Row>
-          <Typography.Title level={5} className="mm-typography-title">
-            <span>容器列表 - {record.machine_name}</span>
-            <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openAddContainerModal(record)} className="mm-btn-ml">
-              添加
-            </Button>
-            <Button size="small" icon={<ReloadOutlined />} onClick={() => fetchContainersForMachine(record.key)} className="mm-btn-ml" />
-          </Typography.Title>
-          <TableComponent
-            dataSource={containers}
-            rowKey="key"
-            pagination={containers.length > 5 ? { pageSize: entry.page_size || 5 } : false}
-            bordered
-            size="middle"
-            loading={entry.loading || false}
-          >
-            <Column title="容器ID" dataIndex="key" key="key" />
-            <Column title="容器名" dataIndex="container_name" key="container_name" />
-            <Column title="端口" dataIndex="port" key="port" />
-            <Column
-              title="状态"
-              dataIndex="container_status"
-              key="container_status"
-              render={renderContainerStatus}
-            />
-            <Column
-              title="上次SSH登录"
-              dataIndex="last_ssh_login_time"
-              key="last_ssh_login_time"
-              render={(_, record) => formatLastSshTime(record?.last_ssh_login_time)}
-            />
-            <Column
-              title="距清理时间"
-              dataIndex="ssh_cleanup_countdown"
-              key="ssh_cleanup_countdown"
-              render={(_, record) => formatCleanupCountdown(record?.last_ssh_login_time, record)}
-            />
-            <Column
-              title="磁盘用量"
-              dataIndex="disk_usage_percent"
-              key="disk_usage_percent"
-              render={(_, record) => {
-                const pct = record.disk_usage_percent;
-                const total = record.disk_total_gb;
-                const limit = record.disk_limit_gb;
-                if (total == null) return <Typography.Text type="secondary">-</Typography.Text>;
-                const color = pct >= 100 ? '#ff4d4f' : pct >= 80 ? '#faad14' : '#52c41a';
-                return (
-                  <div style={{ minWidth: 80 }}>
-                    <div style={{ fontSize: 12, marginBottom: 2 }}>{total}G / {limit != null ? `${limit}G` : '-'}</div>
-                    <div style={{ background: '#f0f0f0', borderRadius: 2, height: 4, width: '100%', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(pct || 0, 100)}%`, height: '100%', background: color, borderRadius: 2 }} />
-                    </div>
-                  </div>
-                );
-              }}
-            />
-            <Column
-              title="操作"
-              key="action"
-              render={(_, containerRecord) => {
-                const status = (containerRecord?.container_status || '').toLowerCase();
-                const startDisabled = status !== 'offline';
-                const restartDisabled = status !== 'online';
-                const stopDisabled = status !== 'online';
-                const longTermLoading = !!longTermUpdatingMap[String(containerRecord?.key)];
-                const longTermChecked = containerRecord?.is_long_term === true;
-                const longTermDisabled = longTermLoading || (!longTermChecked && containerRecord?.long_term_container_can_enable === false);
-                const sshRefreshLoading = !!sshRefreshingMap[String(containerRecord?.key)];
-                return (
-                  <Space size="middle">
-                    <Checkbox
-                      checked={longTermChecked}
-                      disabled={longTermDisabled}
-                      title={longTermDisabled && !longTermLoading ? '绑定用户已达到长期容器上限' : undefined}
-                      onChange={e => handleLongTermChange(containerRecord, e.target.checked)}
-                    >
-                      长期容器
-                    </Checkbox>
-                    <Button type="primary" size="small" onClick={() => handleStartContainer(containerRecord)} disabled={startDisabled}>启动</Button>
-                    <Button danger size="small" onClick={() => openActionConfirm('stop', { record: containerRecord })} disabled={stopDisabled}>停止</Button>
-                    <Button size="small" onClick={() => openActionConfirm('restart', { record: containerRecord })} disabled={restartDisabled}>重启</Button>
-                    <Button
-                      size="small"
-                      onClick={() => refreshSshTimeForContainer(containerRecord)}
-                      loading={sshRefreshLoading}
-                    >
-                      刷新SSH
-                    </Button>
-                    <Button
-                      size="small"
-                      type="primary"
-                      ghost
-                      onClick={() => openContainerDetail(containerRecord)}
-                    >
-                      详情
-                    </Button>
-                  </Space>
-                );
-              }}
-            />
-          </TableComponent>
-          {/* 内侧列表的分页 */}
-          {(() => {
-            const mid = String(record.key);
-            const entry = containerMap[mid];
-            const pages = entry?.total_page || 0;
-            if (pages > 1) {
-              return (
-                  <div className="mm-pagination-wrapper">
-                  <Pagination
-                    current={(entry?.page || 0) + 1}
-                    total={pages * (entry?.page_size || 5)}
-                    pageSize={entry?.page_size || 5}
-                    onChange={(p) => fetchContainersForMachine(record.key, p - 1)}
-                    size="small"
-                  />
-                </div>
-              );
-            }
-            return null;
-          })()}
+        <div className="mm-container-card mm-container-card-empty">
+          <Typography.Text type="secondary">空位</Typography.Text>
         </div>
       );
-    },
-    expandIcon: () => null // 隐藏默认的展开图标，使用自定义按钮
+    }
+
+    const status = String(containerRecord?.container_status || '').toLowerCase();
+    const startDisabled = status !== 'offline';
+    const restartDisabled = status !== 'online';
+    const stopDisabled = status !== 'online';
+    const sshRefreshLoading = !!sshRefreshingMap[String(containerRecord?.key)];
+
+    return (
+      <article className="mm-container-card" key={containerRecord.key || containerRecord.container_id}>
+        <div className="mm-container-card-head">
+          <button
+            type="button"
+            className="mm-card-title-button"
+            onClick={() => openContainerDetail(containerRecord)}
+            title={containerRecord.container_name}
+          >
+            {containerRecord.container_name || '未命名容器'}
+          </button>
+          {renderContainerStatus(status)}
+        </div>
+        <div className="mm-container-card-meta">
+          <span>端口 {containerRecord.port || '-'}</span>
+          <span>SSH {formatLastSshTime(containerRecord?.last_ssh_login_time)}</span>
+        </div>
+        {renderDiskUsage(containerRecord)}
+        <div className="mm-container-card-actions">
+          {status === 'paused' ? (
+            <Button size="small" onClick={() => handleUnpauseContainer(containerRecord)}>
+              解冻
+            </Button>
+          ) : (
+            <Button size="small" type="primary" disabled={startDisabled} onClick={() => handleStartContainer(containerRecord)}>
+              启动
+            </Button>
+          )}
+          <Button size="small" danger disabled={stopDisabled} onClick={() => openActionConfirm('stop', { record: containerRecord })}>
+            停止
+          </Button>
+          <Button size="small" disabled={restartDisabled} onClick={() => openActionConfirm('restart', { record: containerRecord })}>
+            重启
+          </Button>
+          <Button size="small" loading={sshRefreshLoading} onClick={() => refreshSshTimeForContainer(containerRecord)}>
+            SSH
+          </Button>
+          <Button size="small" type="primary" ghost onClick={() => openContainerDetail(containerRecord)}>
+            详情
+          </Button>
+        </div>
+      </article>
+    );
+  };
+
+  const renderMachineCard = (record) => {
+    const mid = String(record.key);
+    const entry = containerMap[mid] || {};
+    const containers = entry.data || [];
+    const preview = containers.slice(0, 4);
+    const slots = [...preview, ...Array.from({ length: Math.max(0, 4 - preview.length) }, () => null)];
+    const selected = String(record.key) === String(selectedRowKey);
+
+    return (
+      <article
+        className={`mm-machine-card ${selected ? 'mm-machine-card-selected' : ''}`}
+        key={record.key}
+        onClick={() => setSelectedRowKey(record.key)}
+      >
+        <aside className="mm-machine-rail">
+          <div>
+            <Typography.Text type="secondary">机器</Typography.Text>
+            <Typography.Title level={5} title={record.machine_name}>{record.machine_name || `机器 ${record.key}`}</Typography.Title>
+            {renderStatusTag(record.machine_status, record)}
+            <Typography.Text type="secondary" className="mm-machine-ip">{record.machine_ip || '-'}</Typography.Text>
+          </div>
+          <div className="mm-machine-rail-meters">
+            {renderResourceMeter('CPU', record.cpu_core_number, record.max_cpu_core_number, 'cpu')}
+            {renderResourceMeter('内存', record.memory_size_gb, record.max_memory_gb, 'memory')}
+            {renderResourceMeter('GPU', record.gpu_number, record.max_gpu_number, 'gpu')}
+          </div>
+          <div className="mm-machine-rail-actions">
+            <Button size="small" icon={<SafetyCertificateOutlined />} onClick={(e) => { e.stopPropagation(); openPermissionModal(record); }}>
+              权限
+            </Button>
+            <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEditMachine(record); }}>
+              编辑
+            </Button>
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); openDeleteConfirm(record); }}>
+              删除
+            </Button>
+          </div>
+        </aside>
+
+        <section className="mm-machine-main">
+          <div className="mm-machine-main-head">
+            <Typography.Text type="secondary">
+              {entry.loading ? '容器加载中' : `${entry.total_number ?? containers.length ?? 0} 个容器`}
+            </Typography.Text>
+            <Space size={6}>
+              <Button size="small" icon={<PlusOutlined />} onClick={(e) => { e.stopPropagation(); openAddContainerModal(record); }}>
+                添加容器
+              </Button>
+              <Button size="small" icon={<ReloadOutlined />} onClick={(e) => { e.stopPropagation(); fetchContainersForMachine(record.key); }} />
+            </Space>
+          </div>
+          <div className="mm-container-card-grid">
+            {slots.map((containerRecord, index) => (
+              <React.Fragment key={containerRecord?.key || `empty-${record.key}-${index}`}>
+                {renderContainerCard(containerRecord, record)}
+              </React.Fragment>
+            ))}
+          </div>
+          <div className="mm-machine-pager">
+            <Button
+              size="small"
+              disabled={entry.loading || (entry.page ?? 0) <= 0}
+              onClick={(e) => { e.stopPropagation(); fetchContainersForMachine(record.key, (entry.page || 0) - 1); }}
+            >
+              上一页
+            </Button>
+            <Typography.Text type="secondary">
+              {(entry.page ?? 0) + 1} / {entry.total_page || 1}
+            </Typography.Text>
+            <Button
+              size="small"
+              disabled={entry.loading || (entry.page ?? 0) + 1 >= (entry.total_page || 1)}
+              onClick={(e) => { e.stopPropagation(); fetchContainersForMachine(record.key, (entry.page || 0) + 1); }}
+            >
+              下一页
+            </Button>
+          </div>
+        </section>
+      </article>
+    );
   };
 
   return (
@@ -1629,129 +1593,51 @@ const ManageMachine = () => {
           </Row>
         </div>
 
-        {/* 2. 下方区域：机器表格 */}
-        <div className="mm-table-padding">
-          <TableComponent
-            dataSource={filteredMachineData}
-            rowKey="key"
-            pagination={{ pageSize: 5 }}
-            loading={machinesLoading}
-            bordered
-            scroll={{ x: true }}
-            rowClassName={(record) => String(record.key) === String(selectedRowKey) ? 'mm-selected-row' : ''}
-            onRow={(record) => ({ onClick: () => setSelectedRowKey(record.key) })}
-            expandable={expandable}
-          >
-            <Column title="机器ID" dataIndex="key" key="key" />
-            <Column title="机器名" dataIndex="machine_name" key="machine_name" />
-            <Column title="机器IP" dataIndex="machine_ip" key="machine_ip" />
-            <Column title="机器类型" dataIndex="machine_type" key="machine_type" />
-            <Column
-              title="机器状态"
-              dataIndex="machine_status"
-              key="machine_status"
-              render={(status, record) => renderStatusTag(status, record)}
-            />
-            <Column
-              title="CPU核心数"
-              dataIndex="cpu_core_number"
-              key="cpu_core_number"
-              render={(num, record) => {
-                const cur = (num === null || num === undefined) ? '-' : String(num);
-                const max = (record?.max_cpu_core_number === null || record?.max_cpu_core_number === undefined) ? '-' : String(record.max_cpu_core_number);
-                const ratio = (Number(num) && Number(record?.max_cpu_core_number)) ? (Number(num) / Number(record.max_cpu_core_number)) : 0;
-                const warn = ratio > 0.8;
-                return (
-                  <span style={{ display: 'flex', flexDirection: 'column'}}>
-                    <span>{cur}</span>
-                    <Typography.Text type="secondary" style={{ fontSize: 13, color: warn ? '#ff4d4f' : undefined }}>(限: {max})</Typography.Text>
-                  </span>
-                );
-              }}
-            />
-            <Column
-              title="内存(GB)"
-              dataIndex="memory_size_gb"
-              key="memory_size_gb"
-              render={(num, record) => {
-                const cur = (num === null || num === undefined) ? '-' : String(num);
-                const max = (record?.max_memory_gb === null || record?.max_memory_gb === undefined) ? '-' : String(record.max_memory_gb);
-                const ratio = (Number(num) && Number(record?.max_memory_gb)) ? (Number(num) / Number(record.max_memory_gb)) : 0;
-                const warn = ratio > 0.8;
-                return (
-                  <span style={{ display: 'flex', flexDirection: 'column'}}>
-                    <span>{cur}</span>
-                    <Typography.Text type="secondary" style={{ fontSize: 13, color: warn ? '#ff4d4f' : undefined }}>(限: {max})</Typography.Text>
-                  </span>
-                );
-              }}
-            />
-            <Column title="最大共享(GB)" dataIndex="max_shared_gb" key="max_shared_gb" />
-            <Column
-              title="GPU数量"
-              dataIndex="gpu_number"
-              key="gpu_number"
-              render={(num, record) => {
-                const cur = (num === null || num === undefined) ? '-' : String(num);
-                const max = (record?.max_gpu_number === null || record?.max_gpu_number === undefined) ? '-' : String(record.max_gpu_number);
-                const ratio = (Number(num) && Number(record?.max_gpu_number)) ? (Number(num) / Number(record.max_gpu_number)) : 0;
-                const warn = ratio > 0.8;
-                return (
-                  <span style={{ display: 'flex', flexDirection: 'column'}}>
-                    <span>{cur}</span>
-                    <Typography.Text type="secondary" style={{ fontSize: 13, color: warn ? '#ff4d4f' : undefined }}>(限: {max})</Typography.Text>
-                  </span>
-                );
-              }}
-            />
-            <Column title="GPU型号" dataIndex="gpu_type" key="gpu_type" />
-            <Column title="磁盘(GB)" dataIndex="disk_size_gb" key="disk_size_gb" />
-            <Column
-              title="机器描述"
-              dataIndex="machine_description"
-              key="machine_description"
-              ellipsis
-            />
-            <Column
-              title="操作"
-              key="action"
-              render={(_, record) => {
-                const isExpanded = expandedRowKeys.includes(record.key);
-                return (
-                  <Space size="small">
-                    <Button
-                      type="text"
-                      icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
-                      onClick={() => toggleExpand(record.key)}
-                      className="mm-btn-text-blue"
-                    >
-                      {isExpanded ? '收起容器' : '查看容器'}
-                    </Button>
-                    <Button onClick={() => openPermissionModal(record)} icon={<SafetyCertificateOutlined />}>权限</Button>
-                    <Button onClick={() => openEditMachine(record)}><a>编辑</a></Button>
-                    <Button onClick={() => openDeleteConfirm(record)}><a className="mm-link-danger">删除</a></Button>
-                  </Space>
-                );
-              }}
-            />
-          </TableComponent>
-        </div>
+        {/* 2. 机器卡片网格 */}
+        {machinesLoading ? (
+          <div className="mm-grid-empty">机器加载中...</div>
+        ) : filteredMachineData.length > 0 ? (
+          <div className="mm-machine-grid">
+            {filteredMachineData.map(record => renderMachineCard(record))}
+          </div>
+        ) : (
+          <div className="mm-grid-empty">没有匹配的机器</div>
+        )}
       </div>
 
-      {/* 添加宿主机 确认弹窗（包含表单） */}
       <ConfirmModal
         visible={addHostVisible}
         title={isEditMode ? "编辑宿主机" : "添加宿主机"}
         message={isEditMode ? "请修改宿主机信息并确认更新" : "请填写宿主机信息并确认"}
-        onConfirm={handleAddHostConfirm}
-        onCancel={() => { setAddHostVisible(false); setIsEditMode(false); setEditTargetMachine(null); }}
         loading={addHostLoading}
         confirmText={isEditMode ? '更新' : '添加'}
         content={
+          !isEditMode ? (
+            <Form form={addHostForm} layout="vertical">
+              <Typography.Text type="secondary">
+                新机器通过 register_machine 建档。这里只填写最小信任锚，硬件信息由 node 首连返回，资源上限由 ctrl 默认策略生成。
+              </Typography.Text>
+              <Row gutter={16} className="mm-add-machine-anchor-row">
+                <Col span={12}>
+                  <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }, { max: 115, message: '机器名长度不得超过115个字符' }]}> 
+                    <Input placeholder="例如 GPU-A100-01" maxLength={115} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="machine_ip" label="IP 地址" rules={[{ required: true, message: '请输入 IP 地址' }]}>
+                    <Input placeholder="192.168.x.x" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Form.Item name="machine_description" label="描述">
+                <Input.TextArea rows={3} placeholder="可选，机器位置、用途或维护说明" maxLength={115} />
+              </Form.Item>
+            </Form>
+          ) : (
           <Form
             form={addHostForm}
             layout="vertical"
-            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance', max_memory_gb: 0, max_gpu_number: 0, max_cpu_core_number: 0, max_shared_gb: 0 }}
+            initialValues={{ machine_type: 'CPU', gpu_number: 0, maintenance_mode: 'normal', max_memory_gb: 0, max_gpu_number: 0, max_cpu_core_number: 0, max_shared_gb: 0 }}
               onValuesChange={(changedValues) => {
                 if (changedValues.machine_type) {
                   if (changedValues.machine_type !== 'GPU') {
@@ -1770,7 +1656,7 @@ const ManageMachine = () => {
               </Col>
 
               <Col span={12}>
-                <Form.Item name="machine_ip" label="IP 地址" rules={[{ required: true, message: '请输入IP地址' }]}> 
+                <Form.Item name="machine_ip" label="IP 地址" rules={[{ required: true, message: '请输入 IP 地址' }]}>
                   <Input placeholder="192.168.x.x" />
                 </Form.Item>
               </Col>
@@ -1790,29 +1676,19 @@ const ManageMachine = () => {
                   />
                 </Form.Item>
               </Col>
-
-              <Form.Item shouldUpdate={(prevValues, currentValues) => prevValues.machine_status !== currentValues.machine_status} noStyle>
-                {() => (
-                  <Col span={12}>
-                    <Form.Item name="machine_status" label="状态">
-                      {
-                        // If the loaded machine is offline, lock the field to offline and prevent changing
-                        isEditMode && editTargetMachine && String(editTargetMachine.machine_status).toLowerCase() === 'offline' ? (
-                          <Select disabled value="offline">
-                            <Option value="offline">已停止</Option>
-                          </Select>
-                        ) : (
-                          // Otherwise allow selecting online/maintenance while editing; disabled when not editing
-                          <Select disabled={!isEditMode}>
-                            <Option value="online">运行中</Option>
-                            <Option value="maintenance">维护中</Option>
-                          </Select>
-                        )
-                      }
-                    </Form.Item>
-                  </Col>
-                )}
-              </Form.Item>
+              <Col span={12}>
+                <Form.Item name="maintenance_mode" label="运行模式" initialValue="normal">
+                  <Radio.Group
+                    disabled={!isEditMode}
+                    optionType="button"
+                    buttonStyle="solid"
+                    options={[
+                      { label: '正常', value: 'normal' },
+                      { label: '维护', value: 'maintenance' },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
             </Row>
 
             
@@ -1829,7 +1705,7 @@ const ManageMachine = () => {
                               <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                                 <div style={{ minHeight: 22, marginBottom: 8 }}>
                                   {(cpuMax > 0 && val > Math.floor(cpuMax * 0.8)) ? (
-                                    <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
+                                    <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统</Typography.Text>
                                   ) : (
                                     <span style={{ visibility: 'hidden' }}>占位</span>
                                   )}
@@ -1864,7 +1740,7 @@ const ManageMachine = () => {
                 const gpuMax = addHostForm.getFieldValue('gpu_number') || 0;
                 const val = addHostForm.getFieldValue('max_gpu_number') || 0;
                 if (mt === 'GPU' && gpuMax > 0 && val > Math.floor(gpuMax * 0.8)) {
-                  return <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>;
+                  return <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统</Typography.Text>;
                 }
                 return null;
               }}
@@ -1882,7 +1758,7 @@ const ManageMachine = () => {
                           <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                             <div style={{ minHeight: 22, marginBottom: 8 }}>
                               {(memMax > 0 && val > Math.floor(memMax * 0.8)) ? (
-                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
+                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统</Typography.Text>
                               ) : (
                                 <span style={{ visibility: 'hidden' }}>占位</span>
                               )}
@@ -1925,7 +1801,7 @@ const ManageMachine = () => {
                           <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                             <div style={{ minHeight: 22, marginBottom: 8 }}>
                               {(mt === 'GPU' && gpuMax > 0 && val > Math.floor(gpuMax * 0.8)) ? (
-                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
+                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统</Typography.Text>
                               ) : (
                                 <span style={{ visibility: 'hidden' }}>占位</span>
                               )}
@@ -2008,7 +1884,7 @@ const ManageMachine = () => {
                             <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                               <div style={{ minHeight: 22, marginBottom: 8 }}>
                                 {(sliderMax > 0 && val > Math.floor(sliderMax * 0.8)) ? (
-                                  <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
+                                  <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统</Typography.Text>
                                 ) : (
                                   <span style={{ visibility: 'hidden' }}>占位</span>
                                 )}
@@ -2042,6 +1918,7 @@ const ManageMachine = () => {
               </Col>
             </Row>
           </Form>
+          )
         }
       />
 
@@ -2077,13 +1954,12 @@ const ManageMachine = () => {
                   <Tag className="mm-ml-8">{(deleteTargetMachine.machine_type || '').toUpperCase()}</Tag>
                 </Col>
                 <Col span={24}>
-                  <Typography.Text type="secondary">状态：</Typography.Text>
+                  <Typography.Text type="secondary">鐘舵€侊細</Typography.Text>
                   <Typography.Text className="mm-ml-8">{(deleteTargetMachine.machine_status || '').toLowerCase()}</Typography.Text>
                 </Col>
               </Row>
               <Typography.Text type="danger" className="mm-danger-text">
-                此操作不可恢复！此操作将移除该机器及其所有容器。
-              </Typography.Text>
+                此操作不可恢复！此操作将移除该机器及其所有容器。              </Typography.Text>
             </div>
           ) : null
         }
@@ -2124,8 +2000,7 @@ const ManageMachine = () => {
                 </Col>
               </Row>
               <Typography.Text type="danger" className="mm-danger-text">
-                此操作不可恢复！此操作将永久删除该容器。
-              </Typography.Text>
+                此操作不可恢复！此操作将永久删除该容器。              </Typography.Text>
             </div>
           ) : null
         }
@@ -2148,8 +2023,8 @@ const ManageMachine = () => {
         usersList={usersList}
         currentUserName={localStorage.getItem('currentUserName')}
         currentUserId={localStorage.getItem('currentUserId')}
-        forceSystemAdmin={true} // 此时currentUserName/id无意义
-      />
+        forceSystemAdmin={true}
+        />
 
       {/* 添加容器 确认弹窗（包含表单） */}
       <Modal
@@ -2191,7 +2066,7 @@ const ManageMachine = () => {
                     >
                       全选当前页
                     </Checkbox>
-                    <Typography.Text type="secondary">已选 {permissionUsersSelected.length} 人</Typography.Text>
+                    <Typography.Text type="secondary">宸查€?{permissionUsersSelected.length} 浜</Typography.Text>
                   </div>
                   {menu}
                   <div style={{ padding: 8, textAlign: 'center' }}>
@@ -2208,7 +2083,7 @@ const ManageMachine = () => {
             <Button type="primary" icon={<PlusOutlined />} loading={permissionModalSubmitting} onClick={handleGrantMachinePermission} disabled={!permissionUsersSelected.length}>添加权限</Button>
           </Space>
           <div style={{ border: '1px solid #f0f0f0', borderRadius: 12, padding: 12, background: '#fafafa' }}>
-            <Typography.Text strong>已授权用户</Typography.Text>
+            <Typography.Text strong>宸叉巿鏉冪敤鎴</Typography.Text>
             <div style={{ marginTop: 12 }}>
               {permissionAssignedUserIds.length ? (
                 <Space wrap>
@@ -2276,12 +2151,12 @@ const ManageMachine = () => {
                   <Col span={12}>
                     <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }, { max: 115, message: '容器名长度不得超过115个字符' }, { validator: (_, value) => {
                       try { const mod = require('../utils/validateCmdArg'); return mod.isValidName(value) ? Promise.resolve() : Promise.reject(new Error('容器名仅允许英文、数字和下划线')); } catch (e) { return Promise.resolve(); }
-                    } }]}> 
+                    } }]}>
                       <Input placeholder="容器名" maxLength={115} />
                     </Form.Item>
                   </Col>
               <Col span={12}>
-                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}> 
+                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}>
                   <Select placeholder="选择镜像" defaultValue="ubuntu:24.04" style={{ width: '100%' }}>
                     <Select.Option value="ubuntu:24.04">ubuntu:24.04</Select.Option>
                   </Select>
@@ -2297,7 +2172,7 @@ const ManageMachine = () => {
               <Col span={12}>
                 <Form.Item
                   name="CPU_NUMBER"
-                  label={<span>CPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_cpu_core_number ?? addContainerMachine?.cpu_core_number ?? '-'})</span></span>}
+                  label={<span>CPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限 {addContainerMachine?.max_cpu_core_number ?? addContainerMachine?.cpu_core_number ?? '-'})</span></span>}
                   validateStatus={addContainerFieldErrors.CPU_NUMBER ? 'error' : undefined}
                   help={addContainerFieldErrors.CPU_NUMBER || null}
                 >
@@ -2307,7 +2182,7 @@ const ManageMachine = () => {
               <Col span={12}>
                 <Form.Item
                   name="MEMORY"
-                  label={<span>内存 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_memory_gb ?? addContainerMachine?.memory_size_gb ?? '-'})</span></span>}
+                  label={<span>内存 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限 {addContainerMachine?.max_memory_gb ?? addContainerMachine?.memory_size_gb ?? '-'})</span></span>}
                   validateStatus={addContainerFieldErrors.MEMORY ? 'error' : undefined}
                   help={addContainerFieldErrors.MEMORY || null}
                 >
@@ -2322,7 +2197,7 @@ const ManageMachine = () => {
                 <Col span={12}>
                   <Form.Item
                     name="gpu_number"
-                    label={<span>请求 GPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_gpu_number ?? addContainerMachine?.gpu_number ?? '-'})</span></span>}
+                    label={<span>请求 GPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限 {addContainerMachine?.max_gpu_number ?? addContainerMachine?.gpu_number ?? '-'})</span></span>}
                     validateStatus={addContainerFieldErrors.gpu_number ? 'error' : undefined}
                     help={addContainerFieldErrors.gpu_number || null}
                   >
@@ -2332,7 +2207,7 @@ const ManageMachine = () => {
                 <Col span={12}>
                   <Form.Item
                     name="SHARED_MEM"
-                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_shared_gb ?? addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
+                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限 {addContainerMachine?.max_shared_gb ?? addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
                     validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
                     help={addContainerFieldErrors.SHARED_MEM || null}
                   >
@@ -2347,7 +2222,7 @@ const ManageMachine = () => {
                 <Col span={12}>
                   <Form.Item
                     name="SHARED_MEM"
-                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
+                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限 {addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
                     validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
                     help={addContainerFieldErrors.SHARED_MEM || null}
                   >
@@ -2385,7 +2260,7 @@ const ManageMachine = () => {
 
             <Row gutter={16}>
               <Col span={24}>
-                <Form.Item name="public_key" label="公钥 (可选)" rules={[{ max: 495, message: '公钥长度不得超过495个字符' }]}>
+                <Form.Item name="public_key" label="公钥（可选）" rules={[{ max: 495, message: '公钥长度不得超过495个字符' }]}> 
                   <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" maxLength={495} />
                 </Form.Item>
               </Col>
