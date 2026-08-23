@@ -248,3 +248,12 @@
     grid-template-columns: 1fr;
   }
 }
+
+.home-container-card-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}

@@ -5,10 +5,12 @@ import { Card, Form, Input, DatePicker, Button, Row, Col, Space, message, InputN
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { getUserDetailInformation, updateUser, changePasswordUser } from '../api/user_api';
+import { usePermission } from '../contexts/PermissionContext';
 import './User.css';
 
 const User = () => {
   const navigate = useNavigate();
+  const { hasAnyManage } = usePermission();
   const [form] = Form.useForm();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -176,7 +178,7 @@ const User = () => {
         <Card
           title="用户信息"
           bordered
-          extra={isOperator ? <Button type="primary" onClick={() => navigate('/admin')}>管理后台</Button> : null}
+          extra={hasAnyManage() ? <Button type="primary" onClick={() => navigate('/admin/users')}>管理后台</Button> : null}
           className="user-card"
         >
           <Row gutter={[16, 12]} className="user-stats-row">

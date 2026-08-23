@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, registerMachine, removeMachine, updateMachine, setMachineMaintenance, addMachinePermission, listMachinePermissions } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
-import { SearchOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined } from '@ant-design/icons';
+import { ReloadOutlined, UserOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Slider, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -13,6 +13,7 @@ import { isAbortError } from '../utils/requestManager';
 import { useNavigate } from 'react-router-dom';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import CopyChip from '../components/CopyChip';
+import EntitySearchBar from '../components/EntitySearchBar';
 const { Option } = Select;
 
 import { startContainerStatusHeartbeat, startMachineStatusHeartbeat } from '../utils/heartbeat';
@@ -25,17 +26,12 @@ import './ManageMachine.css';
 const defaultPageSize = 100;
 const userPermissionPageSize = 20;
 
-
-// ROLE枚举定义
 const ROLE = {
   ADMIN: 'ADMIN',
   COLLABORATOR: 'COLLABORATOR',
   ROOT: 'ROOT'
 };
 
-// 远端获取的数据会被存在 `containerMap`
-
-// 角色配置
 const ROLE_CONFIG = {
   [ROLE.ROOT]: {
     label: '超级管理员',
@@ -58,10 +54,6 @@ const ROLE_CONFIG = {
 };
 
 const SSH_CLEANUP_WINDOW_DAYS = 7;
-
-// ── SSH 清理时间 辅助函数 ──────────────────────────────────────────
-// parseSshTimeToDate / formatDuration 由 ../utils/timeFormat 统一提供
-// （ISO 形串按 UTC 解析，syslog/last 形串按节点口径解析），此处不再重复定义。
 
 const formatBeijingDateTime = (date) => date.toLocaleString('zh-CN', {
   timeZone: 'Asia/Shanghai',
@@ -98,9 +90,7 @@ const formatCleanupCountdown = (raw, record = null) => {
 };
 
 const ManageMachine = () => {
-  // 机器搜索状态
-  const [searchName, setSearchName] = useState('');
-  const [searchIP, setSearchIP] = useState('');
+  const [searchMachine, setSearchMachine] = useState('');
   const [searchContainerName, setSearchContainerName] = useState('');
 
   // machines from backend
@@ -108,17 +98,12 @@ const ManageMachine = () => {
   const [machinesLoading, setMachinesLoading] = useState(false);
   // machine status transition loading flags: { [machineId]: boolean }
   const [machineStatusLoadingMap, setMachineStatusLoadingMap] = useState({});
-  // 当前选中的行 key（用于高亮和关联展开面板）
   const [selectedRowKey, setSelectedRowKey] = useState(null);
-  
-  // 容器搜索状态
-  const [containerSearch, setContainerSearch] = useState({});
   // containers per machine cache: { [machineId]: { loading: bool, data: [] } }
   const [containerMap, setContainerMap] = useState({});
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   const [sshRefreshingMap, setSshRefreshingMap] = useState({});
   // top-level container-name search loading
-  const [containerSearchLoading, setContainerSearchLoading] = useState(false);
   const containerSearchTimerRef = useRef(null);
   const lastContainerSearchKeywordRef = useRef('');
 
@@ -155,7 +140,7 @@ const ManageMachine = () => {
           if (!sessionStorage.getItem('auth_modal_shown')) {
             try {
               sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 })
             } finally {
               sessionStorage.removeItem('auth_modal_shown');
             }
@@ -197,7 +182,7 @@ const ManageMachine = () => {
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState(null);
-  // 高风险操作确认弹窗（停止/重启）
+  // 对话框状态
   const [actionModal, setActionModal] = useState({ visible: false, type: '', loading: false, data: null });
   // 添加宿主机弹窗
   const [addHostVisible, setAddHostVisible] = useState(false);
@@ -281,15 +266,19 @@ const ManageMachine = () => {
     return configs[type] || {};
   };
 
-  //加载机器列表
-  const fetchMachinesFromApi = async () => {
+  //加载机器列表（machine_search 走后端过滤）
+  const fetchMachinesFromApi = async (machineSearch = '') => {
     setMachinesLoading(true);
     try {
       // 获取机器列表
-      const res = await listAllMachineBrefInformation({ page_number: 0, page_size: defaultPageSize });
+      const res = await listAllMachineBrefInformation({
+        page_number: 0,
+        page_size: defaultPageSize,
+        machine_search: machineSearch || undefined,
+      });
       const items = (res && res.machines) || [];
       
-      // 基础映射
+      // 获取机器列表
       const mapped = items.map((m, idx) => ({
         key: String(m.machine_id || idx + 1),
         machine_id: m.machine_id,
@@ -359,6 +348,16 @@ const ManageMachine = () => {
     return () => { mounted = false; };
   }, []);
 
+  // 机器框搜索：防抖后走后端 machine_search 重新拉取
+  useEffect(() => {
+    const keyword = (searchMachine || '').trim();
+    const timer = setTimeout(async () => {
+      const list = await fetchMachinesFromApi(keyword);
+      setMachines(list);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchMachine]);
+
   // 选择要加入的用户
   useEffect(() => {
     let mounted = true;
@@ -380,13 +379,6 @@ const ManageMachine = () => {
     return () => { mounted = false; };
   }, []);
 
-  const baseFilteredMachineData = machines.filter(machine => {
-    const matchName = (machine.machine_name || '').toLowerCase().includes(searchName.toLowerCase());
-    const matchIP = (machine.machine_ip || '').includes(searchIP);
-    return matchName && matchIP;
-  });
-
-
   const fetchContainersForMachine = async (machineId, pageNumber = 0, containerName = searchContainerName) => {
     // avoid duplicate fetch
     if (!machineId) return;
@@ -399,7 +391,7 @@ const ManageMachine = () => {
       const pageSize = 4;
       const res = await listAllContainerBrefInformation({
         machine_id: mid,
-        container_name: containerName,
+        container_search: containerName,
         page_number: pageNumber,
         page_size: pageSize,
       });
@@ -525,7 +517,7 @@ const ManageMachine = () => {
     }
   };
 
-  // 顶部“容器名”搜索：由后端按机器和容器名分页过滤
+  // 机器状态标签
   useEffect(() => {
     const keyword = (searchContainerName || '').trim();
     if (containerSearchTimerRef.current) clearTimeout(containerSearchTimerRef.current);
@@ -536,9 +528,7 @@ const ManageMachine = () => {
         return;
       }
       lastContainerSearchKeywordRef.current = keyword;
-      setContainerSearchLoading(true);
-      Promise.all(baseFilteredMachineData.map(machine => fetchContainersForMachine(machine.key, 0, keyword)))
-        .finally(() => setContainerSearchLoading(false));
+      Promise.all(machines.map(machine => fetchContainersForMachine(machine.key, 0, keyword)))
       containerSearchTimerRef.current = null;
     }, 300);
     return () => {
@@ -547,9 +537,9 @@ const ManageMachine = () => {
         containerSearchTimerRef.current = null;
       }
     };
-  }, [searchContainerName, searchName, searchIP, machines]);
+  }, [searchContainerName, searchMachine, machines]);
 
-  const filteredMachineData = baseFilteredMachineData.filter(machine => {
+  const filteredMachineData = machines.filter(machine => {
     const keyword = (searchContainerName || '').trim().toLowerCase();
     if (!keyword) return true;
     const entry = containerMap[String(machine.key)];
@@ -561,7 +551,7 @@ const ManageMachine = () => {
     const displayStatus = record?.display_status || (record?.is_maintenance ? 'maintenance' : status);
     const normalized = String(displayStatus || status || '').toLowerCase();
     const mid = String(record?.machine_id || record?.key || '');
-    if (mid && machineStatusLoadingMap[mid]) return <Tag color="processing">处理中</Tag>;
+    if (mid && machineStatusLoadingMap[mid]) return <Tag color="processing">澶勭悊涓</Tag>;
     const color = normalized === 'online' ? 'green' : normalized === 'offline' ? 'volcano' : 'orange';
     return <Tag color={color}>{normalized === 'online' ? '运行中' : normalized === 'offline' ? '已停止' : '维护中'}</Tag>;
   };
@@ -569,7 +559,7 @@ const ManageMachine = () => {
   const renderContainerStatus = (status) => {
     const normalized = String(status || '').toLowerCase();
     const color = normalized === 'online' ? 'green' : normalized === 'offline' ? 'volcano' : normalized === 'paused' ? 'volcano' : normalized === 'creating' ? 'blue' : normalized === 'starting' ? 'cyan' : normalized === 'restarting' ? 'purple' : normalized === 'stopping' ? 'orange' : normalized === 'failed' ? 'red' : 'default';
-    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', creating: '创建中', starting: '启动中', stopping: '停止中', restarting: '重启中', failed: '异常' };
+    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', creating: '创建中', starting: '启动中', stopping: '停止中', failed: '异常' };
     return <Tag color={color}>{labelMap[normalized] || status}</Tag>;
   };
 
@@ -584,12 +574,6 @@ const ManageMachine = () => {
   }, [machines]);
 
   // 处理容器搜索输入
-  const handleContainerSearch = (machineId, value) => {
-    setContainerSearch(prev => ({
-      ...prev,
-      [machineId]: value
-    }));
-  };
 
   // 打开容器详情弹窗: 先从后端获取详情数据再展示
   const openContainerDetail = async (container) => {
@@ -805,6 +789,7 @@ const ManageMachine = () => {
           startContainerStatusHeartbeat({
             machine_id: machineId,
             container_name: payload.container.NAME,
+            container_id: container.key ?? container.container_id,
             onRunning: (data) => {
               const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
               if (st === 'failed') {
@@ -836,7 +821,7 @@ const ManageMachine = () => {
                   });
                   return { ...prev, [mid]: { ...(entry || {}), data: data2 } };
                 });
-                message.success('容器已运行');
+                message.success('容器添加成功');
               } catch (e) {
                 // ignore update errors
               }
@@ -1123,7 +1108,7 @@ const ManageMachine = () => {
     setEditModalVisible(true);
   };
 
-  // 这里的容器操作函数（启动/停止/重启）有互锁的状态更新
+  // 从编辑返回详情页（编辑为实时更新）——重新拉取容器详情并显示
   const returnToDetail = async () => {
     setEditModalVisible(false);
     if (!selectedContainer) {
@@ -1145,7 +1130,7 @@ const ManageMachine = () => {
     setSelectedContainer(null);
   };
 
-  // 从编辑返回详情页（编辑为实时更新）——重新拉取容器详情并显示
+  // 这里的容器操作函数（启动/停止/重启）有互锁的状态更新
   const handleStartContainer = async (container) => {
     if (!container) return;
     const cid = container.key;
@@ -1165,6 +1150,7 @@ const ManageMachine = () => {
           machine_id: container.machine_id,
           machine_ip: container.machine_ip,
           container_name: container.container_name,
+          container_id: container.key ?? container.container_id,
           terminalState: 'online',
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
@@ -1226,6 +1212,7 @@ const ManageMachine = () => {
           machine_id: container.machine_id,
           machine_ip: container.machine_ip,
           container_name: container.container_name,
+          container_id: container.key ?? container.container_id,
           terminalState: 'offline',
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
@@ -1287,6 +1274,7 @@ const ManageMachine = () => {
           machine_id: container.machine_id,
           machine_ip: container.machine_ip,
           container_name: container.container_name,
+          container_id: container.key ?? container.container_id,
           terminalState: 'online',
           requiredProgressState: 'restarting',
           onProgress: (data) => {
@@ -1499,7 +1487,7 @@ const ManageMachine = () => {
           <div className="mm-machine-main-head">
             <Typography.Text type="secondary">
               {isContainerSearchMode
-                ? `${entry.total_number ?? containers.length ?? 0} 个匹配容器`
+                ? `${entry.total_number ?? containers.length ?? 0} 个容器`
                 : entry.loading ? '容器加载中' : `${entry.total_number ?? containers.length ?? 0} 个容器`}
             </Typography.Text>
             <Space size={6}>
@@ -1557,63 +1545,28 @@ const ManageMachine = () => {
       <div className="mm-root">
         {/* 1. 搜索区域 */}
         <div ref={searchBarRef} style={searchBarStyle} className="mm-search-bar mm-auto-hide-bar">
-          <Row gutter={[16, 0]} align="middle">
-            <Col>
-              <Typography.Text type="secondary">机器名：</Typography.Text>
-              <Input
-                placeholder="输入机器名"
-                value={searchName}
-                onChange={e => setSearchName(e.target.value)}
-                allowClear
-                className="mm-input-120"
-              />
-            </Col>
-            <Col>
-              <Typography.Text type="secondary">IP：</Typography.Text>
-              <Input
-                placeholder="输入IP"
-                value={searchIP}
-                onChange={e => setSearchIP(e.target.value)}
-                allowClear
-                className="mm-input-120"
-              />
-            </Col>
-            <Col>
-              <Typography.Text type="secondary">容器名：</Typography.Text>
-              <Input
-                placeholder="输入容器名"
-                value={searchContainerName}
-                onChange={e => setSearchContainerName(e.target.value)}
-                allowClear
-                className="mm-input-120"
-              />
-            </Col>
-            <Col>
-              <Button
-                type="primary"
-                icon={<SearchOutlined />}
-                loading={containerSearchLoading}
-                onClick={() => {
-                  const keyword = (searchContainerName || '').trim();
-                  setContainerSearchLoading(true);
-                  Promise.all(baseFilteredMachineData.map(machine => fetchContainersForMachine(machine.key, 0, keyword)))
-                    .finally(() => setContainerSearchLoading(false));
-                }}
-              >
-                搜索
-              </Button>
-            </Col>
-            <Col>
-              <Button type="default" icon={<PlusOutlined />} onClick={openAddHostModal}>
-                添加宿主机
-              </Button>
-            </Col>
-          </Row>
+          <EntitySearchBar
+            primaryLabel="机器"
+            primaryPlaceholder="搜索机器名 / IP / 机器ID"
+            primaryValue={searchMachine}
+            onPrimaryChange={setSearchMachine}
+            secondaryLabel="容器"
+            secondaryPlaceholder="搜索容器名 / ID / 端口 / 机器IP"
+            secondaryValue={searchContainerName}
+            onSecondaryChange={setSearchContainerName}
+            actions={
+              <Space size={6}>
+                <Button type="default" icon={<PlusOutlined />} onClick={openAddHostModal}>
+                  添加宿主机
+                </Button>
+              </Space>
+            }
+          />
         </div>
 
         {/* 2. 机器卡片网格 */}
         <div>
-          <Typography.Title level={4}>机器与容器关系</Typography.Title>
+          <Typography.Title level={4}>机器列表</Typography.Title>
         </div>
         {machinesLoading ? (
           <div className="mm-grid-empty">机器加载中...</div>
@@ -1640,7 +1593,7 @@ const ManageMachine = () => {
               </Typography.Text>
               <Row gutter={16} className="mm-add-machine-anchor-row">
                 <Col span={12}>
-                  <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }, { max: 115, message: '机器名长度不得超过115个字符' }]}> 
+                  <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }, { max: 115, message: '机器名长度不得超过115个字符' }]}>
                     <Input placeholder="例如 GPU-A100-01" maxLength={115} />
                   </Form.Item>
                 </Col>
@@ -1671,7 +1624,7 @@ const ManageMachine = () => {
             <Typography.Text type="secondary">这些机器参数用于上限控制，请谨慎填写（系统会在创建容器时校验上限）。</Typography.Text>
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }, { max: 115, message: '机器名长度不得超过115个字符' }]}> 
+                <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }, { max: 115, message: '机器名长度不得超过115个字符' }]}>
                   <Input placeholder="机器名" maxLength={115} />
                 </Form.Item>
               </Col>
@@ -1726,7 +1679,7 @@ const ManageMachine = () => {
                               <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                                 <div style={{ minHeight: 22, marginBottom: 8 }}>
                                   {(cpuMax > 0 && val > Math.floor(cpuMax * 0.8)) ? (
-                                    <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统</Typography.Text>
+                                    <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
                                   ) : (
                                     <span style={{ visibility: 'hidden' }}>占位</span>
                                   )}
@@ -1761,7 +1714,7 @@ const ManageMachine = () => {
                 const gpuMax = addHostForm.getFieldValue('gpu_number') || 0;
                 const val = addHostForm.getFieldValue('max_gpu_number') || 0;
                 if (mt === 'GPU' && gpuMax > 0 && val > Math.floor(gpuMax * 0.8)) {
-                  return <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统</Typography.Text>;
+                  return <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
                 }
                 return null;
               }}
@@ -1779,7 +1732,7 @@ const ManageMachine = () => {
                           <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                             <div style={{ minHeight: 22, marginBottom: 8 }}>
                               {(memMax > 0 && val > Math.floor(memMax * 0.8)) ? (
-                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统</Typography.Text>
+                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
                               ) : (
                                 <span style={{ visibility: 'hidden' }}>占位</span>
                               )}
@@ -1822,7 +1775,7 @@ const ManageMachine = () => {
                           <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                             <div style={{ minHeight: 22, marginBottom: 8 }}>
                               {(mt === 'GPU' && gpuMax > 0 && val > Math.floor(gpuMax * 0.8)) ? (
-                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统</Typography.Text>
+                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
                               ) : (
                                 <span style={{ visibility: 'hidden' }}>占位</span>
                               )}
@@ -1905,7 +1858,7 @@ const ManageMachine = () => {
                             <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                               <div style={{ minHeight: 22, marginBottom: 8 }}>
                                 {(sliderMax > 0 && val > Math.floor(sliderMax * 0.8)) ? (
-                                  <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统</Typography.Text>
+                                  <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
                                 ) : (
                                   <span style={{ visibility: 'hidden' }}>占位</span>
                                 )}
@@ -1946,7 +1899,7 @@ const ManageMachine = () => {
       {/* 删除宿主机 - 二次确认（敏感行为） */}
       <ConfirmModal
         visible={deleteConfirmVisible}
-        title="确认删除宿主机"
+        title="删除宿主机"
         icon={<DesktopOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />}
         message={deleteTargetMachine ? (
           <div>
@@ -1975,12 +1928,12 @@ const ManageMachine = () => {
                   <Tag className="mm-ml-8">{(deleteTargetMachine.machine_type || '').toUpperCase()}</Tag>
                 </Col>
                 <Col span={24}>
-                  <Typography.Text type="secondary">鐘舵€侊細</Typography.Text>
+                  <Typography.Text type="secondary">状态：</Typography.Text>
                   <Typography.Text className="mm-ml-8">{(deleteTargetMachine.machine_status || '').toLowerCase()}</Typography.Text>
                 </Col>
               </Row>
               <Typography.Text type="danger" className="mm-danger-text">
-                此操作不可恢复！此操作将移除该机器及其所有容器。              </Typography.Text>
+                此操作不可恢复！此操作将移除该机器及其所有容器。             </Typography.Text>
             </div>
           ) : null
         }
@@ -2021,7 +1974,7 @@ const ManageMachine = () => {
                 </Col>
               </Row>
               <Typography.Text type="danger" className="mm-danger-text">
-                此操作不可恢复！此操作将永久删除该容器。              </Typography.Text>
+                此操作不可恢复！此操作将永久删除该容器。             </Typography.Text>
             </div>
           ) : null
         }
@@ -2087,7 +2040,7 @@ const ManageMachine = () => {
                     >
                       全选当前页
                     </Checkbox>
-                    <Typography.Text type="secondary">宸查€?{permissionUsersSelected.length} 浜</Typography.Text>
+                    <Typography.Text type="secondary">已选 {permissionUsersSelected.length} 人</Typography.Text>
                   </div>
                   {menu}
                   <div style={{ padding: 8, textAlign: 'center' }}>
@@ -2193,7 +2146,7 @@ const ManageMachine = () => {
               <Col span={12}>
                 <Form.Item
                   name="CPU_NUMBER"
-                  label={<span>CPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限 {addContainerMachine?.max_cpu_core_number ?? addContainerMachine?.cpu_core_number ?? '-'})</span></span>}
+                  label={<span>CPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (闄?{addContainerMachine?.max_cpu_core_number ?? addContainerMachine?.cpu_core_number ?? '-'})</span></span>}
                   validateStatus={addContainerFieldErrors.CPU_NUMBER ? 'error' : undefined}
                   help={addContainerFieldErrors.CPU_NUMBER || null}
                 >
@@ -2203,7 +2156,7 @@ const ManageMachine = () => {
               <Col span={12}>
                 <Form.Item
                   name="MEMORY"
-                  label={<span>内存 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限 {addContainerMachine?.max_memory_gb ?? addContainerMachine?.memory_size_gb ?? '-'})</span></span>}
+                  label={<span>内存 (GB) <span style={{ color: '#888', fontSize: 12 }}> (闄?{addContainerMachine?.max_memory_gb ?? addContainerMachine?.memory_size_gb ?? '-'})</span></span>}
                   validateStatus={addContainerFieldErrors.MEMORY ? 'error' : undefined}
                   help={addContainerFieldErrors.MEMORY || null}
                 >
@@ -2218,7 +2171,7 @@ const ManageMachine = () => {
                 <Col span={12}>
                   <Form.Item
                     name="gpu_number"
-                    label={<span>请求 GPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (限 {addContainerMachine?.max_gpu_number ?? addContainerMachine?.gpu_number ?? '-'})</span></span>}
+                    label={<span>请求 GPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (闄?{addContainerMachine?.max_gpu_number ?? addContainerMachine?.gpu_number ?? '-'})</span></span>}
                     validateStatus={addContainerFieldErrors.gpu_number ? 'error' : undefined}
                     help={addContainerFieldErrors.gpu_number || null}
                   >
@@ -2228,7 +2181,7 @@ const ManageMachine = () => {
                 <Col span={12}>
                   <Form.Item
                     name="SHARED_MEM"
-                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限 {addContainerMachine?.max_shared_gb ?? addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
+                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (闄?{addContainerMachine?.max_shared_gb ?? addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
                     validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
                     help={addContainerFieldErrors.SHARED_MEM || null}
                   >
@@ -2243,7 +2196,7 @@ const ManageMachine = () => {
                 <Col span={12}>
                   <Form.Item
                     name="SHARED_MEM"
-                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限 {addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
+                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (闄?{addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
                     validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
                     help={addContainerFieldErrors.SHARED_MEM || null}
                   >
@@ -2281,7 +2234,7 @@ const ManageMachine = () => {
 
             <Row gutter={16}>
               <Col span={24}>
-                <Form.Item name="public_key" label="公钥（可选）" rules={[{ max: 495, message: '公钥长度不得超过495个字符' }]}> 
+                <Form.Item name="public_key" label="公钥（可选）" rules={[{ max: 495, message: '公钥长度不得超过495个字符' }]}>
                   <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" maxLength={495} />
                 </Form.Item>
               </Col>

@@ -241,12 +241,14 @@ export const getUserDetailInformation = async (user_id = 0, timeout = null) => {
   }
 };
 
-export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 10 } = {}, timeout = null) => {
+export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 10, user_search = '' } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
     const url = new URL(API_ROUTES.USERS_LIST, BACKEND_ORIGIN);
     url.searchParams.set('page_number', String(page_number));
     url.searchParams.set('page_size', String(page_size));
+    const userSearch = String(user_search || '').trim();
+    if (userSearch) url.searchParams.set('user_search', userSearch);
     const res = await fetch(url.toString(), {
       method: 'GET',
       headers: {
@@ -274,4 +276,24 @@ export default {
   deleteUser,
   getUserDetailInformation,
   listAllUserBrefInformation,
+};
+
+export const getUserPermissions = async (timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL('/api/users/me/permissions', BACKEND_ORIGIN);
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {},
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    if (!res.ok) throw Object.assign(new Error('failed to load permissions'), { status: res.status });
+    const data = await res.json().catch(() => null);
+    return (data && data.entities) || [];
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
 };

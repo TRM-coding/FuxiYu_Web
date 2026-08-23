@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
+import { CheckOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Form, Tag, message, InputNumber, Segmented, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -14,25 +14,24 @@ import ContainerDetailModal from '../components/ContainerDetailModal';
 import ManageUserInTable from './ManageUserInTable';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
+import EntitySearchBar from '../components/EntitySearchBar';
 
 // users and containers will be fetched from backend
 const initialUsers = [];
 
 const ManageUser = () => {
-  // Inline editor for expanded rows
+  // Inline editor for expanded rows（邮箱不可改，仅展示）
   const EditUserRow = ({ record }) => {
     const [values, setValues] = React.useState({
       username: record.username ?? '',
-      email: record.email ?? '',
       graduation_year: record.graduation_year ?? ''
     });
 
-    const original = React.useRef({ username: record.username ?? '', email: record.email ?? '', graduation_year: record.graduation_year ?? '' });
+    const original = React.useRef({ username: record.username ?? '', graduation_year: record.graduation_year ?? '' });
 
     const changedFields = React.useMemo(() => {
       const out = {};
       if (String(values.username) !== String(original.current.username)) out.username = values.username;
-      if (String(values.email) !== String(original.current.email)) out.email = values.email;
       if (String(values.graduation_year) !== String(original.current.graduation_year)) {
         let v = values.graduation_year;
         if (v === '' || v === undefined || v === null) {
@@ -60,7 +59,7 @@ const ManageUser = () => {
 
     return (
       <div className="manage-user-edit-row">
-        <Form layout="inline" initialValues={{ username: values.username, email: values.email, graduation_year: values.graduation_year }}>
+        <Form layout="inline" initialValues={{ username: values.username, graduation_year: values.graduation_year }}>
           <Row gutter={[16, 0]} align="middle" className="manage-user-row">
             <Col flex="auto">
               <Form.Item label={<span className={labelClass('username')}>用户名</span>} className="manage-user-form-item">
@@ -68,8 +67,8 @@ const ManageUser = () => {
               </Form.Item>
             </Col>
             <Col flex="auto">
-              <Form.Item label={<span className={labelClass('email')}>邮箱</span>} className="manage-user-form-item">
-                <Input value={values.email} onChange={e => setValues(v => ({ ...v, email: e.target.value }))} className="manage-user-input-200" />
+              <Form.Item label="邮箱" className="manage-user-form-item">
+                <Input value={record.email || ''} disabled className="manage-user-input-200" />
               </Form.Item>
             </Col>
             <Col flex="auto">
@@ -98,10 +97,9 @@ const ManageUser = () => {
     );
   };
 
-  // 用户搜索状态
+  // 用户搜索状态（用户框：用户名/邮箱/ID/毕业年份 并集；容器框：该用户拥有的容器命中）
   const [searchUsername, setSearchUsername] = useState('');
   const [searchContainerName, setSearchContainerName] = useState('');
-  const [searchEmail, setSearchEmail] = useState('');
   const [viewMode, setViewMode] = useState('card');
 
   // 展开的行key
@@ -122,8 +120,6 @@ const ManageUser = () => {
   const [selectedContainer, setSelectedContainer] = useState(null);
   // matched user ids from top-level container name search
   const [matchedUserIds, setMatchedUserIds] = useState(null);
-  // top-level container-name search loading
-  const [containerSearchLoading, setContainerSearchLoading] = useState(false);
   const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
 
   const navigate = useNavigate();
@@ -227,11 +223,15 @@ const ManageUser = () => {
     data: null,
   });
 
-  // 基础过滤（不含容器名）
+  // 基础过滤（用户框：用户名/邮箱/ID/毕业年份 并集）
   const baseFilteredUserData = users.filter(user => {
-    const matchUsername = user.username.toLowerCase().includes(searchUsername.toLowerCase());
-    const matchEmail = user.email.toLowerCase().includes(searchEmail.toLowerCase());
-    return matchUsername && matchEmail;
+    const keyword = (searchUsername || '').trim().toLowerCase();
+    if (!keyword) return true;
+    const username = String(user.username || '').toLowerCase();
+    const email = String(user.email || '').toLowerCase();
+    const id = String(user.key || '');
+    const year = String(user.graduation_year || '');
+    return username.includes(keyword) || email.includes(keyword) || id.includes(keyword) || year.includes(keyword);
   });
 
   // 打开弹窗
@@ -616,6 +616,7 @@ const ManageUser = () => {
       machine_id: containerRecord.machine_id,
       machine_ip: containerRecord.machine_ip,
       container_name: containerRecord.container_name,
+      container_id: container.key ?? container.container_id,
       terminalState,
       requiredProgressState,
       onProgress: (data) => {
@@ -699,7 +700,6 @@ const ManageUser = () => {
     const id = String(record.key);
     return userCardDrafts[id] || {
       username: record.username ?? '',
-      email: record.email ?? '',
       graduation_year: record.graduation_year ?? '',
     };
   };
@@ -720,7 +720,6 @@ const ManageUser = () => {
     const draft = getUserCardDraft(record);
     const fields = {};
     if (String(draft.username ?? '') !== String(record.username ?? '')) fields.username = draft.username;
-    if (String(draft.email ?? '') !== String(record.email ?? '')) fields.email = draft.email;
     if (String(draft.graduation_year ?? '') !== String(record.graduation_year ?? '')) {
       const raw = draft.graduation_year;
       if (raw === '' || raw === null || raw === undefined) {
@@ -773,52 +772,32 @@ const ManageUser = () => {
     );
   };
 
-  // 顶部“容器名”搜索：全局查找容器 -> 获取 container_id -> 获取 detail -> 收集 accounts 中的 user_id
+  // 容器框搜索：走后端 container_search 过滤，再从 bref 的 accounts 收集 user_id
   const userContainerSearchTokenRef = useRef(0);
   const performUserContainerSearch = async (keywordRaw) => {
-    const keyword = (keywordRaw || '').trim().toLowerCase();
+    const keyword = (keywordRaw || '').trim();
     if (!keyword) {
       setMatchedUserIds(null);
       return;
     }
     const myToken = ++userContainerSearchTokenRef.current;
-    setContainerSearchLoading(true);
     try {
-      const pageSize = 1000;
-      const res = await listAllContainerBrefInformation({ machine_id: '', page_number: 0, page_size: pageSize });
+      const res = await listAllContainerBrefInformation({ container_search: keyword, page_number: 0, page_size: 1000 });
       const items = (res && (res.containers_info || res.containers)) || [];
-      const matched = items.filter(c => {
-        const name = String(c.container_name || c.name || '').toLowerCase();
-        return name && name.includes(keyword);
-      });
-      const limit = 200;
-      const toInspect = matched.slice(0, limit);
       const foundUserIds = new Set();
-      for (const c of toInspect) {
-        if (userContainerSearchTokenRef.current !== myToken) break; // cancelled
-        const cid = c.container_id || c.id || c.containerId || c.key;
-        if (!cid) continue;
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          const detailRes = await getContainerDetailInformation(cid);
-          const detail = (detailRes && (detailRes.container_info || detailRes.container || detailRes.data || detailRes.container_detail)) || detailRes || null;
-          const accounts = detail?.accounts || detail?.account_list || c.accounts || [];
-          for (const a of accounts) {
-            const uid = a?.user_id || a?.userId || a?.id || a?.uid || null;
-            if (uid !== null && uid !== undefined && String(uid) !== '') foundUserIds.add(String(uid));
-          }
-        } catch (e) {
-          // ignore per-container detail failure
+      for (const c of items) {
+        const accounts = c.accounts || [];
+        for (const a of accounts) {
+          const uid = a?.user_id ?? a?.userId ?? a?.id ?? a?.uid ?? null;
+          if (uid !== null && uid !== undefined && String(uid) !== '') foundUserIds.add(String(uid));
         }
       }
       if (userContainerSearchTokenRef.current === myToken) {
         setMatchedUserIds(foundUserIds.size ? foundUserIds : new Set());
       }
     } catch (e) {
-      console.warn('global container name search failed', e);
+      console.warn('container search failed', e);
       if (userContainerSearchTokenRef.current === myToken) setMatchedUserIds(new Set());
-    } finally {
-      if (userContainerSearchTokenRef.current === myToken) setContainerSearchLoading(false);
     }
   };
 
@@ -1079,47 +1058,14 @@ const ManageUser = () => {
       <div className="manage-user-root">
         {/* 1. 搜索区域（固定顶部） */}
         <div ref={searchBarRef} style={searchBarStyle} className="manage-user-search-bar manage-user-auto-hide-bar">
-          <Flex justify="center" align="center">
-            <Space direction="horizontal" size="middle">
-              <Row gutter={[16, 0]} align="middle">
-                <Col>
-                  <Typography.Text type="secondary">用户名：</Typography.Text>
-                  <Input
-                    placeholder="输入用户名"
-                    value={searchUsername}
-                    onChange={e => setSearchUsername(e.target.value)}
-                    allowClear
-                    className="manage-user-input-120"
-                  />
-              </Col>
-              <Col>
-                <Typography.Text type="secondary">容器名：</Typography.Text>
-                <Input
-                  placeholder="输入容器名"
-                  value={searchContainerName}
-                  onChange={e => setSearchContainerName(e.target.value)}
-                  allowClear
-                  className="manage-user-input-120"
-                />
-              </Col>
-              <Col>
-                <Typography.Text type="secondary">邮箱：</Typography.Text>
-                <Input
-                  placeholder="输入邮箱"
-                  value={searchEmail}
-                  onChange={e => setSearchEmail(e.target.value)}
-                  allowClear
-                  className="manage-user-input-120"
-                />
-              </Col>
-              <Col>
-                <Button type="primary" icon={<SearchOutlined />} loading={containerSearchLoading} onClick={() => performUserContainerSearch(searchContainerName)}>
-                  搜索
-                </Button>
-              </Col>
-            </Row>
-          </Space>
-        </Flex>
+          <EntitySearchBar
+            primaryPlaceholder="搜索用户名 / 邮箱 / ID / 毕业年份"
+            primaryValue={searchUsername}
+            onPrimaryChange={setSearchUsername}
+            secondaryPlaceholder="搜索容器名"
+            secondaryValue={searchContainerName}
+            onSecondaryChange={setSearchContainerName}
+          />
         </div>
 
       {/* 2. 下方区域：用户表格 */}
@@ -1166,7 +1112,9 @@ const ManageUser = () => {
                     <Typography.Text type="secondary">用户</Typography.Text>
                     {renderEditChip(record, 'username', '用户名', 'manage-user-edit-chip-title')}
                     <CopyChip value={record.key} size="meta" tone="soft" className="manage-user-id">ID {record.key}</CopyChip>
-                    {renderEditChip(record, 'email', '未记录邮箱')}
+                    <span className="manage-user-edit-chip manage-user-email-readonly" title={record.email || '未记录邮箱'}>
+                      {record.email || '未记录邮箱'}
+                    </span>
                     {renderEditChip(record, 'graduation_year', '未记录毕业年份')}
                   </div>
 

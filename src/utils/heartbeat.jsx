@@ -1,7 +1,7 @@
 // Web heartbeat utility: poll Ctrl for container status until RUNNING
 import { BACKEND_ORIGIN, REQUEST_TIMEOUT } from '../configs/backend_config';
 
-export function startContainerStatusHeartbeat({ machine_id, container_name, onRunning, onTerminal, onProgress, terminalState = 'online', requiredProgressState = '', timeout = 180000, interval = 3000 }) {
+export function startContainerStatusHeartbeat({ machine_id, container_name, container_id, onRunning, onTerminal, onProgress, terminalState = 'online', requiredProgressState = '', timeout = 180000, interval = 3000 }) {
   let stopped = false;
   const startTs = Date.now();
   let timerId = null;
@@ -26,7 +26,7 @@ export function startContainerStatusHeartbeat({ machine_id, container_name, onRu
         method: 'POST',
         headers,
         credentials: 'include',
-        body: JSON.stringify({ machine_id, container_name }),
+        body: JSON.stringify({ machine_id, container_name, container_id }),
         signal: controller.signal,
       });
       clearTimeout(to);

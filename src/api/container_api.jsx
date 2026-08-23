@@ -196,19 +196,19 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 	}
 };
 
-export const listAllContainerBrefInformation = async ({ machine_id = '', user_id = '', container_name = '', page_number = 1, page_size = 10 } = {}, timeout = null) => {
+export const listAllContainerBrefInformation = async ({ machine_id = '', user_id = '', container_search = '', page_number = 1, page_size = 10 } = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const machineId = toOptionalId(machine_id);
 		const userId = toOptionalId(user_id);
-		const containerName = String(container_name || '').trim();
+		const containerSearch = String(container_search || '').trim();
 		const url = new URL(API_ROUTES.CONTAINERS_LIST, BACKEND_ORIGIN).toString();
 		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({ machine_id: machineId, user_id: userId, container_name: containerName, page_number, page_size }),
+			body: JSON.stringify({ machine_id: machineId, user_id: userId, container_search: containerSearch, page_number, page_size }),
 			signal: controller.signal,
 			credentials: CREDENTIALS,
 		});

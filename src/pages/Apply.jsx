@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SearchOutlined } from '@ant-design/icons';
-import { Typography, Row, Col, Button, Input, Table, Tag, Radio, Space, Form, InputNumber, message, Select } from 'antd';
+import { Typography, Row, Col, Button, Input, Tag, Radio, Space, Form, InputNumber, message, Select, Pagination } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
-const { Column } = Table;
+import EntitySearchBar from '../components/EntitySearchBar';
 import './Apply.css';
-
-import TableComponent from '../components/TableComponent';
 
 const options = [
   { label: '任意', value: 'Any', className: 'label-1' },
@@ -150,6 +148,26 @@ const Apply = () => {
     setAddContainerVisible(true);
   };
 
+  const openMachineDetail = async (record) => {
+    const id = record.machine_id || 0;
+    setDetailError('');
+    // show immediate info from the list data (use list status)
+    setDetailInfo(record);
+    setDetailVisible(true);
+    setDetailLoading(true);
+    try {
+      const res = await getDetailInformation(id);
+      // merge detail but keep machine_status from list data
+      const merged = { ...(res || {}), ...record, machine_status: record.machine_status };
+      setDetailInfo(merged);
+    } catch (err) {
+      console.error('Failed to get detail', err);
+      setDetailError(err.message || 'Failed to load details');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   const handleAddContainerConfirm = async () => {
     try {
       const values = await addContainerForm.validateFields();
@@ -248,150 +266,72 @@ const Apply = () => {
             />
           </Col>
 
-          <Col xs={24} sm={12} md={6} className="apply-filter-col-wide">
-            <Typography.Text type="secondary" className="apply-filter-label">IP地址</Typography.Text>
-            <Input 
-              placeholder="XXX.XXX.XXX.XXX" 
-              allowClear 
-              value={searchIp}
-              onChange={e => setSearchIp(e.target.value)}
-              className="apply-input-ip" 
+          <Col xs={24} sm={12} md={10} className="apply-filter-col-wide">
+            <EntitySearchBar
+              primaryPlaceholder="机器 IP，如 192.168.x.x"
+              primaryValue={searchIp}
+              onPrimaryChange={setSearchIp}
+              secondaryPlaceholder="机器 ID"
+              secondaryValue={searchId}
+              onSecondaryChange={setSearchId}
             />
-          </Col>
-
-          <Col xs={24} sm={12} md={6} className="apply-filter-col-compact">
-            <Typography.Text type="secondary" className="apply-filter-label">机器ID</Typography.Text>
-            <Input 
-              placeholder="机器ID" 
-              value={searchId}
-              onChange={e => setSearchId(e.target.value)}
-              className="apply-input-machine-id" 
-            />
-          </Col>
-
-          <Col xs={24} sm={12} md={6} className="apply-filter-col-actions">
-            <Button type="primary" icon={<SearchOutlined />} onClick={() => {}}>
-              Search
-            </Button>
           </Col>
         </Row>
       </div>
 
-      {/* 表格区域，随内容自然伸展 */}
-      <div className="apply-table-wrapper">
-        <TableComponent
-          dataSource={filteredData}
-          loading={loading}
-          pagination={{
-            current: page,
-            pageSize,
-            onChange: (p, ps) => {
-              setPage(p);
-              setPageSize(ps);
-            },
-            // prefer accurate server total when available
-            total: typeof totalCount === 'number' ? totalCount : (page * pageSize + (machines.length === pageSize ? pageSize : machines.length)),
-          }}
-          bordered
-        >
-          
-          <Column
-            title="机器名称"
-            dataIndex="machine_name"
-            key="machine_name"
-            render={(text, record) => (
-              <a
-                onClick={async () => {
-                      const id = record.machine_id || 0;
-                      setDetailError('');
-                      // show immediate info from the list data (use list status)
-                      setDetailInfo(record);
-                      setDetailVisible(true);
-                      setDetailLoading(true);
-                      try {
-                        const res = await getDetailInformation(id);
-                        // merge detail but keep machine_status from list data
-                        const merged = { ...(res || {}), ...record, machine_status: record.machine_status };
-                        // ensure fields from detail override when present except machine_status
-                        const final = { ...merged, machine_status: record.machine_status };
-                        setDetailInfo(final);
-                      } catch (err) {
-                        console.error('Failed to get detail', err);
-                        setDetailError(err.message || 'Failed to load details');
-                      } finally {
-                        setDetailLoading(false);
-                      }
-                    }}
+      {/* 机器卡片网格 */}
+      <div className="apply-machine-grid">
+        {filteredData.map(machine => (
+          <article className="apply-machine-card" key={machine.key}>
+            <div className="apply-machine-card-head">
+              <button
+                type="button"
+                className="apply-machine-card-title"
+                title={machine.machine_name}
+                onClick={() => openMachineDetail(machine)}
               >
-                {text}
-              </a>
-            )}
-          />
-          <Column title="机器ID" dataIndex="key" key="key" />
-          <Column title="IP地址" dataIndex="machine_ip" key="machine_ip" />
-          <Column
-            title="机器类型"
-            dataIndex="machine_type"
-            key="machine_type"
-            render={type => {
-              let color = type === 'GPU' ? 'volcano' : 'green';
-              return <Tag color={color}>{type.toUpperCase()}</Tag>;
-            }}
-          />
-          <Column
-            title="机器状态"
-            dataIndex="machine_status"
-            key="machine_status"
-            render={status => {
-              let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
-              let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : '维护中';
-              return <Tag color={color}>{text}</Tag>;
-            }}
-          />
-          <Column
-            title="详细信息"
-            key="summary"
-            render={(_, record) => (
-              <a
-                onClick={async () => {
-                  const id = record.machine_id || 0;
-                  setDetailError('');
-                  // show immediate info from the list data (use list status)
-                  setDetailInfo(record);
-                  setDetailVisible(true);
-                  setDetailLoading(true);
-                  try {
-                    const res = await getDetailInformation(id);
-                    const merged = { ...(res || {}), ...record, machine_status: record.machine_status };
-                    const final = { ...merged, machine_status: record.machine_status };
-                    setDetailInfo(final);
-                  } catch (err) {
-                    console.error('Failed to get detail', err);
-                    setDetailError(err.message || 'Failed to load details');
-                  } finally {
-                    setDetailLoading(false);
-                  }
-                }}
-              >
-                查看
-              </a>
-            )}
-          />
-          <Column
-            title="操作"
-            key="action"
-            render={(_, record) => (
-              record.machine_status === 'online' ? (
-                <Space size="middle">
-                  <a onClick={() => openAddContainerModal(record)}>申请</a>
-                  {/* 此处直接用创建容器的方法 */}
-                </Space>
+                {machine.machine_name}
+              </button>
+              <Tag color={machine.machine_status === 'online' ? 'green' : machine.machine_status === 'offline' ? 'volcano' : 'orange'}>
+                {machine.machine_status === 'online' ? '运行中' : machine.machine_status === 'offline' ? '已停止' : '维护中'}
+              </Tag>
+            </div>
+            <div className="apply-machine-card-meta">
+              <span>ID {machine.key}</span>
+              <span>IP {machine.machine_ip || '-'}</span>
+              <span>类型 <Tag color={String(machine.machine_type || '').toUpperCase() === 'GPU' ? 'volcano' : 'green'}>{(machine.machine_type || 'CPU').toUpperCase()}</Tag></span>
+            </div>
+            {machine.summary ? (
+              <div className="apply-machine-card-summary">{machine.summary}</div>
+            ) : null}
+            <div className="apply-machine-card-actions">
+              {machine.machine_status === 'online' ? (
+                <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => openAddContainerModal(machine)}>
+                  申请
+                </Button>
               ) : (
                 <span className="apply-unavailable">不可用</span>
-              )
-            )}
-          />
-        </TableComponent>
+              )}
+              <Button size="small" onClick={() => openMachineDetail(machine)}>
+                详情
+              </Button>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      {/* 分页 */}
+      <div className="apply-pagination">
+        <Pagination
+          current={page}
+          pageSize={pageSize}
+          onChange={(p, ps) => {
+            setPage(p);
+            setPageSize(ps);
+          }}
+          total={typeof totalCount === 'number' ? totalCount : (page * pageSize + (machines.length === pageSize ? pageSize : machines.length))}
+          showSizeChanger
+        />
       </div>
       <MachineDetailModal
         visible={detailVisible}

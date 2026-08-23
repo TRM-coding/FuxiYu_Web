@@ -9,18 +9,31 @@ import {
 } from '@ant-design/icons';
 import { Menu, Typography } from 'antd';
 import AdminAvatar from '../components/AdminAvatar';
+import { usePermission } from '../contexts/PermissionContext';
 import './AdminLayout.css';
 
+// 管理导航项：每项声明所需 manage 权限，无权限则隐藏
 const adminMenuItems = [
-  { label: '用户管理', key: '/admin/users', icon: <UserOutlined /> },
-  { label: '机器管理', key: '/admin/machines', icon: <DatabaseOutlined /> },
-  { label: '公告管理', key: '/admin/announcements', icon: <SendOutlined /> },
-  { label: '操作日志', key: '/admin/logs', icon: <FileTextOutlined /> },
+  { label: '用户管理', key: '/admin/users', icon: <UserOutlined />, requiredPermission: 'user:manage' },
+  { label: '机器管理', key: '/admin/machines', icon: <DatabaseOutlined />, requiredPermission: 'machine:manage' },
+  { label: '公告管理', key: '/admin/announcements', icon: <SendOutlined />, requiredPermission: 'announcement:manage' },
+  { label: '操作日志', key: '/admin/logs', icon: <FileTextOutlined />, requiredPermission: 'operation_log:manage' },
 ];
 
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { hasPermission, loaded } = usePermission();
+  // 按权限过滤菜单（无对应 manage 的项不显示）
+  const visibleMenuItems = adminMenuItems.filter(item => hasPermission(item.requiredPermission));
+  // 路由守卫：权限加载完成后仍无任何 manage → 403（后端已兜底，这里是显示层提前拦）
+  if (loaded && visibleMenuItems.length === 0) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', color: '#ff4d4f', fontSize: 16 }}>
+        403 · 无管理权限
+      </div>
+    );
+  }
   const touchStartXRef = useRef(0);
   const touchStartYRef = useRef(0);
   const touchStartTargetRef = useRef(null);
@@ -92,7 +105,7 @@ export default function AdminLayout() {
           className="admin-side-menu"
           mode="inline"
           selectedKeys={selectedKeys}
-          items={adminMenuItems}
+          items={visibleMenuItems}
           onClick={(e) => navigate(e.key)}
         />
       </aside>
@@ -102,7 +115,7 @@ export default function AdminLayout() {
           className="admin-mobile-menu"
           mode="horizontal"
           selectedKeys={selectedKeys}
-          items={adminMenuItems}
+          items={visibleMenuItems}
           onClick={(e) => navigate(e.key)}
         />
         <AdminAvatar onNavigate={handleNavigate} />

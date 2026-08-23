@@ -272,6 +272,7 @@ const Home = () => {
       stop = startContainerStatusHeartbeat({
         machine_id: req.machine_id,
         container_name: req.container_name,
+        container_id: container.key ?? container.container_id,
         onRunning: async (data) => {
           // heartbeat may return a payload with container_status; handle 'failed' explicitly
           const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
@@ -389,6 +390,7 @@ const Home = () => {
         startContainerStatusHeartbeat({
           machine_id: record.machine_id,
           container_name: record.container_name,
+          container_id: container.key ?? container.container_id,
           terminalState: 'online',
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
@@ -424,6 +426,7 @@ const Home = () => {
         startContainerStatusHeartbeat({
           machine_id: record.machine_id,
           container_name: record.container_name,
+          container_id: container.key ?? container.container_id,
           terminalState: 'offline',
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
@@ -459,6 +462,7 @@ const Home = () => {
         startContainerStatusHeartbeat({
           machine_id: record.machine_id,
           container_name: record.container_name,
+          container_id: container.key ?? container.container_id,
           terminalState: 'online',
           requiredProgressState: 'restarting',
           onProgress: (data) => {
@@ -783,6 +787,8 @@ const Home = () => {
     const myRole = getRoleForUser(record.accounts, currentUserName, currentUserId);
     const sshText = formatLastSshTime(record?.last_ssh_login_time);
     const cleanupText = formatCleanupCountdown(record?.last_ssh_login_time, record);
+    const actionState = getContainerActionState(record.container_status, record.display_status);
+    const roleColor = myRole === 'ROOT' ? 'purple' : myRole === 'ADMIN' ? 'volcano' : myRole === 'COLLABORATOR' ? 'green' : 'default';
 
     return (
       <article className="home-container-card" key={record.key}>
@@ -796,7 +802,7 @@ const Home = () => {
           <span>ID {record.key}</span>
           <CopyChip value={record.machine_ip || record.machine_id || ''}>{record.machine_ip || record.machine_id || '-'}</CopyChip>
           <CopyChip value={record.port || ''}>{record.port ? `:${record.port}` : '无端口'}</CopyChip>
-          <span>{myRole || '未授权'}</span>
+          <Tag color={roleColor}>{myRole || '未授权'}</Tag>
           <span>{record.is_long_term ? '长期容器' : cleanupText}</span>
         </div>
         <div className="home-container-card-dynamic">
@@ -805,7 +811,32 @@ const Home = () => {
         </div>
         <div className="home-container-card-foot">
           <Typography.Text type="secondary" ellipsis>{record.container_image || '未记录镜像'}</Typography.Text>
-          <Button size="small" onClick={() => openContainerDetail(record)}>详情</Button>
+          <div className="home-container-card-actions">
+            <Button
+              size="small"
+              type="primary"
+              disabled={!actionState.canStart}
+              onClick={() => handleStartContainer(record)}
+            >
+              启动
+            </Button>
+            <Button
+              size="small"
+              danger
+              disabled={!actionState.canStop}
+              onClick={() => openModal('stop', { record })}
+            >
+              停止
+            </Button>
+            <Button
+              size="small"
+              disabled={!actionState.canRestart}
+              onClick={() => openModal('restart', { record })}
+            >
+              重启
+            </Button>
+            <Button size="small" onClick={() => openContainerDetail(record)}>详情</Button>
+          </div>
         </div>
       </article>
     );

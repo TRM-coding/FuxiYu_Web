@@ -189,16 +189,17 @@ export const getDetailInformation = async (machine_id = 0, timeout = null) => {
   }
 };
 
-export const listAllMachineBrefInformation = async ({ page_number = 1, page_size = 10 } = {}, timeout = null) => {
+export const listAllMachineBrefInformation = async ({ page_number = 1, page_size = 10, machine_search = '' } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
     const url = new URL(API_ROUTES.MACHINES_LIST, BACKEND_ORIGIN).toString();
+    const machineSearch = String(machine_search || '').trim();
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json', 
       },
-      body: JSON.stringify({ page_number, page_size }),
+      body: JSON.stringify({ page_number, page_size, machine_search: machineSearch }),
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
