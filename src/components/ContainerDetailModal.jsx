@@ -44,13 +44,15 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
         ? 'blue'
         : container.container_status === 'starting'
           ? 'cyan'
-          : container.container_status === 'stopping'
-            ? 'orange'
-            : container.container_status === 'paused'
-              ? 'volcano'
-              : container.container_status === 'failed'
-                ? 'red'
-                : 'default';
+          : container.container_status === 'restarting'
+            ? 'purple'
+            : container.container_status === 'stopping'
+              ? 'orange'
+              : container.container_status === 'paused'
+                ? 'volcano'
+                : container.container_status === 'failed'
+                  ? 'red'
+                  : 'default';
    const statusText = isHostOffline
     ? '宿主机离线'
     : container.container_status === 'online'

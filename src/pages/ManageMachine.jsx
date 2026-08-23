@@ -12,6 +12,7 @@ import { getUserDetailInformation, listAllUserBrefInformation } from '../api/use
 import { isAbortError } from '../utils/requestManager';
 import { useNavigate } from 'react-router-dom';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
+import CopyChip from '../components/CopyChip';
 const { Option } = Select;
 
 import { startContainerStatusHeartbeat, startMachineStatusHeartbeat } from '../utils/heartbeat';
@@ -116,11 +117,10 @@ const ManageMachine = () => {
   const [containerMap, setContainerMap] = useState({});
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   const [sshRefreshingMap, setSshRefreshingMap] = useState({});
-  // cache machine's container names for top-level search: { [machineId]: string[] }
-  const [machineContainerNamesMap, setMachineContainerNamesMap] = useState({});
   // top-level container-name search loading
   const [containerSearchLoading, setContainerSearchLoading] = useState(false);
   const containerSearchTimerRef = useRef(null);
+  const lastContainerSearchKeywordRef = useRef('');
 
   const stopEventPropagation = (e) => {
     try {
@@ -130,41 +130,6 @@ const ManageMachine = () => {
     }
   };
 
-  const performMachineContainerSearch = async (keyword) => {
-    const k = (keyword || '').trim().toLowerCase();
-    if (!k) return;
-    // cancel any pending timer
-    if (containerSearchTimerRef.current) {
-      clearTimeout(containerSearchTimerRef.current);
-      containerSearchTimerRef.current = null;
-    }
-    setContainerSearchLoading(true);
-    try {
-      const pageSize = 1000;
-      const res = await listAllContainerBrefInformation({ machine_id: '', page_number: 0, page_size: pageSize });
-      const items = (res && (res.containers_info || res.containers)) || [];
-      const map = {};
-      for (const c of items) {
-        const name = String(c.container_name || c.name || '').toLowerCase();
-        if (!name) continue;
-        if (!name.includes(k)) continue;
-        const mid = String(c.machine_id || c.machine || c.machine_id || '');
-        if (!mid) continue;
-        map[mid] = map[mid] || [];
-        map[mid].push(name);
-      }
-      const updates = {};
-      machines.forEach(m => {
-        const midKey = String(m.key);
-        updates[midKey] = map[midKey] || [];
-      });
-      setMachineContainerNamesMap(prev => ({ ...prev, ...updates }));
-    } catch (e) {
-      console.warn('container name global search failed', e);
-    } finally {
-      setContainerSearchLoading(false);
-    }
-  };
   // users fetched from backend (used for selecting when adding users to a container)
   const [usersList, setUsersList] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -422,7 +387,7 @@ const ManageMachine = () => {
   });
 
 
-  const fetchContainersForMachine = async (machineId, pageNumber = 0) => {
+  const fetchContainersForMachine = async (machineId, pageNumber = 0, containerName = searchContainerName) => {
     // avoid duplicate fetch
     if (!machineId) return;
     const mid = String(machineId);
@@ -432,9 +397,15 @@ const ManageMachine = () => {
     setContainerMap(prev => ({ ...prev, [mid]: { ...(prev[mid] || {}), loading: true, data: [], page: pageNumber, total_page: prev[mid]?.total_page || 1 } }));
     try {
       const pageSize = 4;
-      const res = await listAllContainerBrefInformation({ machine_id: mid, page_number: pageNumber, page_size: pageSize });
+      const res = await listAllContainerBrefInformation({
+        machine_id: mid,
+        container_name: containerName,
+        page_number: pageNumber,
+        page_size: pageSize,
+      });
       const items = (res && (res.containers_info || res.containers)) || [];
       const total_page = (res && (res.total_page || res.totalPages || res.total_pages)) || 1;
+      const total_number = Number(res && (res.total_number ?? res.totalNumber ?? res.total)) || items.length;
       const mapped = items.map((c, idx) => ({
         key: c.container_id ? String(c.container_id) : `${mid}-${pageNumber}-${idx}`,
         container_name: c.container_name || c.name || `container-${idx}`,
@@ -458,7 +429,18 @@ const ManageMachine = () => {
         disk_limit_gb: c.disk_limit_gb ?? null,
         disk_usage_percent: c.disk_usage_percent ?? null,
       }));
-      setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: mapped, page: pageNumber, total_page: total_page, page_size: pageSize } }));
+      setContainerMap(prev => ({
+        ...prev,
+        [mid]: {
+          loading: false,
+          data: mapped,
+          page: pageNumber,
+          total_page: total_page,
+          total_number,
+          page_size: pageSize,
+          container_name: String(containerName || '').trim(),
+        },
+      }));
     } catch (err) {
       console.error('fetchContainersForMachine failed', machineId, err);
       // fallback: keep loading false but no data so UI will use local mock
@@ -543,13 +525,20 @@ const ManageMachine = () => {
     }
   };
 
-  // 顶部”容器名”搜索：按机器维度缓存容器名
+  // 顶部“容器名”搜索：由后端按机器和容器名分页过滤
   useEffect(() => {
-    const keyword = (searchContainerName || '').trim().toLowerCase();
-    if (!keyword) return;
+    const keyword = (searchContainerName || '').trim();
     if (containerSearchTimerRef.current) clearTimeout(containerSearchTimerRef.current);
     containerSearchTimerRef.current = setTimeout(() => {
-      performMachineContainerSearch(keyword);
+      const previousKeyword = lastContainerSearchKeywordRef.current;
+      if (!keyword && !previousKeyword) {
+        containerSearchTimerRef.current = null;
+        return;
+      }
+      lastContainerSearchKeywordRef.current = keyword;
+      setContainerSearchLoading(true);
+      Promise.all(baseFilteredMachineData.map(machine => fetchContainersForMachine(machine.key, 0, keyword)))
+        .finally(() => setContainerSearchLoading(false));
       containerSearchTimerRef.current = null;
     }, 300);
     return () => {
@@ -558,13 +547,14 @@ const ManageMachine = () => {
         containerSearchTimerRef.current = null;
       }
     };
-  }, [searchContainerName, machines]);
+  }, [searchContainerName, searchName, searchIP, machines]);
 
   const filteredMachineData = baseFilteredMachineData.filter(machine => {
     const keyword = (searchContainerName || '').trim().toLowerCase();
     if (!keyword) return true;
-    const names = machineContainerNamesMap[String(machine.key)] || [];
-    return names.some(name => String(name || '').toLowerCase().includes(keyword));
+    const entry = containerMap[String(machine.key)];
+    if (!entry || entry.loading) return true;
+    return Number(entry.total_number ?? (entry.data || []).length) > 0;
   });
 
   const renderStatusTag = (status, record = null) => {
@@ -578,8 +568,8 @@ const ManageMachine = () => {
 
   const renderContainerStatus = (status) => {
     const normalized = String(status || '').toLowerCase();
-    const color = normalized === 'online' ? 'green' : normalized === 'offline' ? 'volcano' : normalized === 'paused' ? 'volcano' : normalized === 'creating' ? 'blue' : normalized === 'starting' ? 'cyan' : normalized === 'stopping' ? 'orange' : normalized === 'failed' ? 'red' : 'default';
-    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', creating: '创建中', starting: '启动中', stopping: '停止中', failed: '异常' };
+    const color = normalized === 'online' ? 'green' : normalized === 'offline' ? 'volcano' : normalized === 'paused' ? 'volcano' : normalized === 'creating' ? 'blue' : normalized === 'starting' ? 'cyan' : normalized === 'restarting' ? 'purple' : normalized === 'stopping' ? 'orange' : normalized === 'failed' ? 'red' : 'default';
+    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', creating: '创建中', starting: '启动中', stopping: '停止中', restarting: '重启中', failed: '异常' };
     return <Tag color={color}>{labelMap[normalized] || status}</Tag>;
   };
 
@@ -1286,7 +1276,7 @@ const ManageMachine = () => {
       setContainerMap(prev => {
         const copy = { ...prev };
         if (copy[mid] && Array.isArray(copy[mid].data)) {
-          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'starting' } : c)) };
+          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'restarting' } : c)) };
         }
         return copy;
       });
@@ -1298,6 +1288,19 @@ const ManageMachine = () => {
           machine_ip: container.machine_ip,
           container_name: container.container_name,
           terminalState: 'online',
+          requiredProgressState: 'restarting',
+          onProgress: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st && st !== 'online' && st !== 'failed') {
+              setContainerMap(prev => {
+                const copy = { ...prev };
+                if (copy[mid] && Array.isArray(copy[mid].data)) {
+                  copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: st } : c)) };
+                }
+                return copy;
+              });
+            }
+          },
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
             if (st === 'failed') {
@@ -1419,7 +1422,7 @@ const ManageMachine = () => {
           {renderContainerStatus(status)}
         </div>
         <div className="mm-container-card-meta">
-          <span>端口 {containerRecord.port || '-'}</span>
+          <CopyChip value={containerRecord.port || ''}>{containerRecord.port ? `:${containerRecord.port}` : '-'}</CopyChip>
           <span>SSH {formatLastSshTime(containerRecord?.last_ssh_login_time)}</span>
         </div>
         {renderDiskUsage(containerRecord)}
@@ -1442,9 +1445,6 @@ const ManageMachine = () => {
           <Button size="small" loading={sshRefreshLoading} onClick={() => refreshSshTimeForContainer(containerRecord)}>
             SSH
           </Button>
-          <Button size="small" type="primary" ghost onClick={() => openContainerDetail(containerRecord)}>
-            详情
-          </Button>
         </div>
       </article>
     );
@@ -1453,6 +1453,8 @@ const ManageMachine = () => {
   const renderMachineCard = (record) => {
     const mid = String(record.key);
     const entry = containerMap[mid] || {};
+    const containerKeyword = (searchContainerName || '').trim().toLowerCase();
+    const isContainerSearchMode = !!containerKeyword;
     const containers = entry.data || [];
     const preview = containers.slice(0, 4);
     const slots = [...preview, ...Array.from({ length: Math.max(0, 4 - preview.length) }, () => null)];
@@ -1467,9 +1469,13 @@ const ManageMachine = () => {
         <aside className="mm-machine-rail">
           <div>
             <Typography.Text type="secondary">机器</Typography.Text>
-            <Typography.Title level={5} title={record.machine_name}>{record.machine_name || `机器 ${record.key}`}</Typography.Title>
+            <CopyChip value={record.machine_name || `机器 ${record.key}`} size="title" block>
+              {record.machine_name || `机器 ${record.key}`}
+            </CopyChip>
             {renderStatusTag(record.machine_status, record)}
-            <Typography.Text type="secondary" className="mm-machine-ip">{record.machine_ip || '-'}</Typography.Text>
+            <CopyChip value={record.machine_ip || ''} className="mm-machine-ip" size="meta" tone="soft">
+              {record.machine_ip || '-'}
+            </CopyChip>
           </div>
           <div className="mm-machine-rail-meters">
             {renderResourceMeter('CPU', record.cpu_core_number, record.max_cpu_core_number, 'cpu')}
@@ -1492,7 +1498,9 @@ const ManageMachine = () => {
         <section className="mm-machine-main">
           <div className="mm-machine-main-head">
             <Typography.Text type="secondary">
-              {entry.loading ? '容器加载中' : `${entry.total_number ?? containers.length ?? 0} 个容器`}
+              {isContainerSearchMode
+                ? `${entry.total_number ?? containers.length ?? 0} 个匹配容器`
+                : entry.loading ? '容器加载中' : `${entry.total_number ?? containers.length ?? 0} 个容器`}
             </Typography.Text>
             <Space size={6}>
               <Button size="small" icon={<PlusOutlined />} onClick={(e) => { e.stopPropagation(); openAddContainerModal(record); }}>
@@ -1581,7 +1589,17 @@ const ManageMachine = () => {
               />
             </Col>
             <Col>
-              <Button type="primary" icon={<SearchOutlined />} loading={containerSearchLoading} onClick={() => performMachineContainerSearch(searchContainerName)}>
+              <Button
+                type="primary"
+                icon={<SearchOutlined />}
+                loading={containerSearchLoading}
+                onClick={() => {
+                  const keyword = (searchContainerName || '').trim();
+                  setContainerSearchLoading(true);
+                  Promise.all(baseFilteredMachineData.map(machine => fetchContainersForMachine(machine.key, 0, keyword)))
+                    .finally(() => setContainerSearchLoading(false));
+                }}
+              >
                 搜索
               </Button>
             </Col>
@@ -1594,6 +1612,9 @@ const ManageMachine = () => {
         </div>
 
         {/* 2. 机器卡片网格 */}
+        <div>
+          <Typography.Title level={4}>机器与容器关系</Typography.Title>
+        </div>
         {machinesLoading ? (
           <div className="mm-grid-empty">机器加载中...</div>
         ) : filteredMachineData.length > 0 ? (
@@ -2083,7 +2104,7 @@ const ManageMachine = () => {
             <Button type="primary" icon={<PlusOutlined />} loading={permissionModalSubmitting} onClick={handleGrantMachinePermission} disabled={!permissionUsersSelected.length}>添加权限</Button>
           </Space>
           <div style={{ border: '1px solid #f0f0f0', borderRadius: 12, padding: 12, background: '#fafafa' }}>
-            <Typography.Text strong>宸叉巿鏉冪敤鎴</Typography.Text>
+            <Typography.Text strong>已授权用户</Typography.Text>
             <div style={{ marginTop: 12 }}>
               {permissionAssignedUserIds.length ? (
                 <Space wrap>

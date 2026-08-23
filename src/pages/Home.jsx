@@ -15,6 +15,7 @@ import { listAllUserBrefInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
+import CopyChip from '../components/CopyChip';
 import './Home.css';
 
 const Desc = props => (
@@ -451,7 +452,7 @@ const Home = () => {
     const cid = record?.key;
     if ((record?.container_status || '').toLowerCase() !== 'online') return;
     try {
-      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'starting' } : c)));
+      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'restarting' } : c)));
       message.loading({ content: `正在重启 ${record.container_name}...`, key: `restart-${cid}` });
       await restartContainer(Number(cid));
       try {
@@ -459,6 +460,13 @@ const Home = () => {
           machine_id: record.machine_id,
           container_name: record.container_name,
           terminalState: 'online',
+          requiredProgressState: 'restarting',
+          onProgress: (data) => {
+            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            if (st && st !== 'online' && st !== 'failed') {
+              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: st } : c)));
+            }
+          },
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
             if (st === 'failed') {
@@ -742,49 +750,58 @@ const Home = () => {
     return configs[type] || {};
   };
 
-  const groupedContainers = containers.reduce((groups, container) => {
-    const machineKey = container.machine_id || container.machine_ip || 'unassigned';
-    if (!groups[machineKey]) {
-      groups[machineKey] = {
-        key: machineKey,
-        machine_id: container.machine_id,
-        machine_ip: container.machine_ip || '-',
-        containers: [],
-      };
-    }
-    groups[machineKey].containers.push(container);
-    return groups;
-  }, {});
-
-  const machineGroups = Object.values(groupedContainers);
-
   const renderContainerCard = (record) => {
     const status = (record?.container_status || '').toLowerCase();
+    const statusLabelMap = {
+      online: '运行中',
+      offline: '已停止',
+      creating: '创建中',
+      starting: '启动中',
+      restarting: '重启中',
+      stopping: '停止中',
+      paused: '已冻结',
+      failed: '异常',
+      unknown: '未知',
+    };
     const color = status === 'online'
       ? 'green'
       : status === 'offline'
         ? 'volcano'
-        : status === 'failed'
-          ? 'red'
-          : status === 'starting'
-            ? 'cyan'
-            : status === 'stopping'
-              ? 'orange'
-              : 'default';
+        : status === 'paused'
+          ? 'volcano'
+          : status === 'creating'
+            ? 'blue'
+            : status === 'starting'
+              ? 'cyan'
+              : status === 'restarting'
+                ? 'purple'
+                : status === 'stopping'
+                  ? 'orange'
+                  : status === 'failed'
+                    ? 'red'
+                    : 'default';
     const myRole = getRoleForUser(record.accounts, currentUserName, currentUserId);
+    const sshText = formatLastSshTime(record?.last_ssh_login_time);
+    const cleanupText = formatCleanupCountdown(record?.last_ssh_login_time, record);
 
     return (
       <article className="home-container-card" key={record.key}>
         <div className="home-container-card-head">
           <button type="button" className="home-card-title-button" onClick={() => openContainerDetail(record)}>
-            {record.container_name}
+            {record.container_name || '未命名容器'}
           </button>
-          <Tag color={color}>{status || 'unknown'}</Tag>
+          <Tag color={color}>{statusLabelMap[status] || status || '未知'}</Tag>
         </div>
         <div className="home-container-card-meta">
           <span>ID {record.key}</span>
-          <span>{record.port ? `:${record.port}` : '无端口'}</span>
+          <CopyChip value={record.machine_ip || record.machine_id || ''}>{record.machine_ip || record.machine_id || '-'}</CopyChip>
+          <CopyChip value={record.port || ''}>{record.port ? `:${record.port}` : '无端口'}</CopyChip>
           <span>{myRole || '未授权'}</span>
+          <span>{record.is_long_term ? '长期容器' : cleanupText}</span>
+        </div>
+        <div className="home-container-card-dynamic">
+          <span>SSH {sshText}</span>
+          <span>资源数据待接入</span>
         </div>
         <div className="home-container-card-foot">
           <Typography.Text type="secondary" ellipsis>{record.container_image || '未记录镜像'}</Typography.Text>
@@ -847,36 +864,19 @@ const Home = () => {
         <section className="home-grid-overview">
           <div className="home-section-heading">
             <div>
-              <Typography.Text type="secondary">容器分组视图</Typography.Text>
-              <Typography.Title level={4}>按机器查看容器</Typography.Title>
+              <Typography.Text type="secondary">容器视图</Typography.Text>
+              <Typography.Title level={4}>我的容器</Typography.Title>
             </div>
-            <Typography.Text type="secondary">{machineGroups.length} 台机器 / {containers.length} 个容器</Typography.Text>
+            <Typography.Text type="secondary">{containers.length} 个容器</Typography.Text>
           </div>
 
-          <div className="home-machine-grid">
-            {machineGroups.map(group => (
-              <section className="home-machine-card" key={group.key}>
-                <div className="home-machine-card-head">
-                  <div>
-                    <Typography.Text type="secondary">机器</Typography.Text>
-                    <Typography.Title level={5}>{group.machine_ip}</Typography.Title>
-                  </div>
-                  <Tag color="blue">{group.containers.length} 个容器</Tag>
-                </div>
-                <div className="home-container-card-grid">
-                  {group.containers.slice(0, 4).map(renderContainerCard)}
-                </div>
-                {group.containers.length > 4 ? (
-                  <Button type="link" className="home-show-more-button">
-                    查看全部 {group.containers.length} 个
-                  </Button>
-                ) : null}
-              </section>
-            ))}
-            {!loadingContainers && machineGroups.length === 0 ? (
-              <div className="home-empty-card">暂无容器</div>
-            ) : null}
-          </div>
+          {containers.length > 0 ? (
+            <div className="home-container-flat-grid">
+              {containers.map(renderContainerCard)}
+            </div>
+          ) : (
+            <div className="home-empty-card">{loadingContainers ? '容器加载中...' : '暂无容器'}</div>
+          )}
         </section>
         <ContainerDetailModal
           visible={detailVisible}

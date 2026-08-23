@@ -36,6 +36,22 @@
 .manage-user-container-card-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .manage-user-container-empty{display:flex;align-items:center;justify-content:center;min-height:48px;border:1px dashed #d1d5db;border-radius:8px;color:#6b7280;background:#fafafa}
 .manage-user-card-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.manage-user-nested-grid{--fuxi-nested-rail-width:172px;--fuxi-nested-child-action-count:4}
+.manage-user-rail-head{min-width:0;display:flex;flex-direction:column;gap:4px}
+.manage-user-rail-head .ant-typography{margin:0!important}
+.manage-user-id,.manage-user-email,.manage-user-year{display:block;font-size:12px}
+.manage-user-email{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.manage-user-edit-chip{width:100%;min-width:0;padding:2px 7px;border:0;border-radius:6px;background:#f8fafc;color:#64748b;font:inherit;font-size:12px;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none}
+.manage-user-edit-chip:hover,.manage-user-edit-chip:focus{background:#edf2f7;color:#334155}
+.manage-user-edit-chip.changed{background:#eef4ff;color:#0f172a;box-shadow:inset 0 0 0 1px rgba(22,119,255,0.22)}
+.manage-user-edit-chip-title{font-size:14px;font-weight:700;color:#111827;background:#eef4ff}
+.manage-user-rail-stats{display:grid;grid-template-columns:1fr;gap:7px}
+.manage-user-rail-stats>div{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
+.manage-user-rail-stats span{color:#64748b}
+.manage-user-rail-stats strong{font-size:14px;color:#111827}
+.manage-user-rail-actions{display:grid;grid-template-columns:1fr;gap:7px}
+.manage-user-rail-actions .ant-btn{width:100%}
+.manage-user-nested-container-card{display:flex;flex-direction:column;justify-content:space-between;gap:8px}
 .manage-user-text-gap{margin-left:8px}
 .manage-user-modal-save{background:#fafafa;padding:16px;border-radius:4px;border:1px solid #f0f0f0}
 .manage-user-modal-delete{background:#fff2f0;padding:16px;border-radius:4px;border:1px solid #ffccc7}
@@ -147,5 +163,9 @@
 	.manage-user-card-grid,
 	.manage-user-container-preview {
 		grid-template-columns: 1fr;
+	}
+	.manage-user-nested-grid .fuxi-nested-child-grid {
+		grid-template-columns: 1fr;
+		grid-template-rows: none;
 	}
 }

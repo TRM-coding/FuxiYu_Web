@@ -1,17 +1,19 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Flex, Splitter, Typography, Row, Col, Button, Input, Space, Table, Form, DatePicker, Card, Tag, message, InputNumber, Checkbox } from 'antd';
+import { CheckOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Flex, Typography, Row, Col, Button, Input, Space, Form, Tag, message, InputNumber, Segmented, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { listAllUserBrefInformation, getUserDetailInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator, setLongTermContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator, setLongTermContainer, startContainer, stopContainer, restartContainer } from '../api/container_api';
 import './ManageUser.css';
-import TableComponent from '../components/TableComponent';
+import NestedEntityGrid from '../components/NestedEntityGrid';
+import CopyChip from '../components/CopyChip';
+import ContainerDetailModal from '../components/ContainerDetailModal';
+import ManageUserInTable from './ManageUserInTable';
+import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
-
-const { Column } = Table;
 
 // users and containers will be fetched from backend
 const initialUsers = [];
@@ -100,6 +102,7 @@ const ManageUser = () => {
   const [searchUsername, setSearchUsername] = useState('');
   const [searchContainerName, setSearchContainerName] = useState('');
   const [searchEmail, setSearchEmail] = useState('');
+  const [viewMode, setViewMode] = useState('card');
 
   // 展开的行key
   const [expandedRowKeys, setExpandedRowKeys] = useState([]);
@@ -109,10 +112,14 @@ const ManageUser = () => {
   // fetched users
   const [users, setUsers] = useState(initialUsers);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [userCardDrafts, setUserCardDrafts] = useState({});
 
   // container cache per user id: { [userId]: { loading, data } }
   const [containerMap, setContainerMap] = useState({});
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
+  const [containerActionMap, setContainerActionMap] = useState({});
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedContainer, setSelectedContainer] = useState(null);
   // matched user ids from top-level container name search
   const [matchedUserIds, setMatchedUserIds] = useState(null);
   // top-level container-name search loading
@@ -254,6 +261,11 @@ const ManageUser = () => {
           await updateUser({ user_id: uid, fields });
           // update local list: only update provided fields
           setUsers(prev => prev.map(u => (String(u.key) === String(uid) ? { ...u, ...fields } : u)));
+          setUserCardDrafts(prev => {
+            const next = { ...prev };
+            delete next[String(uid)];
+            return next;
+          });
           message.success('用户信息已更新');
         }
       } else if (type === 'delete') {
@@ -290,6 +302,10 @@ const ManageUser = () => {
           return { ...prev, [id]: { ...(entry || {}), loading: false, data: newData } };
         });
         message.success('关联已移除');
+      } else if (type === 'stopContainer') {
+        await handleStopContainer(data?.userRecord, data?.containerRecord);
+      } else if (type === 'restartContainer') {
+        await handleRestartContainer(data?.userRecord, data?.containerRecord);
       }
     } catch (err) {
       console.error('modal action failed', err);
@@ -314,11 +330,6 @@ const ManageUser = () => {
     }
   };
 
-  // 处理保存用户信息
-  const handleSaveUser = (user) => {
-    openModal('save', user);
-  };
-
   // 处理删除用户
   const handleDeleteUser = (user) => {
     openModal('delete', user);
@@ -336,27 +347,53 @@ const ManageUser = () => {
 
   // 容器状态标签
   const renderContainerStatus = (status) => {
-    const color = status === 'online' ? 'green' : status === 'maintenance' ? 'orange' : 'red';
-    const statusText = status === 'online' ? 'ONLINE' : status === 'maintenance' ? 'MAINTAINANCE' : 'OFFLINE';
-    return <Tag color={color}>{statusText}</Tag>;
+    const normalized = String(status || '').toLowerCase();
+    const color = normalized === 'online'
+      ? 'green'
+      : normalized === 'offline'
+        ? 'volcano'
+        : normalized === 'paused'
+          ? 'volcano'
+          : normalized === 'creating'
+            ? 'blue'
+            : normalized === 'starting'
+              ? 'cyan'
+              : normalized === 'restarting'
+                ? 'purple'
+                : normalized === 'stopping'
+                  ? 'orange'
+                  : normalized === 'failed'
+                    ? 'red'
+                    : 'default';
+    const labelMap = {
+      online: '运行中',
+      offline: '已停止',
+      paused: '磁盘已冻结',
+      creating: '创建中',
+      starting: '启动中',
+      restarting: '重启中',
+      stopping: '停止中',
+      failed: '异常',
+    };
+    return <Tag color={color}>{labelMap[normalized] || status || '未知'}</Tag>;
   };
 
   // 容器中用户角色标签
   const renderContainerRoleTag = (role) => {
     let color = '';
     let roleText = '';
-    switch (role) {
+    switch (String(role || '').toUpperCase()) {
       case 'ADMIN':
         color = 'volcano';
         roleText = '管理员';
         break;
       case 'COLLABORATOR':
         color = 'green';
-        roleText = '协作者';
+        roleText = '普通用户';
         break;
       case 'ROOT':
         color = 'purple';
-        roleText = '超级管理员';
+        roleText = 'ROOT';
         break;
       default:
         color = 'default';
@@ -404,6 +441,9 @@ const ManageUser = () => {
         long_term_container_can_enable: c.long_term_container_can_enable !== false,
         long_term_container_blocked_user_ids: c.long_term_container_blocked_user_ids || [],
         long_term_container_remaining_by_user: c.long_term_container_remaining_by_user || {},
+        disk_total_gb: c.disk_total_gb ?? null,
+        disk_limit_gb: c.disk_limit_gb ?? null,
+        disk_usage_percent: c.disk_usage_percent ?? null,
       }));
       // fetch detail per container to enrich with image and account role info for this user
       const userObj = users.find(u => String(u.key) === String(userId));
@@ -437,6 +477,9 @@ const ManageUser = () => {
             gpu_number: det?.gpu_number ?? c.gpu_number ?? 0,
             memory_gb: det?.memory_gb ?? c.memory_gb ?? null,
             shared_gb: det?.shared_gb ?? c.shared_gb ?? null,
+            disk_total_gb: det?.disk_total_gb ?? c.disk_total_gb ?? null,
+            disk_limit_gb: det?.disk_limit_gb ?? c.disk_limit_gb ?? null,
+            disk_usage_percent: det?.disk_usage_percent ?? c.disk_usage_percent ?? null,
             is_long_term: det?.is_long_term === true || c.is_long_term === true,
             long_term_container_can_enable: det?.long_term_container_can_enable !== false && c.long_term_container_can_enable !== false,
             long_term_container_blocked_user_ids: det?.long_term_container_blocked_user_ids || c.long_term_container_blocked_user_ids || [],
@@ -464,6 +507,38 @@ const ManageUser = () => {
     }
     const data = containerMap[id].data || [];
     return data; // `userRole` is provided by detail fetch and stored in cache
+  };
+
+  const openContainerDetail = async (container) => {
+    if (!container) return;
+    const cid = container.key || container.container_id;
+    if (!cid) return;
+    try {
+      setSelectedContainer(null);
+      const res = await getContainerDetailInformation(Number(cid));
+      const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
+      if (!detail) {
+        await showErrorModal({ message: '未能获取容器详情' });
+        return;
+      }
+      setSelectedContainer({
+        key: detail.container_id ? String(detail.container_id) : String(cid),
+        container_name: detail.container_name || detail.name || container.container_name || '',
+        container_image: detail.container_image || detail.image || container.container_image || '',
+        port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
+        container_status: (detail.container_status || detail.status || container.container_status || '').toLowerCase(),
+        machine_ip: detail.machine_ip || container.machine_ip || '',
+        machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
+        cpu_number: detail.cpu_number ?? container.cpu_number ?? null,
+        gpu_number: detail.gpu_number ?? container.gpu_number ?? 0,
+        memory_gb: detail.memory_gb ?? container.memory_gb ?? 0,
+        shared_gb: detail.shared_gb ?? container.shared_gb ?? 0,
+        accounts: detail.accounts || detail.account_list || container.accounts || [],
+      });
+      setDetailModalVisible(true);
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    }
   };
 
   const handleLongTermChange = async (userRecord, containerRecord, checked) => {
@@ -517,6 +592,185 @@ const ManageUser = () => {
     } finally {
       setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: false }));
     }
+  };
+
+  const patchUserContainer = (userId, containerId, patch) => {
+    if (!userId || !containerId) return;
+    setContainerMap(prev => {
+      const id = String(userId);
+      const entry = prev[id] || { data: [] };
+      return {
+        ...prev,
+        [id]: {
+          ...entry,
+          data: (entry.data || []).map(c => (
+            String(c.key) === String(containerId) ? { ...c, ...patch } : c
+          )),
+        },
+      };
+    });
+  };
+
+  const runContainerHeartbeat = ({ userRecord, containerRecord, actionKey, terminalState, requiredProgressState = '' }) => {
+    startContainerStatusHeartbeat({
+      machine_id: containerRecord.machine_id,
+      machine_ip: containerRecord.machine_ip,
+      container_name: containerRecord.container_name,
+      terminalState,
+      requiredProgressState,
+      onProgress: (data) => {
+        const st = data?.container_status ? String(data.container_status).toLowerCase() : null;
+        if (st && st !== terminalState && st !== 'failed') {
+          patchUserContainer(userRecord.key, containerRecord.key, { container_status: st });
+        }
+      },
+      onTerminal: (data) => {
+        const st = data?.container_status ? String(data.container_status).toLowerCase() : terminalState;
+        const nextStatus = st === 'failed' ? 'failed' : terminalState;
+        patchUserContainer(userRecord.key, containerRecord.key, { container_status: nextStatus });
+        setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
+        if (nextStatus === 'failed') {
+          message.error(`容器 ${containerRecord.container_name} 状态异常`);
+        } else {
+          message.success(`容器 ${containerRecord.container_name} 已${terminalState === 'online' ? '运行' : '停止'}`);
+        }
+      },
+    });
+  };
+
+  const handleStartContainer = async (userRecord, containerRecord) => {
+    const cid = containerRecord?.key;
+    if (!cid) return;
+    const actionKey = `start-${cid}`;
+    setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
+    patchUserContainer(userRecord.key, cid, { container_status: 'starting' });
+    try {
+      message.loading({ content: `正在启动 ${containerRecord.container_name}...`, key: actionKey });
+      await startContainer(Number(cid));
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
+      runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'online' });
+      message.success({ content: '启动指令已发送', key: actionKey, duration: 2 });
+    } catch (err) {
+      patchUserContainer(userRecord.key, cid, { container_status: 'offline' });
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
+      await showErrorModal({ message: err?.body || err || '启动失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    }
+  };
+
+  const handleStopContainer = async (userRecord, containerRecord) => {
+    const cid = containerRecord?.key;
+    if (!cid) return;
+    const actionKey = `stop-${cid}`;
+    setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
+    patchUserContainer(userRecord.key, cid, { container_status: 'stopping' });
+    try {
+      message.loading({ content: `正在停止 ${containerRecord.container_name}...`, key: actionKey });
+      await stopContainer(Number(cid));
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
+      runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'offline' });
+      message.success({ content: '停止指令已发送', key: actionKey, duration: 2 });
+    } catch (err) {
+      patchUserContainer(userRecord.key, cid, { container_status: 'online' });
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
+      await showErrorModal({ message: err?.body || err || '停止失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    }
+  };
+
+  const handleRestartContainer = async (userRecord, containerRecord) => {
+    const cid = containerRecord?.key;
+    if (!cid) return;
+    const actionKey = `restart-${cid}`;
+    setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
+    patchUserContainer(userRecord.key, cid, { container_status: 'restarting' });
+    try {
+      message.loading({ content: `正在重启 ${containerRecord.container_name}...`, key: actionKey });
+      await restartContainer(Number(cid));
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
+      runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'online', requiredProgressState: 'restarting' });
+      message.success({ content: '重启指令已发送', key: actionKey, duration: 2 });
+    } catch (err) {
+      patchUserContainer(userRecord.key, cid, { container_status: 'online' });
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
+      await showErrorModal({ message: err?.body || err || '重启失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    }
+  };
+
+  const getUserCardDraft = (record) => {
+    const id = String(record.key);
+    return userCardDrafts[id] || {
+      username: record.username ?? '',
+      email: record.email ?? '',
+      graduation_year: record.graduation_year ?? '',
+    };
+  };
+
+  const updateUserCardDraft = (record, field, value) => {
+    const id = String(record.key);
+    setUserCardDrafts(prev => ({
+      ...prev,
+      [id]: {
+        ...getUserCardDraft(record),
+        ...prev[id],
+        [field]: value,
+      },
+    }));
+  };
+
+  const getUserCardChangedFields = (record) => {
+    const draft = getUserCardDraft(record);
+    const fields = {};
+    if (String(draft.username ?? '') !== String(record.username ?? '')) fields.username = draft.username;
+    if (String(draft.email ?? '') !== String(record.email ?? '')) fields.email = draft.email;
+    if (String(draft.graduation_year ?? '') !== String(record.graduation_year ?? '')) {
+      const raw = draft.graduation_year;
+      if (raw === '' || raw === null || raw === undefined) {
+        fields.graduation_year = null;
+      } else {
+        const parsed = parseInt(raw, 10);
+        fields.graduation_year = Number.isNaN(parsed) ? raw : parsed;
+      }
+    }
+    return fields;
+  };
+
+  const renderEditChip = (record, field, fallback, className = '') => {
+    const draft = getUserCardDraft(record);
+    const value = draft[field] ?? '';
+    const changed = String(value ?? '') !== String(record[field] ?? '');
+    return (
+      <input
+        className={`manage-user-edit-chip ${changed ? 'changed' : ''} ${className}`}
+        value={value}
+        placeholder={fallback}
+        title={String(value || fallback || '')}
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => updateUserCardDraft(record, field, event.target.value)}
+      />
+    );
+  };
+
+  const openUserCardSave = (record) => {
+    const changedFields = getUserCardChangedFields(record);
+    if (!Object.keys(changedFields).length) return;
+    openModal('save', { record, changedFields });
+  };
+
+  const renderDiskUsage = (containerRecord, trailing = null) => {
+    const total = containerRecord?.disk_total_gb;
+    const limit = containerRecord?.disk_limit_gb;
+    const pct = Number(containerRecord?.disk_usage_percent || 0);
+    return (
+      <div className="fuxi-nested-child-disk-line">
+        <span>{total == null ? '磁盘 -' : `磁盘 ${total}G / ${limit != null ? `${limit}G` : '-'}`}</span>
+        {trailing}
+        <div className="fuxi-nested-child-disk-track">
+          <div
+            className={pct >= 90 ? 'fuxi-nested-child-disk-fill danger' : pct >= 75 ? 'fuxi-nested-child-disk-fill warn' : 'fuxi-nested-child-disk-fill'}
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        </div>
+      </div>
+    );
   };
 
   // 顶部“容器名”搜索：全局查找容器 -> 获取 container_id -> 获取 detail -> 收集 accounts 中的 user_id
@@ -582,6 +836,17 @@ const ManageUser = () => {
     const id = String(user.key);
     return matchedUserIds.has(id);
   });
+
+  const visibleUserKeys = filteredUserData.map(user => String(user.key)).join('|');
+  React.useEffect(() => {
+    filteredUserData.forEach(user => {
+      const id = String(user.key);
+      const total = Number(user.amount_of_container ?? user.amountOfContainer ?? 0);
+      if (!containerMap[id] && total > 0) {
+        fetchContainersForUser(id);
+      }
+    });
+  }, [visibleUserKeys]);
 
   // 切换展开状态
   const toggleExpand = (userId) => {
@@ -689,6 +954,26 @@ const ManageUser = () => {
           </div>
         );
       }
+      case 'stopContainer':
+      case 'restartContainer': {
+        const container = data?.containerRecord || {};
+        const isRestart = type === 'restartContainer';
+        return (
+          <div className="manage-user-modal-remove">
+            <Row gutter={[0, 12]}>
+              <Col span={24}>
+                <Typography.Text type="secondary">容器：</Typography.Text>
+                <Typography.Text className="manage-user-text-gap">{container.container_name}</Typography.Text>
+              </Col>
+              <Col span={24}>
+                <Typography.Text type="danger">
+                  {isRestart ? '重启会中断正在运行的任务。' : '停止会导致服务中断或数据不可用。'}
+                </Typography.Text>
+              </Col>
+            </Row>
+          </div>
+        );
+      }
       default:
         return null;
     }
@@ -707,6 +992,10 @@ const ManageUser = () => {
         return `确定要重置用户 ${data?.username} 的密码吗？`;
       case 'removeAssociation':
         return `确定要将用户 ${data?.username} 从容器 ${data?.container?.container_name} 中移除吗？`;
+      case 'stopContainer':
+        return `确定要停止容器 ${data?.containerRecord?.container_name || ''} 吗？`;
+      case 'restartContainer':
+        return `确定要重启容器 ${data?.containerRecord?.container_name || ''} 吗？`;
       default:
         return '';
     }
@@ -740,6 +1029,18 @@ const ManageUser = () => {
         danger: true,
         iconColor: '#ff4d4f',
         confirmText: '确认移除'
+      },
+      stopContainer: {
+        title: '确认停止容器',
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认停止'
+      },
+      restartContainer: {
+        title: '确认重启容器',
+        danger: true,
+        iconColor: '#faad14',
+        confirmText: '确认重启'
       }
     };
     
@@ -760,6 +1061,19 @@ const ManageUser = () => {
         onConfirm={handleModalConfirm}
         onCancel={closeModal}
         loading={modal.loading}
+      />
+
+      <ContainerDetailModal
+        visible={detailModalVisible}
+        container={selectedContainer}
+        onClose={() => {
+          setDetailModalVisible(false);
+          setSelectedContainer(null);
+        }}
+        usersList={users.map(u => ({ id: u.key, name: u.username, username: u.username }))}
+        currentUserName={localStorage.getItem('currentUserName')}
+        currentUserId={localStorage.getItem('currentUserId')}
+        readOnly
       />
 
       <div className="manage-user-root">
@@ -812,86 +1126,69 @@ const ManageUser = () => {
         <section className="manage-user-card-overview">
           <div className="manage-user-section-heading">
             <div>
-              <Typography.Text type="secondary">用户分组视图</Typography.Text>
               <Typography.Title level={4}>用户与容器关系</Typography.Title>
             </div>
-            <Typography.Text type="secondary">{filteredUserData.length} 个用户</Typography.Text>
+            <Space size={12}>
+              <Typography.Text type="secondary">{filteredUserData.length} 个用户</Typography.Text>
+              <Segmented
+                size="small"
+                value={viewMode}
+                onChange={setViewMode}
+                options={[
+                  { label: '卡片', value: 'card' },
+                  { label: '表格', value: 'table' },
+                ]}
+              />
+            </Space>
           </div>
 
-          <div className="manage-user-card-grid">
-            {filteredUserData.map(record => {
-              const isExpanded = expandedRowKeys.includes(record.key);
-              const childData = getUserContainers(record.username);
-              const entry = containerMap[String(record.key)] || {};
-              const previewContainers = childData.slice(0, 4);
-              const totalContainers = record.amount_of_container ?? record.amountOfContainer ?? childData.length ?? 0;
+          {viewMode === 'card' ? (
+          <NestedEntityGrid
+            items={filteredUserData}
+            selectedKey={selectedRowKey}
+            className="manage-user-nested-grid"
+            emptyText={usersLoading ? '用户加载中' : '暂无用户'}
+            emptySlotText="空位"
+            onSelect={(record) => setSelectedRowKey(String(record.key))}
+            getKey={(record) => record.key}
+            getChildren={(record) => getUserContainers(record.username)}
+            renderRail={(record) => {
+              const totalContainers = record.amount_of_container ?? record.amountOfContainer ?? 0;
               const runningContainers = record.amount_of_functional_container ?? record.amountOfFunctionalContainer ?? 0;
+              const managedContainers = record.amount_of_managed_container ?? record.amountOfManagedContainer ?? 0;
               const longTermContainers = record.amount_of_long_term_container ?? record.amountOfLongTermContainer ?? 0;
+              const changedFields = getUserCardChangedFields(record);
+              const hasChanged = Object.keys(changedFields).length > 0;
 
               return (
-                <article
-                  className={"manage-user-card" + (String(record.key) === String(selectedRowKey) ? ' manage-user-card-selected' : '')}
-                  key={record.key}
-                  onClick={() => setSelectedRowKey(String(record.key))}
-                >
-                  <div className="manage-user-card-head">
-                    <div className="manage-user-person-title">
-                      <Typography.Title level={5}>{record.username}</Typography.Title>
-                      <Typography.Text type="secondary">ID {record.key}</Typography.Text>
-                    </div>
-                    <Tag color="blue">{totalContainers} 容器</Tag>
+                <>
+                  <div className="manage-user-rail-head">
+                    <Typography.Text type="secondary">用户</Typography.Text>
+                    {renderEditChip(record, 'username', '用户名', 'manage-user-edit-chip-title')}
+                    <CopyChip value={record.key} size="meta" tone="soft" className="manage-user-id">ID {record.key}</CopyChip>
+                    {renderEditChip(record, 'email', '未记录邮箱')}
+                    {renderEditChip(record, 'graduation_year', '未记录毕业年份')}
                   </div>
 
-                  <div className="manage-user-card-meta">
-                    <span>{record.email || '未记录邮箱'}</span>
-                    <span>{record.graduation_year || '未记录毕业年份'}</span>
+                  <div className="manage-user-rail-stats">
+                    <div><span>容器</span><strong>{totalContainers}</strong></div>
+                    <div><span>正常</span><strong>{runningContainers}</strong></div>
+                    <div><span>管理</span><strong>{managedContainers}</strong></div>
+                    <div><span>长期</span><strong>{longTermContainers}</strong></div>
                   </div>
 
-                  <div className="manage-user-card-stats-grid">
-                    <div>
-                      <Typography.Text type="secondary">正常</Typography.Text>
-                      <strong>{runningContainers}</strong>
-                    </div>
-                    <div>
-                      <Typography.Text type="secondary">长期</Typography.Text>
-                      <strong>{longTermContainers}</strong>
-                    </div>
-                  </div>
-
-                  <div className="manage-user-container-preview">
-                    {entry.loading ? (
-                      <div className="manage-user-container-empty">加载容器中</div>
-                    ) : previewContainers.length > 0 ? (
-                      previewContainers.map(containerRecord => (
-                        <div className="manage-user-container-card" key={containerRecord.key}>
-                          <div className="manage-user-container-card-head">
-                            <Typography.Text strong ellipsis>{containerRecord.container_name}</Typography.Text>
-                            {renderContainerStatus(containerRecord.container_status)}
-                          </div>
-                          <div className="manage-user-container-card-meta">
-                            <span>{containerRecord.container_image || '未记录镜像'}</span>
-                            {renderContainerRoleTag(containerRecord.userRole)}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="manage-user-container-empty">
-                        {isExpanded ? '暂无容器' : '展开后加载容器'}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="manage-user-card-actions">
+                  <div className="manage-user-rail-actions">
                     <Button
                       size="small"
-                      type={isExpanded ? 'default' : 'primary'}
-                      icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
+                      type={hasChanged ? 'primary' : 'default'}
+                      icon={<CheckOutlined />}
+                      disabled={!hasChanged}
                       onClick={(event) => {
                         event.stopPropagation();
-                        toggleExpand(record.key);
+                        openUserCardSave(record);
                       }}
                     >
-                      {isExpanded ? '收起' : '展开容器'}
+                      保存
                     </Button>
                     <Button
                       size="small"
@@ -900,7 +1197,7 @@ const ManageUser = () => {
                         handleResetPassword(record);
                       }}
                     >
-                      重置密码
+                      重置
                     </Button>
                     <Button
                       size="small"
@@ -913,210 +1210,164 @@ const ManageUser = () => {
                       删除
                     </Button>
                   </div>
-                </article>
+                </>
               );
-            })}
-          </div>
-        </section>
-
-        <div className="manage-user-table-wrap">
-          <div className="manage-user-section-heading manage-user-section-heading-compact">
-            <div>
-              <Typography.Text type="secondary">详细视图</Typography.Text>
-              <Typography.Title level={4}>用户列表</Typography.Title>
-            </div>
-          </div>
-          <TableComponent
-            dataSource={filteredUserData}
-            rowKey="key"
-            loading={usersLoading}
-            pagination={{ pageSize: 10 }}
-            bordered
-            scroll={{ x: true }}
-            expandable={{
-              expandedRowKeys,
-                onExpandedRowsChange: (expandedKeys) => {
-                  setExpandedRowKeys(expandedKeys);
-                },
-                onExpand: (expanded, record) => {
-                  if (expanded) {
-                    // record.key is the user id string
-                    fetchContainersForUser(record.key);
-                  }
-                },
-              showExpandColumn: false,
-                expandedRowRender: (record) => (
-                  <div className={"manage-user-expanded" + (String(record.key) === String(selectedRowKey) ? ' manage-user-expanded-selected' : '')}>
-                  {/* 编辑功能标题 */}
-                  <div className="manage-user-section-title">
-                    <Typography.Text strong className="manage-user-section-title-text">
-                      编辑用户信息 - {record.username}
-                    </Typography.Text>
-                  </div>
-
-                  {/* 用户信息编辑卡片 - 紧凑设计 */}
-                  <div className="manage-user-edit-card">
-                    <EditUserRow record={record} />
-                  </div>
-
-                  {/* 用户容器子表格 */}
-                  <Card
-                    title={(
-                      <div className="manage-user-card-title">
-                        <span>{record.username} 的容器</span>
-                        <Button size="small" onClick={() => fetchContainersForUser(record.key)} icon={<ReloadOutlined />} />
-                      </div>
-                    )}
-                    bordered={true}
-                  >
-                    {
-                      (() => {
-                        const id = String(record.key);
-                        const childData = getUserContainers(record.username);
-                        const loading = !!(containerMap[id] && containerMap[id].loading);
-                        return (
-                          <TableComponent
-                            dataSource={childData}
-                            rowKey="key"
-                            pagination={childData.length > 5 ? { pageSize: 5 } : false}
-                            bordered
-                            size="middle"
-                            loading={loading}
-                          >
-                            <Column title="容器ID" dataIndex="key" key="key" />
-                            <Column title="容器名称" dataIndex="container_name" key="container_name" />
-                            <Column title="容器镜像" dataIndex="container_image" key="container_image" />
-                            <Column title="端口" dataIndex="port" key="port" />
-                            <Column 
-                              title="容器状态" 
-                              dataIndex="container_status" 
-                              key="container_status" 
-                              render={renderContainerStatus}
-                            />
-                            <Column 
-                              title="用户角色" 
-                              dataIndex="userRole" 
-                              key="userRole" 
-                              render={renderContainerRoleTag}
-                            />
-                            <Column
-                              title="长期容器"
-                              dataIndex="is_long_term"
-                              key="is_long_term"
-                              render={(_, containerRecord) => {
-                                const cid = containerRecord?.key || containerRecord?.container_id;
-                                const entry = containerMap[String(record.key)] || {};
-                                const longTermChecked = containerRecord?.is_long_term === true;
-                                const remaining = entry.long_term_container_remaining;
-                                const limitReached = remaining !== null && remaining !== undefined && Number(remaining) <= 0;
-                                const blockedByRelatedUser = containerRecord?.long_term_container_can_enable === false;
-                                const disabled = !!longTermUpdatingMap[String(cid)] || (!longTermChecked && (limitReached || blockedByRelatedUser));
-                                return (
-                                  <Checkbox
-                                    checked={longTermChecked}
-                                    disabled={disabled}
-                                    title={disabled && !longTermUpdatingMap[String(cid)] ? '绑定用户已达到长期容器上限' : undefined}
-                                    onChange={e => handleLongTermChange(record, containerRecord, e.target.checked)}
-                                  />
-                                );
-                              }}
-                            />
-                            <Column
-                              title="操作"
-                              key="action"
-                              render={(_, containerRecord) => {
-                                const role = containerRecord.userRole || containerRecord.role || '';
-                                if (String(role).toUpperCase() === 'ROOT') {
-                                  return (
-                                    <Button size="small" disabled>
-                                      不可移除所有者
-                                    </Button>
-                                  );
-                                }
-                                return (
-                                  <Button 
-                                    danger 
-                                    size="small"
-                                    onClick={() => handleRemoveUserFromContainer(record.username, containerRecord)}
-                                  >
-                                    移除关联
-                                  </Button>
-                                );
-                              }}
-                            />
-                          </TableComponent>
-                        );
-                      })()
-                    }
-                  </Card>
-                </div>
-              )
             }}
-          rowClassName={(record) => (String(record.key) === String(selectedRowKey) ? 'manage-user-selected-row' : '')}
-          onRow={(record) => ({
-            onClick: () => {
-              try { setSelectedRowKey(String(record.key)); } catch (e) {}
-            }
-          })}
-          >
-            <Column title="用户ID" dataIndex="key" key="key" />
-            <Column title="用户名" dataIndex="username" key="username" />
-            <Column title="邮箱" dataIndex="email" key="email" />
-            <Column title="毕业年份" dataIndex="graduation_year" key="graduation_year" />
-            <Column
-              title="操作"
-                      key="action"
-                      render={(_, record) => {
-                        const isExpanded = expandedRowKeys.includes(record.key);
-                        return (
-                          <Space size="small">
-                            <Button
-                              type="text"
-                              icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
-                              onClick={() => toggleExpand(record.key)}
-                              className="manage-user-action-edit"
-                            >
-                              {isExpanded ? '收起编辑' : '编辑用户'}
-                            </Button>
-                            <Button onClick={() => handleDeleteUser(record)}>
-                              <a className="manage-user-action-delete">删除</a>
-                            </Button>
-                            <Button onClick={() => handleResetPassword(record)}>
-                              <a className="manage-user-action-reset">重置密码</a>
-                            </Button>
-                          </Space>
-                        );
+            renderHeader={(record, containers) => {
+              const entry = containerMap[String(record.key)] || {};
+              const totalContainers = record.amount_of_container ?? record.amountOfContainer ?? containers.length ?? 0;
+              return (
+                <>
+                  <Typography.Text type="secondary">
+                    {entry.loading ? '容器加载中' : `${totalContainers} 个容器`}
+                  </Typography.Text>
+                  <Space size={6}>
+                    <Button
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        fetchContainersForUser(record.key);
                       }}
                     />
-            <Column
-              title="统计信息"
-              key="stats"
-              render={(_, record) => {
-                // Always use bref counts returned by listAllUserBrefInformation
-                const totalContainers = record.amount_of_container ?? record.amountOfContainer ?? (record.containers ? record.containers.length : 0) ?? 0;
-                const runningContainers = record.amount_of_functional_container ?? record.amountOfFunctionalContainer ?? 0;
-                const managedContainers = record.amount_of_managed_container ?? record.amountOfManagedContainer ?? 0;
-                const longTermContainers = record.amount_of_long_term_container ?? record.amountOfLongTermContainer ?? 0;
-
-                return (
-                  <span className="manage-user-stats">
-                    <span className="manage-user-stats-key">容器: </span>
-                    <span className="manage-user-stats-value-blue">{totalContainers}</span>
-                    <span className="manage-user-stats-sep">·</span>
-                    <span className="manage-user-stats-key">正常: </span>
-                    <span className="manage-user-stats-value-green">{runningContainers}</span>
-                    <span className="manage-user-stats-sep">·</span>
-                    <span className="manage-user-stats-key">由ta管理: </span>
-                    <span className="manage-user-stats-value-yellow">{managedContainers}</span>
-                    <span className="manage-user-stats-sep">·</span>
-                    <span className="manage-user-stats-key">长期: </span>
-                    <span className="manage-user-stats-value-purple">{longTermContainers}</span>
-                  </span>
-                );
-              }}
+                  </Space>
+                </>
+              );
+            }}
+            renderChild={(containerRecord, userRecord) => (
+              <article className="fuxi-nested-child-card manage-user-nested-container-card" key={containerRecord.key}>
+                <div className="fuxi-nested-child-card-head">
+                  <button
+                    type="button"
+                    className="fuxi-nested-child-title-button"
+                    title={containerRecord.container_name}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openContainerDetail(containerRecord);
+                    }}
+                  >
+                    {containerRecord.container_name || '未命名容器'}
+                  </button>
+                  <Space size={6} className="fuxi-nested-child-card-tags">
+                    {renderContainerStatus(containerRecord.container_status)}
+                    {renderContainerRoleTag(containerRecord.userRole)}
+                  </Space>
+                </div>
+                <div className="fuxi-nested-child-card-meta">
+                  <CopyChip value={containerRecord.machine_ip || containerRecord.machine_id || ''}>{containerRecord.machine_ip || containerRecord.machine_id || '-'}</CopyChip>
+                  <CopyChip value={containerRecord.port || ''}>{containerRecord.port ? `:${containerRecord.port}` : '无端口'}</CopyChip>
+                </div>
+                {renderDiskUsage(containerRecord, (
+                  <Checkbox
+                    checked={containerRecord.is_long_term === true}
+                    disabled={!!longTermUpdatingMap[String(containerRecord.key)] || (!containerRecord.is_long_term && containerRecord.long_term_container_can_enable === false)}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => handleLongTermChange(userRecord, containerRecord, event.target.checked)}
+                  >
+                    长期
+                  </Checkbox>
+                ))}
+                <div className="fuxi-nested-child-card-actions">
+                  {(() => {
+                    const status = String(containerRecord.container_status || '').toLowerCase();
+                    const cid = String(containerRecord.key);
+                    return (
+                      <>
+                        <Button
+                          size="small"
+                          type="primary"
+                          disabled={status !== 'offline' || !!containerActionMap[`start-${cid}`]}
+                          loading={!!containerActionMap[`start-${cid}`]}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleStartContainer(userRecord, containerRecord);
+                          }}
+                        >
+                          启动
+                        </Button>
+                        <Button
+                          size="small"
+                          danger
+                          disabled={status !== 'online' || !!containerActionMap[`stop-${cid}`]}
+                          loading={!!containerActionMap[`stop-${cid}`]}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openModal('stopContainer', { userRecord, containerRecord });
+                          }}
+                        >
+                          停止
+                        </Button>
+                        <Button
+                          size="small"
+                          disabled={status !== 'online' || !!containerActionMap[`restart-${cid}`]}
+                          loading={!!containerActionMap[`restart-${cid}`]}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openModal('restartContainer', { userRecord, containerRecord });
+                          }}
+                        >
+                          重启
+                        </Button>
+                      </>
+                    );
+                  })()}
+                  {String(containerRecord.userRole || '').toUpperCase() === 'ROOT' ? (
+                    <Button size="small" disabled>不可解除</Button>
+                  ) : (
+                    <Button
+                      size="small"
+                      danger
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRemoveUserFromContainer(userRecord.username, containerRecord);
+                      }}
+                    >
+                      解除
+                    </Button>
+                  )}
+                </div>
+              </article>
+            )}
+            renderEmptySlot={(record, index) => {
+              const entry = containerMap[String(record.key)] || {};
+              const label = entry.loading ? '加载容器中' : (index === 0 ? '暂无容器' : '空位');
+              return (
+                <div className="fuxi-nested-child-card fuxi-nested-child-card-empty">
+                  <Typography.Text type="secondary">{label}</Typography.Text>
+                </div>
+              );
+            }}
+            renderFooter={(record) => {
+              return (
+                <Typography.Text type="secondary">
+                  切换表格视图可编辑用户与长期容器
+                </Typography.Text>
+              );
+            }}
+          />
+          ) : (
+            <ManageUserInTable
+              dataSource={filteredUserData}
+              usersLoading={usersLoading}
+              expandedRowKeys={expandedRowKeys}
+              setExpandedRowKeys={setExpandedRowKeys}
+              selectedRowKey={selectedRowKey}
+              setSelectedRowKey={setSelectedRowKey}
+              fetchContainersForUser={fetchContainersForUser}
+              getUserContainers={getUserContainers}
+              containerMap={containerMap}
+              longTermUpdatingMap={longTermUpdatingMap}
+              handleLongTermChange={handleLongTermChange}
+              handleRemoveUserFromContainer={handleRemoveUserFromContainer}
+              handleDeleteUser={handleDeleteUser}
+              handleResetPassword={handleResetPassword}
+              toggleExpand={toggleExpand}
+              renderContainerStatus={renderContainerStatus}
+              renderContainerRoleTag={renderContainerRoleTag}
+              EditUserRow={EditUserRow}
             />
-          </TableComponent>
-        </div>
+          )}
+        </section>
       </div>
     </>
   );
