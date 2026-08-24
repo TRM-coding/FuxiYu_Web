@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Typography, Row, Col, Select, DatePicker, Checkbox, Button, Tag, Space, Table, message, Segmented, Modal, Descriptions } from 'antd';
-import { SearchOutlined, ReloadOutlined, LeftOutlined, RightOutlined, CopyOutlined } from '@ant-design/icons';
+import {
+  SearchOutlined, ReloadOutlined, LeftOutlined, RightOutlined, CopyOutlined,
+  DatabaseOutlined, DeleteOutlined, EditOutlined, SafetyOutlined, SwapOutlined,
+  ContainerOutlined, PlayCircleOutlined, PoweroffOutlined, PauseCircleOutlined,
+  ClockCircleOutlined, TeamOutlined, UserAddOutlined, KeyOutlined, BellOutlined,
+  FileTextOutlined,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -47,6 +53,37 @@ const OPERATION_TEXT = {
   send_cleanup_reminder: '发送清理提醒',
   pause_container: '冻结容器（磁盘超限）',
   machine_status_transition: '机器状态变更',
+};
+
+/** 操作类型 → 展示元信息（颜色 + antd 图标，杜绝 emoji）。未知操作回退蓝色 + 文件图标。 */
+const OPERATION_META = {
+  // 机器操作
+  add_machine: { color: 'purple', icon: <DatabaseOutlined /> },
+  remove_machine: { color: 'red', icon: <DeleteOutlined /> },
+  update_machine: { color: 'purple', icon: <EditOutlined /> },
+  add_machine_permission: { color: 'orange', icon: <SafetyOutlined /> },
+  remove_machine_permission: { color: 'orange', icon: <SafetyOutlined /> },
+  machine_status_transition: { color: 'purple', icon: <SwapOutlined /> },
+  // 容器操作
+  create_container: { color: 'cyan', icon: <ContainerOutlined /> },
+  delete_container: { color: 'red', icon: <DeleteOutlined /> },
+  remove_container: { color: 'red', icon: <DeleteOutlined /> },
+  start_container: { color: 'cyan', icon: <PlayCircleOutlined /> },
+  stop_container: { color: 'cyan', icon: <PoweroffOutlined /> },
+  restart_container: { color: 'cyan', icon: <ReloadOutlined /> },
+  pause_container: { color: 'cyan', icon: <PauseCircleOutlined /> },
+  unpause_container: { color: 'cyan', icon: <PlayCircleOutlined /> },
+  set_long_term: { color: 'cyan', icon: <ClockCircleOutlined /> },
+  add_collaborator: { color: 'orange', icon: <TeamOutlined /> },
+  remove_collaborator: { color: 'orange', icon: <TeamOutlined /> },
+  update_collaborator_role: { color: 'orange', icon: <SwapOutlined /> },
+  // 用户操作
+  register_user: { color: 'green', icon: <UserAddOutlined /> },
+  change_password: { color: 'green', icon: <KeyOutlined /> },
+  delete_user: { color: 'red', icon: <DeleteOutlined /> },
+  reset_password: { color: 'green', icon: <KeyOutlined /> },
+  // 系统任务
+  send_cleanup_reminder: { color: 'gold', icon: <BellOutlined /> },
 };
 
 const TARGET_TEXT = { machine: '机器', container: '容器', user: '用户' };
@@ -731,7 +768,14 @@ export default function AdminLogs() {
             title="操作"
             dataIndex="operation"
             key="operation"
-            render={(_, r) => <Tag color="blue">{OPERATION_TEXT[r.operation] || r.operation}</Tag>}
+            render={(_, r) => {
+              const meta = OPERATION_META[r.operation] || { color: 'blue', icon: <FileTextOutlined /> };
+              return (
+                <Tag color={meta.color} icon={meta.icon}>
+                  {OPERATION_TEXT[r.operation] || r.operation}
+                </Tag>
+              );
+            }}
           />
           <Column
             title="目标"

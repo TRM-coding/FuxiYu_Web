@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Form, Tag, message, InputNumber, Segmented, Checkbox } from 'antd';
@@ -12,7 +12,7 @@ import NestedEntityGrid from '../components/NestedEntityGrid';
 import CopyChip from '../components/CopyChip';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 import ManageUserInTable from './ManageUserInTable';
-import { startContainerStatusHeartbeat } from '../utils/heartbeat';
+import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import EntitySearchBar from '../components/EntitySearchBar';
 
@@ -114,6 +114,55 @@ const ManageUser = () => {
 
   // container cache per user id: { [userId]: { loading, data } }
   const [containerMap, setContainerMap] = useState({});
+
+  // 渲染侧 ing 看护（与 Home/ManageMachine 同契约）：containerMap 出现 ing 态 →
+  // 自动轮询至终态，补手动刷新/他人操作后进页的缺口；动作驱动的操作心跳不受影响。
+  const ingWatcherRef = useRef(new Map());
+  useEffect(() => {
+    const current = ingWatcherRef.current;
+    for (const entry of Object.values(containerMap)) {
+      for (const c of (entry?.data || [])) {
+        const st = (c.container_status || '').toLowerCase();
+        const cid = c.key ? String(c.key) : (c.container_id ? String(c.container_id) : null);
+        if (!cid || !c.machine_id || !/^\d+$/.test(cid)) continue;
+        if (!ING_CONTAINER_STATES.has(st)) {
+          const stop = current.get(cid);
+          if (stop) { stop(); current.delete(cid); }
+          continue;
+        }
+        if (current.has(cid)) continue; // 每容器一个 watcher，去重
+        const stop = watchIngContainerUntilTerminal({
+          machine_id: c.machine_id,
+          container_id: cid,
+          container_name: c.container_name,
+          onTerminal: (data) => {
+            const finalSt = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+            if (!finalSt) return;
+            current.delete(cid);
+            setContainerMap(prev => {
+              const next = { ...prev };
+              for (const uid of Object.keys(next)) {
+                next[uid] = { ...next[uid], data: (next[uid]?.data || []).map(x => (
+                  String(x.key) === String(cid) ? { ...x, container_status: finalSt } : x
+                )) };
+              }
+              return next;
+            });
+          },
+        });
+        current.set(cid, stop);
+      }
+    }
+  }, [containerMap]);
+
+  // 卸载时停止全部 ing watcher
+  useEffect(() => {
+    const current = ingWatcherRef.current;
+    return () => {
+      current.forEach(stop => stop());
+      current.clear();
+    };
+  }, []);
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   const [containerActionMap, setContainerActionMap] = useState({});
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -373,7 +422,10 @@ const ManageUser = () => {
       starting: '启动中',
       restarting: '重启中',
       stopping: '停止中',
+      pausing: '冻结中',
+      unpausing: '解冻中',
       failed: '异常',
+      unknown: '未知',
     };
     return <Tag color={color}>{labelMap[normalized] || status || '未知'}</Tag>;
   };
@@ -616,7 +668,7 @@ const ManageUser = () => {
       machine_id: containerRecord.machine_id,
       machine_ip: containerRecord.machine_ip,
       container_name: containerRecord.container_name,
-      container_id: container.key ?? container.container_id,
+      container_id: containerRecord.key ?? containerRecord.container_id,
       terminalState,
       requiredProgressState,
       onProgress: (data) => {

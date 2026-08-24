@@ -16,7 +16,7 @@ import CopyChip from '../components/CopyChip';
 import EntitySearchBar from '../components/EntitySearchBar';
 const { Option } = Select;
 
-import { startContainerStatusHeartbeat, startMachineStatusHeartbeat } from '../utils/heartbeat';
+import { startContainerStatusHeartbeat, startMachineStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import { parseSshTimeToDate, formatDuration } from '../utils/timeFormat';
 
 
@@ -103,6 +103,56 @@ const ManageMachine = () => {
   const [containerMap, setContainerMap] = useState({});
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   const [sshRefreshingMap, setSshRefreshingMap] = useState({});
+
+  // 渲染侧 ing 看护（与 Home 同契约）：containerMap 出现 ing 态 → 自动轮询至终态，
+  // 补手动刷新/他人操作后进页的缺口；动作驱动的操作心跳不受影响。
+  const ingWatcherRef = useRef(new Map());
+  useEffect(() => {
+    const current = ingWatcherRef.current;
+    for (const entry of Object.values(containerMap)) {
+      for (const c of (entry?.data || [])) {
+        const st = (c.container_status || '').toLowerCase();
+        const cid = c.key ? String(c.key) : (c.container_id ? String(c.container_id) : null);
+        // 数字 container_id + machine_id 齐备才看护（key 回退形如 <mid>-<page>-<idx> 时跳过）
+        if (!cid || !c.machine_id || !/^\d+$/.test(cid)) continue;
+        if (!ING_CONTAINER_STATES.has(st)) {
+          const stop = current.get(cid);
+          if (stop) { stop(); current.delete(cid); }
+          continue;
+        }
+        if (current.has(cid)) continue; // 每容器一个 watcher，去重
+        const stop = watchIngContainerUntilTerminal({
+          machine_id: c.machine_id,
+          container_id: cid,
+          container_name: c.container_name,
+          onTerminal: (data) => {
+            const finalSt = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+            if (!finalSt) return;
+            current.delete(cid);
+            setContainerMap(prev => {
+              const next = { ...prev };
+              for (const mid of Object.keys(next)) {
+                next[mid] = { ...next[mid], data: (next[mid]?.data || []).map(x => (
+                  String(x.key) === String(cid) ? { ...x, container_status: finalSt } : x
+                )) };
+              }
+              return next;
+            });
+          },
+        });
+        current.set(cid, stop);
+      }
+    }
+  }, [containerMap]);
+
+  // 卸载时停止全部 ing watcher
+  useEffect(() => {
+    const current = ingWatcherRef.current;
+    return () => {
+      current.forEach(stop => stop());
+      current.clear();
+    };
+  }, []);
   // top-level container-name search loading
   const containerSearchTimerRef = useRef(null);
   const lastContainerSearchKeywordRef = useRef('');
@@ -559,7 +609,7 @@ const ManageMachine = () => {
   const renderContainerStatus = (status) => {
     const normalized = String(status || '').toLowerCase();
     const color = normalized === 'online' ? 'green' : normalized === 'offline' ? 'volcano' : normalized === 'paused' ? 'volcano' : normalized === 'creating' ? 'blue' : normalized === 'starting' ? 'cyan' : normalized === 'restarting' ? 'purple' : normalized === 'stopping' ? 'orange' : normalized === 'failed' ? 'red' : 'default';
-    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', creating: '创建中', starting: '启动中', stopping: '停止中', failed: '异常' };
+    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', creating: '创建中', starting: '启动中', restarting: '重启中', stopping: '停止中', pausing: '冻结中', unpausing: '解冻中', failed: '异常', unknown: '未知' };
     return <Tag color={color}>{labelMap[normalized] || status}</Tag>;
   };
 
@@ -784,52 +834,8 @@ const ManageMachine = () => {
           await fetchContainersForMachine(mid, 0);
         }
         message.success('容器添加成功');
-        // start heartbeat for this container (non-blocking) and update local container map when RUNNING
-        try {
-          startContainerStatusHeartbeat({
-            machine_id: machineId,
-            container_name: payload.container.NAME,
-            container_id: container.key ?? container.container_id,
-            onRunning: (data) => {
-              const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
-              if (st === 'failed') {
-                try {
-                  const mid = String(machineId);
-                  setContainerMap(prev => {
-                    const entry = prev[mid] || {};
-                    const data2 = (entry.data || []).map(item => {
-                      if (item.container_name === payload.container.NAME) {
-                        return { ...item, container_status: 'failed' };
-                      }
-                      return item;
-                    });
-                    return { ...prev, [mid]: { ...(entry || {}), data: data2 } };
-                  });
-                } catch (e) {}
-                message.error('容器创建失败');
-                return;
-              }
-              try {
-                const mid = String(machineId);
-                setContainerMap(prev => {
-                  const entry = prev[mid] || {};
-                  const data2 = (entry.data || []).map(item => {
-                    if (item.container_name === payload.container.NAME) {
-                      return { ...item, container_status: 'online' };
-                    }
-                    return item;
-                  });
-                  return { ...prev, [mid]: { ...(entry || {}), data: data2 } };
-                });
-                message.success('容器添加成功');
-              } catch (e) {
-                // ignore update errors
-              }
-            },
-          });
-        } catch (e) {
-          // ignore heartbeat start errors
-        }
+        // 状态收敛交给渲染侧 ing 看护：列表已刷新，新容器以 creating/starting 出现，
+        // watcher 自动轮询至终态（原动作心跳引用未定义 container，已移除）
         success = true;
       } catch (err) {
         console.error('createContainer failed', err);

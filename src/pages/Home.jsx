@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Tag, message, Checkbox } from 'antd';
@@ -9,7 +9,7 @@ import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
 import { parseSshTimeToDate, formatDuration } from '../utils/timeFormat';
 import { getContainerActionState, getRoleActionSet } from '../utils/containerActions';
-import { startContainerStatusHeartbeat } from '../utils/heartbeat';
+import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
@@ -230,6 +230,48 @@ const Home = () => {
     return () => { mounted = false; };
   }, [currentUserId]);
 
+  // 渲染侧 ing 看护（状态驱动，补手动刷新/他人操作后进页的缺口）：
+  // 列表出现 ing 态 → 自动轮询至终态并更新该项；动作驱动的操作心跳不受影响。
+  const ingWatcherRef = useRef(new Map());
+  useEffect(() => {
+    const current = ingWatcherRef.current;
+    for (const c of containers) {
+      const st = (c.container_status || '').toLowerCase();
+      const cid = c.key ? String(c.key) : (c.container_id ? String(c.container_id) : null);
+      // 数字 container_id + machine_id 齐备才看护（key 回退形如 c-<idx> 时跳过）
+      if (!cid || !c.machine_id || !/^\d+$/.test(cid)) continue;
+      if (!ING_CONTAINER_STATES.has(st)) {
+        const stop = current.get(cid);
+        if (stop) { stop(); current.delete(cid); }
+        continue;
+      }
+      if (current.has(cid)) continue; // 每容器一个 watcher，去重
+      const stop = watchIngContainerUntilTerminal({
+        machine_id: c.machine_id,
+        container_id: cid,
+        container_name: c.container_name,
+        onTerminal: (data) => {
+          const finalSt = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+          if (!finalSt) return;
+          current.delete(cid);
+          setContainers(prev => prev.map(x => (
+            String(x.key) === String(cid) ? { ...x, container_status: finalSt } : x
+          )));
+        },
+      });
+      current.set(cid, stop);
+    }
+  }, [containers]);
+
+  // 卸载时停止全部 ing watcher
+  useEffect(() => {
+    const current = ingWatcherRef.current;
+    return () => {
+      current.forEach(stop => stop());
+      current.clear();
+    };
+  }, []);
+
   const handleLongTermChange = async (record, checked) => {
     const cid = record?.key || record?.container_id;
     if (!cid) return;
@@ -264,15 +306,23 @@ const Home = () => {
 
   // If navigated here with a startHeartbeat request (from Apply), start the heartbeat and refresh list when ONLINE
   const location = useLocation();
+  const applyHeartbeatStartedRef = useRef(false);
   useEffect(() => {
     const req = location?.state?.startHeartbeat;
     if (!req || !req.container_name) return;
-    let stop = null;
-      try {
-      stop = startContainerStatusHeartbeat({
+    if (applyHeartbeatStartedRef.current) return;
+    // 列表异步加载：等匹配到容器（machine_id + container_name）再开心跳；
+    // 匹配不到则等 containers 变化后重试
+    const matched = containers.find(
+      c => String(c.machine_id) === String(req.machine_id) && c.container_name === req.container_name
+    );
+    if (!matched) return;
+    applyHeartbeatStartedRef.current = true;
+    try {
+      startContainerStatusHeartbeat({
         machine_id: req.machine_id,
         container_name: req.container_name,
-        container_id: container.key ?? container.container_id,
+        container_id: matched.key,
         onRunning: async (data) => {
           // heartbeat may return a payload with container_status; handle 'failed' explicitly
           const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
@@ -307,9 +357,9 @@ const Home = () => {
     } catch (e) {
       // ignore
     }
-    return () => { if (typeof stop === 'function') stop(); };
+    // containers 变化时重试匹配（Apply 导航后列表异步加载）；心跳自终止，无需 cleanup
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location, currentUserId]);
+  }, [location, currentUserId, containers]);
 
   // Modal state
   const [modal, setModal] = useState({
@@ -390,7 +440,7 @@ const Home = () => {
         startContainerStatusHeartbeat({
           machine_id: record.machine_id,
           container_name: record.container_name,
-          container_id: container.key ?? container.container_id,
+          container_id: cid,
           terminalState: 'online',
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
@@ -426,7 +476,7 @@ const Home = () => {
         startContainerStatusHeartbeat({
           machine_id: record.machine_id,
           container_name: record.container_name,
-          container_id: container.key ?? container.container_id,
+          container_id: cid,
           terminalState: 'offline',
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
@@ -462,7 +512,7 @@ const Home = () => {
         startContainerStatusHeartbeat({
           machine_id: record.machine_id,
           container_name: record.container_name,
-          container_id: container.key ?? container.container_id,
+          container_id: cid,
           terminalState: 'online',
           requiredProgressState: 'restarting',
           onProgress: (data) => {
@@ -764,6 +814,8 @@ const Home = () => {
       restarting: '重启中',
       stopping: '停止中',
       paused: '已冻结',
+      pausing: '冻结中',
+      unpausing: '解冻中',
       failed: '异常',
       unknown: '未知',
     };

@@ -307,7 +307,7 @@ const Apply = () => {
             <div className="apply-machine-card-actions">
               {machine.machine_status === 'online' ? (
                 <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => openAddContainerModal(machine)}>
-                  申请
+                  创建
                 </Button>
               ) : (
                 <span className="apply-unavailable">不可用</span>

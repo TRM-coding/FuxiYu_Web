@@ -106,7 +106,7 @@ export default function MainLayout() {
         <header className="main-topbar">
           <div>
             <Typography.Text type="secondary" className="main-topbar-kicker">Fuxi</Typography.Text>
-            <Typography.Title level={4} className="main-topbar-title">容器与申请</Typography.Title>
+            <Typography.Title level={4} className="main-topbar-title">容器与创建</Typography.Title>
           </div>
           <UserAvatar onNavigate={handleNavigate} />
         </header>
