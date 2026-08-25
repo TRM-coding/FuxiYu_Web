@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { getContainerActionState, getRoleActionSet } from '../utils/containerActions';
+import {
+  createContainerStatusTransition,
+  deriveContainerDisplayStatus,
+  getContainerActionState,
+  getRoleActionSet,
+} from '../utils/containerActions';
 
 describe('getContainerActionState', () => {
   it('online 容器可停止/重启，不可启动', () => {
@@ -64,5 +69,70 @@ describe('getRoleActionSet', () => {
   it('未知角色：无特权按钮', () => {
     const a = getRoleActionSet('guest');
     expect(a).toMatchObject({ showInvite: false, showDeleteContainer: false, showLeave: false, showLongTerm: false });
+  });
+});
+
+describe('deriveContainerDisplayStatus', () => {
+  it('keeps restarting when a stale online snapshot arrives before restart progress', () => {
+    const pending = createContainerStatusTransition('online', 'restarting', {
+      targetStatus: 'online',
+      startedAt: 1000,
+      timeoutMs: 60000,
+    });
+
+    const result = deriveContainerDisplayStatus('online', pending, 2000);
+
+    expect(result.status).toBe('restarting');
+    expect(result.pendingTransition).toEqual(pending);
+    expect(result.cleared).toBe(false);
+  });
+
+  it('accepts online after restarting has actually been observed', () => {
+    const pending = createContainerStatusTransition('online', 'restarting', {
+      targetStatus: 'online',
+      startedAt: 1000,
+      timeoutMs: 60000,
+    });
+
+    const progress = deriveContainerDisplayStatus('restarting', pending, 2000);
+    const terminal = deriveContainerDisplayStatus('online', progress.pendingTransition, 3000);
+
+    expect(progress.status).toBe('restarting');
+    expect(progress.pendingTransition.reachedTransition).toBe(true);
+    expect(terminal.status).toBe('online');
+    expect(terminal.pendingTransition).toBe(null);
+    expect(terminal.cleared).toBe(true);
+  });
+
+  it('keeps starting when a stale offline snapshot arrives', () => {
+    const pending = createContainerStatusTransition('offline', 'starting', {
+      targetStatus: 'online',
+      startedAt: 1000,
+      timeoutMs: 60000,
+    });
+
+    const result = deriveContainerDisplayStatus('offline', pending, 2000);
+
+    expect(result.status).toBe('starting');
+    expect(result.pendingTransition).toEqual(pending);
+  });
+
+  it('clears sticky state on failure or timeout', () => {
+    const pending = createContainerStatusTransition('online', 'restarting', {
+      targetStatus: 'online',
+      startedAt: 1000,
+      timeoutMs: 1000,
+    });
+
+    expect(deriveContainerDisplayStatus('failed', pending, 1500)).toMatchObject({
+      status: 'failed',
+      pendingTransition: null,
+      cleared: true,
+    });
+    expect(deriveContainerDisplayStatus('online', pending, 2501)).toMatchObject({
+      status: 'online',
+      pendingTransition: null,
+      cleared: true,
+    });
   });
 });

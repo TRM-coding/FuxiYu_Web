@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import CopyChip from '../components/CopyChip';
 import EntitySearchBar from '../components/EntitySearchBar';
+import { createContainerStatusTransition, deriveContainerDisplayStatus } from '../utils/containerActions';
 const { Option } = Select;
 
 import { startContainerStatusHeartbeat, startMachineStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
@@ -103,6 +104,54 @@ const ManageMachine = () => {
   const [containerMap, setContainerMap] = useState({});
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   const [sshRefreshingMap, setSshRefreshingMap] = useState({});
+  const pendingContainerTransitionRef = useRef(new Map());
+
+  const applyContainerDisplayStatus = (container) => {
+    const cid = container?.key || container?.container_id;
+    if (!cid) return container;
+    const key = String(cid);
+    const result = deriveContainerDisplayStatus(
+      container.container_status,
+      pendingContainerTransitionRef.current.get(key),
+    );
+    if (result.pendingTransition) {
+      pendingContainerTransitionRef.current.set(key, result.pendingTransition);
+    } else if (result.cleared) {
+      pendingContainerTransitionRef.current.delete(key);
+    }
+    return { ...container, container_status: result.status };
+  };
+
+  const markContainerTransition = (container, transitionStatus, targetStatus) => {
+    const cid = container?.key || container?.container_id;
+    if (!cid) return;
+    pendingContainerTransitionRef.current.set(
+      String(cid),
+      createContainerStatusTransition(container?.container_status, transitionStatus, { targetStatus }),
+    );
+  };
+
+  const clearContainerTransition = (cid) => {
+    if (cid) pendingContainerTransitionRef.current.delete(String(cid));
+  };
+
+  const patchMachineContainerStatus = (mid, cid, status) => {
+    setContainerMap(prev => {
+      const key = String(mid || '');
+      const copy = { ...prev };
+      if (copy[key] && Array.isArray(copy[key].data)) {
+        copy[key] = {
+          ...copy[key],
+          data: copy[key].data.map(c => (
+            String(c.key) === String(cid)
+              ? applyContainerDisplayStatus({ ...c, container_status: status })
+              : c
+          )),
+        };
+      }
+      return copy;
+    });
+  };
 
   // 渲染侧 ing 看护（与 Home 同契约）：containerMap 出现 ing 态 → 自动轮询至终态，
   // 补手动刷新/他人操作后进页的缺口；动作驱动的操作心跳不受影响。
@@ -132,9 +181,14 @@ const ManageMachine = () => {
             setContainerMap(prev => {
               const next = { ...prev };
               for (const mid of Object.keys(next)) {
-                next[mid] = { ...next[mid], data: (next[mid]?.data || []).map(x => (
-                  String(x.key) === String(cid) ? { ...x, container_status: finalSt } : x
-                )) };
+                next[mid] = {
+                  ...next[mid],
+                  data: (next[mid]?.data || []).map(x => (
+                    String(x.key) === String(cid)
+                      ? applyContainerDisplayStatus({ ...x, container_status: finalSt })
+                      : x
+                  )),
+                };
               }
               return next;
             });
@@ -245,6 +299,8 @@ const ManageMachine = () => {
   const [addContainerMachineId, setAddContainerMachineId] = useState(null);
   const [addContainerUnsafe, setAddContainerUnsafe] = useState(false);
   const [addContainerMachineType, setAddContainerMachineType] = useState('CPU');
+  const [addContainerRootUsersLoading, setAddContainerRootUsersLoading] = useState(false);
+  const [addContainerAllowedRootUserIds, setAddContainerAllowedRootUserIds] = useState([]);
   const [addContainerFieldErrors, setAddContainerFieldErrors] = useState({});
   const addContainerMachine = machines.find(m => String(m.machine_id || m.key) === String(addContainerMachineId));
   // 编辑模式
@@ -448,7 +504,7 @@ const ManageMachine = () => {
       const items = (res && (res.containers_info || res.containers)) || [];
       const total_page = (res && (res.total_page || res.totalPages || res.total_pages)) || 1;
       const total_number = Number(res && (res.total_number ?? res.totalNumber ?? res.total)) || items.length;
-      const mapped = items.map((c, idx) => ({
+      const mapped = items.map((c, idx) => applyContainerDisplayStatus({
         key: c.container_id ? String(c.container_id) : `${mid}-${pageNumber}-${idx}`,
         container_name: c.container_name || c.name || `container-${idx}`,
         container_image: c.container_image || '',
@@ -762,18 +818,37 @@ const ManageMachine = () => {
   };
 
   // 打开添加容器弹窗（基于宿主机）
-  const openAddContainerModal = (machine) => {
+  const openAddContainerModal = async (machine) => {
     // machine may be a record from table
     const mid = machine?.machine_id ?? machine?.key ?? null;
     setAddContainerMachineId(mid);
     addContainerForm.resetFields();
     setAddContainerFieldErrors({});
+    setAddContainerAllowedRootUserIds([]);
     // prefill machine id and defaults
-    const defaultUser = localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
     const mtype = (machine && (machine.machine_type || machine.machine_type === 0) ? (machine.machine_type || 'CPU') : 'CPU');
     setAddContainerMachineType((mtype || 'CPU').toUpperCase());
-    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SHARED_MEM: 0, GPU_LIST: [], gpu_number: 0, root_user: defaultUser });
+    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SHARED_MEM: 0, GPU_LIST: [], gpu_number: 0, owner_user_id: undefined });
     setAddContainerVisible(true);
+    if (!mid) return;
+
+    setAddContainerRootUsersLoading(true);
+    try {
+      const res = await listMachinePermissions(Number(mid));
+      const assigned = Array.isArray(res?.user_ids) ? res.user_ids.map(v => Number(v)).filter(Boolean) : [];
+      setAddContainerAllowedRootUserIds(assigned);
+      const currentUserId = Number(localStorage.getItem('currentUserId') || 0);
+      const defaultOwnerId = assigned.includes(currentUserId) ? currentUserId : assigned[0];
+      if (defaultOwnerId) {
+        addContainerForm.setFieldsValue({ owner_user_id: defaultOwnerId });
+      }
+    } catch (err) {
+      console.error('listMachinePermissions for create container failed', err);
+      setAddContainerAllowedRootUserIds([]);
+      await showErrorModal({ message: '加载可用 Root 用户失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setAddContainerRootUsersLoading(false);
+    }
   };
 
   // 添加容器确认
@@ -794,7 +869,7 @@ const ManageMachine = () => {
       }
       setAddContainerLoading(true);
       const machineId = values.machine_id || addContainerMachineId;
-      const toAddUserName = values.root_user || localStorage.getItem('currentUserName') || '';
+      const ownerUserId = Number(values.owner_user_id || 0);
         // build GPU_LIST according to host type and requested gpu_number
         let gpuList = [];
         try {
@@ -813,7 +888,7 @@ const ManageMachine = () => {
         }
 
         const payload = {
-          user_name: toAddUserName,
+          owner_user_id: ownerUserId,
           machine_id: machineId,
           container: {
             GPU_LIST: gpuList,
@@ -1142,13 +1217,8 @@ const ManageMachine = () => {
     const cid = container.key;
     const mid = String(container.machine_id || container.machine_id || container.machine_ip || '');
     try {
-      setContainerMap(prev => {
-        const copy = { ...prev };
-        if (copy[mid] && Array.isArray(copy[mid].data)) {
-          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'starting' } : c)) };
-        }
-        return copy;
-      });
+      markContainerTransition(container, 'starting', 'online');
+      patchMachineContainerStatus(mid, cid, 'starting');
       message.loading({ content: `正在启动 ${container.container_name}...`, key: `start-${cid}` });
       await startContainer(Number(cid));
       try {
@@ -1161,23 +1231,13 @@ const ManageMachine = () => {
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
             if (st === 'failed') {
-              setContainerMap(prev => {
-                const copy = { ...prev };
-                if (copy[mid] && Array.isArray(copy[mid].data)) {
-                  copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)) };
-                }
-                return copy;
-              });
+              clearContainerTransition(cid);
+              patchMachineContainerStatus(mid, cid, 'failed');
               message.error({ content: `容器 ${container.container_name} 创建失败`, key: `start-${cid}`, duration: 4 });
               return;
             }
-            setContainerMap(prev => {
-              const copy = { ...prev };
-              if (copy[mid] && Array.isArray(copy[mid].data)) {
-                copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)) };
-              }
-              return copy;
-            });
+            clearContainerTransition(cid);
+            patchMachineContainerStatus(mid, cid, 'online');
             message.success({ content: `容器 ${container.container_name} 已启动`, key: `start-${cid}`, duration: 2 });
           }
         });
@@ -1187,13 +1247,8 @@ const ManageMachine = () => {
     } catch (e) {
       console.error('start container failed', e);
       // revert
-      setContainerMap(prev => {
-        const copy = { ...prev };
-        if (copy[mid] && Array.isArray(copy[mid].data)) {
-          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)) };
-        }
-        return copy;
-      });
+      clearContainerTransition(cid);
+      patchMachineContainerStatus(mid, cid, 'offline');
       try { await showErrorModal({ message: e?.body || e || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('启动失败');
     }
@@ -1204,13 +1259,8 @@ const ManageMachine = () => {
     const cid = container.key;
     const mid = String(container.machine_id || container.machine_id || container.machine_ip || '');
     try {
-      setContainerMap(prev => {
-        const copy = { ...prev };
-        if (copy[mid] && Array.isArray(copy[mid].data)) {
-          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'stopping' } : c)) };
-        }
-        return copy;
-      });
+      markContainerTransition(container, 'stopping', 'offline');
+      patchMachineContainerStatus(mid, cid, 'stopping');
       message.loading({ content: `正在停止 ${container.container_name}...`, key: `stop-${cid}` });
       await stopContainer(Number(cid));
       try {
@@ -1223,23 +1273,13 @@ const ManageMachine = () => {
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
             if (st === 'failed') {
-              setContainerMap(prev => {
-                const copy = { ...prev };
-                if (copy[mid] && Array.isArray(copy[mid].data)) {
-                  copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)) };
-                }
-                return copy;
-              });
+              clearContainerTransition(cid);
+              patchMachineContainerStatus(mid, cid, 'failed');
               message.error({ content: `容器 ${container.container_name} 状态异常`, key: `stop-${cid}`, duration: 4 });
               return;
             }
-            setContainerMap(prev => {
-              const copy = { ...prev };
-              if (copy[mid] && Array.isArray(copy[mid].data)) {
-                copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)) };
-              }
-              return copy;
-            });
+            clearContainerTransition(cid);
+            patchMachineContainerStatus(mid, cid, 'offline');
             message.success({ content: `容器 ${container.container_name} 已停止`, key: `stop-${cid}`, duration: 2 });
           }
         });
@@ -1249,13 +1289,8 @@ const ManageMachine = () => {
     } catch (e) {
       console.error('stop container failed', e);
       // revert
-      setContainerMap(prev => {
-        const copy = { ...prev };
-        if (copy[mid] && Array.isArray(copy[mid].data)) {
-          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)) };
-        }
-        return copy;
-      });
+      clearContainerTransition(cid);
+      patchMachineContainerStatus(mid, cid, 'online');
       try { await showErrorModal({ message: e?.body || e || '停止失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('停止失败');
     }
@@ -1266,13 +1301,8 @@ const ManageMachine = () => {
     const cid = container.key;
     const mid = String(container.machine_id || container.machine_id || container.machine_ip || '');
     try {
-      setContainerMap(prev => {
-        const copy = { ...prev };
-        if (copy[mid] && Array.isArray(copy[mid].data)) {
-          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'restarting' } : c)) };
-        }
-        return copy;
-      });
+      markContainerTransition(container, 'restarting', 'online');
+      patchMachineContainerStatus(mid, cid, 'restarting');
       message.loading({ content: `正在重启 ${container.container_name}...`, key: `restart-${cid}` });
       await restartContainer(Number(cid));
       try {
@@ -1286,35 +1316,19 @@ const ManageMachine = () => {
           onProgress: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
             if (st && st !== 'online' && st !== 'failed') {
-              setContainerMap(prev => {
-                const copy = { ...prev };
-                if (copy[mid] && Array.isArray(copy[mid].data)) {
-                  copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: st } : c)) };
-                }
-                return copy;
-              });
+              patchMachineContainerStatus(mid, cid, st);
             }
           },
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
             if (st === 'failed') {
-              setContainerMap(prev => {
-                const copy = { ...prev };
-                if (copy[mid] && Array.isArray(copy[mid].data)) {
-                  copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)) };
-                }
-                return copy;
-              });
+              clearContainerTransition(cid);
+              patchMachineContainerStatus(mid, cid, 'failed');
               message.error({ content: `容器 ${container.container_name} 重启失败`, key: `restart-${cid}`, duration: 4 });
               return;
             }
-            setContainerMap(prev => {
-              const copy = { ...prev };
-              if (copy[mid] && Array.isArray(copy[mid].data)) {
-                copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)) };
-              }
-              return copy;
-            });
+            clearContainerTransition(cid);
+            patchMachineContainerStatus(mid, cid, 'online');
             message.success({ content: `容器 ${container.container_name} 已重启`, key: `restart-${cid}`, duration: 2 });
           }
         });
@@ -1324,13 +1338,8 @@ const ManageMachine = () => {
     } catch (e) {
       console.error('restart container failed', e);
       // revert to online
-      setContainerMap(prev => {
-        const copy = { ...prev };
-        if (copy[mid] && Array.isArray(copy[mid].data)) {
-          copy[mid] = { ...copy[mid], data: copy[mid].data.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)) };
-        }
-        return copy;
-      });
+      clearContainerTransition(cid);
+      patchMachineContainerStatus(mid, cid, 'online');
       try { await showErrorModal({ message: e?.body || e || '重启失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('重启失败');
     }
@@ -2088,7 +2097,7 @@ const ManageMachine = () => {
         onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); setAddContainerFieldErrors({}); }}
         loading={addContainerLoading}
         confirmText="添加"
-        confirmDisabled={addContainerUnsafe}
+        confirmDisabled={addContainerUnsafe || addContainerRootUsersLoading || addContainerAllowedRootUserIds.length === 0}
         content={
           <Form
             form={addContainerForm}
@@ -2215,19 +2224,22 @@ const ManageMachine = () => {
 
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="root_user" label="Root 用户" rules={[{ required: true, message: '请选择Root用户' }]}>
+                <Form.Item name="owner_user_id" label="Root 用户" rules={[{ required: true, message: '请选择Root用户' }]}>
                   <Select
                     placeholder="选择Root用户"
-                    loading={usersLoading}
+                    loading={usersLoading || addContainerRootUsersLoading}
                     showSearch
-                    optionFilterProp="children"
-                    filterOption={(input, option) => (option?.children ?? '').toLowerCase().includes(input.toLowerCase())}
+                    optionFilterProp="label"
+                    notFoundContent={addContainerRootUsersLoading ? '加载中' : '暂无已授权用户'}
+                    filterOption={(input, option) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())}
                   >
-                    {(usersList || []).map(u => (
-                      <Option key={u.id} value={u.username}>
-                        <span>{u.name} (@{u.username})</span>
-                      </Option>
-                    ))}
+                    {(usersList || [])
+                      .filter(u => addContainerAllowedRootUserIds.includes(Number(u.id)))
+                      .map(u => (
+                        <Option key={u.id} value={Number(u.id)} label={`${u.name || u.username} ${u.username}`}>
+                          <span>{u.name} (@{u.username})</span>
+                        </Option>
+                      ))}
                   </Select>
                 </Form.Item>
               </Col>

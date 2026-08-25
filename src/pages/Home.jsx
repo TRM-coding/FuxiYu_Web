@@ -8,7 +8,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
 import { parseSshTimeToDate, formatDuration } from '../utils/timeFormat';
-import { getContainerActionState, getRoleActionSet } from '../utils/containerActions';
+import { createContainerStatusTransition, deriveContainerDisplayStatus, getContainerActionState, getRoleActionSet } from '../utils/containerActions';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -84,6 +84,44 @@ const Home = () => {
   const [longTermRemaining, setLongTermRemaining] = useState(null);
   const [longTermLimit, setLongTermLimit] = useState(null);
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
+  const pendingContainerTransitionRef = useRef(new Map());
+
+  const applyContainerDisplayStatus = (container) => {
+    const cid = container?.key || container?.container_id;
+    if (!cid) return container;
+    const key = String(cid);
+    const result = deriveContainerDisplayStatus(
+      container.container_status,
+      pendingContainerTransitionRef.current.get(key),
+    );
+    if (result.pendingTransition) {
+      pendingContainerTransitionRef.current.set(key, result.pendingTransition);
+    } else if (result.cleared) {
+      pendingContainerTransitionRef.current.delete(key);
+    }
+    return { ...container, container_status: result.status };
+  };
+
+  const markContainerTransition = (container, transitionStatus, targetStatus) => {
+    const cid = container?.key || container?.container_id;
+    if (!cid) return;
+    pendingContainerTransitionRef.current.set(
+      String(cid),
+      createContainerStatusTransition(container?.container_status, transitionStatus, { targetStatus }),
+    );
+  };
+
+  const clearContainerTransition = (cid) => {
+    if (cid) pendingContainerTransitionRef.current.delete(String(cid));
+  };
+
+  const patchContainerStatus = (cid, status) => {
+    setContainers(prev => prev.map(c => (
+      String(c.key) === String(cid)
+        ? applyContainerDisplayStatus({ ...c, container_status: status })
+        : c
+    )));
+  };
 
 
   const formatBeijingDateTime = (date) => date.toLocaleString('zh-CN', {
@@ -188,7 +226,7 @@ const Home = () => {
         // pagination: backend expects pages starting from 0
         const res = await listAllContainerBrefInformation({ machine_id: null, user_id: Number(currentUserId), page_number: 0, page_size: 100 });
         const items = (res && (res.containers_info || res.containers)) || [];
-        const mapped = items.map((c, idx) => ({
+        const mapped = items.map((c, idx) => applyContainerDisplayStatus({
           key: c.container_id ? String(c.container_id) : `c-${idx}`,
           container_name: c.container_name || c.name || `container-${idx}`,
           container_image: c.container_image || '',
@@ -254,9 +292,7 @@ const Home = () => {
           const finalSt = data && data.container_status ? String(data.container_status).toLowerCase() : null;
           if (!finalSt) return;
           current.delete(cid);
-          setContainers(prev => prev.map(x => (
-            String(x.key) === String(cid) ? { ...x, container_status: finalSt } : x
-          )));
+          patchContainerStatus(cid, finalSt);
         },
       });
       current.set(cid, stop);
@@ -432,7 +468,8 @@ const Home = () => {
     if ((record?.container_status || '').toLowerCase() !== 'offline') return;
     try {
       // optimistic UI
-      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'starting' } : c)));
+      markContainerTransition(record, 'starting', 'online');
+      patchContainerStatus(cid, 'starting');
       message.loading({ content: `正在启动 ${record.container_name}...`, key: `start-${cid}` });
       await startContainer(Number(cid));
       // start web-side heartbeat to wait until controller reports ONLINE
@@ -445,11 +482,13 @@ const Home = () => {
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
             if (st === 'failed') {
-              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)));
+              clearContainerTransition(cid);
+              patchContainerStatus(cid, 'failed');
               message.error({ content: `容器 ${record.container_name} 创建失败`, key: `start-${cid}`, duration: 4 });
               return;
             }
-            setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+            clearContainerTransition(cid);
+            patchContainerStatus(cid, 'online');
             message.success({ content: `容器 ${record.container_name} 已启动`, key: `start-${cid}`, duration: 2 });
           }
         });
@@ -459,7 +498,8 @@ const Home = () => {
     } catch (e) {
       console.error('start container failed', e);
       // revert state
-      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)));
+      clearContainerTransition(cid);
+      patchContainerStatus(cid, 'offline');
       try { await showErrorModal({ message: e?.body || e || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('启动失败');
     }
@@ -469,7 +509,8 @@ const Home = () => {
     const cid = record?.key;
     if ((record?.container_status || '').toLowerCase() !== 'online') return;
     try {
-      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'stopping' } : c)));
+      markContainerTransition(record, 'stopping', 'offline');
+      patchContainerStatus(cid, 'stopping');
       message.loading({ content: `正在停止 ${record.container_name}...`, key: `stop-${cid}` });
       await stopContainer(Number(cid));
       try {
@@ -481,11 +522,13 @@ const Home = () => {
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
             if (st === 'failed') {
-              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)));
+              clearContainerTransition(cid);
+              patchContainerStatus(cid, 'failed');
               message.error({ content: `容器 ${record.container_name} 状态异常`, key: `stop-${cid}`, duration: 4 });
               return;
             }
-            setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'offline' } : c)));
+            clearContainerTransition(cid);
+            patchContainerStatus(cid, 'offline');
             message.success({ content: `容器 ${record.container_name} 已停止`, key: `stop-${cid}`, duration: 2 });
           }
         });
@@ -495,7 +538,8 @@ const Home = () => {
     } catch (e) {
       console.error('stop container failed', e);
       // revert state
-      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+      clearContainerTransition(cid);
+      patchContainerStatus(cid, 'online');
       try { await showErrorModal({ message: e?.body || e || '停止失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('停止失败');
     }
@@ -505,7 +549,8 @@ const Home = () => {
     const cid = record?.key;
     if ((record?.container_status || '').toLowerCase() !== 'online') return;
     try {
-      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'restarting' } : c)));
+      markContainerTransition(record, 'restarting', 'online');
+      patchContainerStatus(cid, 'restarting');
       message.loading({ content: `正在重启 ${record.container_name}...`, key: `restart-${cid}` });
       await restartContainer(Number(cid));
       try {
@@ -518,17 +563,19 @@ const Home = () => {
           onProgress: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
             if (st && st !== 'online' && st !== 'failed') {
-              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: st } : c)));
+              patchContainerStatus(cid, st);
             }
           },
           onTerminal: (data) => {
             const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
             if (st === 'failed') {
-              setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'failed' } : c)));
+              clearContainerTransition(cid);
+              patchContainerStatus(cid, 'failed');
               message.error({ content: `容器 ${record.container_name} 重启失败`, key: `restart-${cid}`, duration: 4 });
               return;
             }
-            setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+            clearContainerTransition(cid);
+            patchContainerStatus(cid, 'online');
             message.success({ content: `容器 ${record.container_name} 已重启`, key: `restart-${cid}`, duration: 2 });
           }
         });
@@ -538,7 +585,8 @@ const Home = () => {
     } catch (e) {
       console.error('restart container failed', e);
       // revert to online
-      setContainers(prev => prev.map(c => (String(c.key) === String(cid) ? { ...c, container_status: 'online' } : c)));
+      clearContainerTransition(cid);
+      patchContainerStatus(cid, 'online');
       try { await showErrorModal({ message: e?.body || e || '重启失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
       message.error('重启失败');
     }
@@ -876,14 +924,14 @@ const Home = () => {
               size="small"
               danger
               disabled={!actionState.canStop}
-              onClick={() => openModal('stop', { record })}
+              onClick={() => openConfirm('stop', { record })}
             >
               停止
             </Button>
             <Button
               size="small"
               disabled={!actionState.canRestart}
-              onClick={() => openModal('restart', { record })}
+              onClick={() => openConfirm('restart', { record })}
             >
               重启
             </Button>

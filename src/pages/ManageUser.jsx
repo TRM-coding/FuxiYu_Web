@@ -15,6 +15,7 @@ import ManageUserInTable from './ManageUserInTable';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import EntitySearchBar from '../components/EntitySearchBar';
+import { createContainerStatusTransition, deriveContainerDisplayStatus } from '../utils/containerActions';
 
 // users and containers will be fetched from backend
 const initialUsers = [];
@@ -114,6 +115,36 @@ const ManageUser = () => {
 
   // container cache per user id: { [userId]: { loading, data } }
   const [containerMap, setContainerMap] = useState({});
+  const pendingContainerTransitionRef = useRef(new Map());
+
+  const applyContainerDisplayStatus = (container) => {
+    const cid = container?.key || container?.container_id;
+    if (!cid) return container;
+    const key = String(cid);
+    const result = deriveContainerDisplayStatus(
+      container.container_status,
+      pendingContainerTransitionRef.current.get(key),
+    );
+    if (result.pendingTransition) {
+      pendingContainerTransitionRef.current.set(key, result.pendingTransition);
+    } else if (result.cleared) {
+      pendingContainerTransitionRef.current.delete(key);
+    }
+    return { ...container, container_status: result.status };
+  };
+
+  const markContainerTransition = (container, transitionStatus, targetStatus) => {
+    const cid = container?.key || container?.container_id;
+    if (!cid) return;
+    pendingContainerTransitionRef.current.set(
+      String(cid),
+      createContainerStatusTransition(container?.container_status, transitionStatus, { targetStatus }),
+    );
+  };
+
+  const clearContainerTransition = (cid) => {
+    if (cid) pendingContainerTransitionRef.current.delete(String(cid));
+  };
 
   // 渲染侧 ing 看护（与 Home/ManageMachine 同契约）：containerMap 出现 ing 态 →
   // 自动轮询至终态，补手动刷新/他人操作后进页的缺口；动作驱动的操作心跳不受影响。
@@ -143,7 +174,9 @@ const ManageUser = () => {
               const next = { ...prev };
               for (const uid of Object.keys(next)) {
                 next[uid] = { ...next[uid], data: (next[uid]?.data || []).map(x => (
-                  String(x.key) === String(cid) ? { ...x, container_status: finalSt } : x
+                  String(x.key) === String(cid)
+                    ? applyContainerDisplayStatus({ ...x, container_status: finalSt })
+                    : x
                 )) };
               }
               return next;
@@ -481,7 +514,7 @@ const ManageUser = () => {
       const longTermLimit = Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_limit')
         ? Number(res.long_term_container_limit)
         : null;
-      const mapped = items.map((c, idx) => ({
+      const mapped = items.map((c, idx) => applyContainerDisplayStatus({
         key: c.container_id ? String(c.container_id) : `c-${idx}`,
         container_name: c.container_name || c.name || `container-${idx}`,
         container_image: c.container_image || '',
@@ -542,7 +575,7 @@ const ManageUser = () => {
           return { ...c, accounts: c.accounts || [], userRole: null };
         }
       }));
-      setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: detailed, long_term_container_remaining: longTermRemaining, long_term_container_limit: longTermLimit } }));
+      setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: detailed.map(applyContainerDisplayStatus), long_term_container_remaining: longTermRemaining, long_term_container_limit: longTermLimit } }));
     } catch (err) {
       console.error('fetchContainersForUser failed', userId, err);
       setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: [] } }));
@@ -656,7 +689,9 @@ const ManageUser = () => {
         [id]: {
           ...entry,
           data: (entry.data || []).map(c => (
-            String(c.key) === String(containerId) ? { ...c, ...patch } : c
+            String(c.key) === String(containerId)
+              ? applyContainerDisplayStatus({ ...c, ...patch })
+              : c
           )),
         },
       };
@@ -680,6 +715,7 @@ const ManageUser = () => {
       onTerminal: (data) => {
         const st = data?.container_status ? String(data.container_status).toLowerCase() : terminalState;
         const nextStatus = st === 'failed' ? 'failed' : terminalState;
+        clearContainerTransition(containerRecord.key);
         patchUserContainer(userRecord.key, containerRecord.key, { container_status: nextStatus });
         setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
         if (nextStatus === 'failed') {
@@ -696,6 +732,7 @@ const ManageUser = () => {
     if (!cid) return;
     const actionKey = `start-${cid}`;
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
+    markContainerTransition(containerRecord, 'starting', 'online');
     patchUserContainer(userRecord.key, cid, { container_status: 'starting' });
     try {
       message.loading({ content: `正在启动 ${containerRecord.container_name}...`, key: actionKey });
@@ -704,6 +741,7 @@ const ManageUser = () => {
       runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'online' });
       message.success({ content: '启动指令已发送', key: actionKey, duration: 2 });
     } catch (err) {
+      clearContainerTransition(cid);
       patchUserContainer(userRecord.key, cid, { container_status: 'offline' });
       setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
       await showErrorModal({ message: err?.body || err || '启动失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
@@ -715,6 +753,7 @@ const ManageUser = () => {
     if (!cid) return;
     const actionKey = `stop-${cid}`;
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
+    markContainerTransition(containerRecord, 'stopping', 'offline');
     patchUserContainer(userRecord.key, cid, { container_status: 'stopping' });
     try {
       message.loading({ content: `正在停止 ${containerRecord.container_name}...`, key: actionKey });
@@ -723,6 +762,7 @@ const ManageUser = () => {
       runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'offline' });
       message.success({ content: '停止指令已发送', key: actionKey, duration: 2 });
     } catch (err) {
+      clearContainerTransition(cid);
       patchUserContainer(userRecord.key, cid, { container_status: 'online' });
       setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
       await showErrorModal({ message: err?.body || err || '停止失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
@@ -734,6 +774,7 @@ const ManageUser = () => {
     if (!cid) return;
     const actionKey = `restart-${cid}`;
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
+    markContainerTransition(containerRecord, 'restarting', 'online');
     patchUserContainer(userRecord.key, cid, { container_status: 'restarting' });
     try {
       message.loading({ content: `正在重启 ${containerRecord.container_name}...`, key: actionKey });
@@ -742,6 +783,7 @@ const ManageUser = () => {
       runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'online', requiredProgressState: 'restarting' });
       message.success({ content: '重启指令已发送', key: actionKey, duration: 2 });
     } catch (err) {
+      clearContainerTransition(cid);
       patchUserContainer(userRecord.key, cid, { container_status: 'online' });
       setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
       await showErrorModal({ message: err?.body || err || '重启失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
