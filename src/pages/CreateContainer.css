@@ -1,0 +1,398 @@
+/* 创建容器页：窄环境列 + 宽机器/表单列 */
+
+.cc-page {
+  display: grid;
+  grid-template-columns: 264px 1fr;
+  gap: 20px;
+  align-items: start;
+  padding: 16px 0;
+}
+
+.cc-panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.cc-panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cc-step-no {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  color: #8c8c8c;
+  letter-spacing: 0.5px;
+}
+
+.cc-panel-title {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cc-panel-sub {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* ── 窄列：选择镜像 ── */
+
+.cc-images {
+  display: flex;
+  flex-direction: column;
+}
+
+.cc-image-search {
+  margin-bottom: 10px;
+}
+
+.cc-image-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.cc-image-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+
+.cc-image-card:hover {
+  border-color: #d9d9d9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.cc-image-card.is-selected {
+  border-color: #1677ff;
+  background: #f5f9ff;
+}
+
+.cc-image-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  background: #f0f5ff;
+  color: #1677ff;
+  font-size: 16px;
+  flex: 0 0 auto;
+}
+
+.cc-image-card.is-selected .cc-image-icon {
+  background: #e6f4ff;
+}
+
+.cc-image-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cc-image-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.cc-image-ref {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  color: #595959;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-image-tag {
+  font-size: 11px;
+  color: #8c8c8c;
+}
+
+.cc-card-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: #1677ff;
+  font-size: 14px;
+}
+
+/* ── 宽列：选择机器 ── */
+
+.cc-machines {
+  margin-bottom: 24px;
+}
+
+.cc-machines-head {
+  margin-bottom: 10px;
+}
+
+.cc-machines-loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.cc-machine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 10px;
+  max-height: 244px;
+  overflow-y: auto;
+}
+
+.cc-machine-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  height: 164px;
+  padding: 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+
+.cc-machine-card:hover {
+  border-color: #d9d9d9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.cc-machine-card.is-selected {
+  border-color: #1677ff;
+  background: #f5f9ff;
+}
+
+.cc-machine-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding-right: 16px;
+}
+
+.cc-machine-name {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #262626;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-machine-spec {
+  font-size: 12px;
+  color: #595959;
+}
+
+.cc-machine-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #595959;
+}
+
+.cc-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #52c41a;
+  display: inline-block;
+}
+
+.cc-machine-meters {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cc-machine-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cc-machine-meter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #8c8c8c;
+}
+
+.cc-machine-meter-head .cc-mono {
+  font-size: 11px;
+  font-weight: 500;
+  color: #595959;
+}
+
+.cc-machine-meter-track {
+  height: 4px;
+  border-radius: 999px;
+  background: #eef1f5;
+  overflow: hidden;
+}
+
+.cc-machine-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #1677ff;
+}
+
+.cc-machine-meter-fill.memory {
+  background: #13a17b;
+}
+
+.cc-machine-meter-fill.gpu {
+  background: #7c3aed;
+}
+
+/* ── 输入配置：分组卡片 grid ── */
+
+.cc-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.cc-form-groups {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.cc-form-card-wide {
+  grid-column: 1 / -1;
+}
+
+.cc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cc-field-label {
+  font-size: 12px;
+  color: #595959;
+}
+
+/* ── 资源配额：滑条为主、输入框为辅 ── */
+
+.cc-quota-card.is-locked {
+  background: #fafafa;
+}
+
+.cc-quota-lock-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.cc-quota-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 24px;
+}
+
+.cc-quota-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cc-quota-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cc-quota-limit {
+  font-size: 12px;
+}
+
+.cc-quota-row-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cc-quota-slider {
+  flex: 1;
+  min-width: 0;
+  margin-inline: 0;
+}
+
+.cc-quota-value {
+  min-width: 46px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #262626;
+  flex: 0 0 auto;
+}
+
+.cc-quota-input {
+  width: 84px;
+  flex: 0 0 auto;
+}
+
+/* ── 提交行 ── */
+
+.cc-submit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e7eaf0;
+}
+
+.cc-summary {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 12px;
+  color: #595959;
+  flex-wrap: wrap;
+}
+
+.cc-summary-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.cc-mono {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-weight: 500;
+  color: #262626;
+}

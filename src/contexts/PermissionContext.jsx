@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { getUserPermissions } from '../api/user_api';
 import { handleAuthError } from '../utils/authHelpers';
 import { useNavigate } from 'react-router-dom';
@@ -25,8 +25,9 @@ export const PermissionProvider = ({ children }) => {
     return () => { mounted = false; };
   }, [navigate]);
 
-  const hasPermission = (code) => entities.includes(code);
-  const hasAnyManage = () => entities.some(code => code.endsWith(':manage'));
+  // useCallback：函数引用稳定，页面 effect 依赖 hasPermission 时不会因每次 render 重跑
+  const hasPermission = useCallback((code) => entities.includes(code), [entities]);
+  const hasAnyManage = useCallback(() => entities.some(code => code.endsWith(':manage')), [entities]);
   return (
     <PermissionContext.Provider value={{ entities, loaded, hasPermission, hasAnyManage }}>
       {children}

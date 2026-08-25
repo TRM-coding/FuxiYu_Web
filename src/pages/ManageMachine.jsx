@@ -8,7 +8,8 @@ import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 import { handleAuthError } from '../utils/authHelpers';
-import { getUserDetailInformation, listAllUserBrefInformation } from '../api/user_api';
+import { listAllUserBrefInformation } from '../api/user_api';
+import { usePermission } from '../contexts/PermissionContext';
 import { isAbortError } from '../utils/requestManager';
 import { useNavigate } from 'react-router-dom';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
@@ -235,52 +236,36 @@ const ManageMachine = () => {
   const navigate = useNavigate();
   const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
 
+  // auth + operator 门禁（PermissionContext 通配判定，替代旧 is_operator 字段猜测）
+  const { hasPermission, loaded: permLoaded } = usePermission();
   useEffect(() => {
-    const checkAuthAndPerm = async () => {
-      try {
-        const name = localStorage.getItem('currentUserName');
-        const id = localStorage.getItem('currentUserId');
-        if (!name || !id) {
-          if (!sessionStorage.getItem('auth_modal_shown')) {
-            try {
-              sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 })
-            } finally {
-              sessionStorage.removeItem('auth_modal_shown');
-            }
-          }
-          handleAuthError(401, navigate);
-          return;
+    const name = localStorage.getItem('currentUserName');
+    const id = localStorage.getItem('currentUserId');
+    if (!name || !id) {
+      if (!sessionStorage.getItem('auth_modal_shown')) {
+        try {
+          sessionStorage.setItem('auth_modal_shown', '1');
+          showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 })
+        } finally {
+          sessionStorage.removeItem('auth_modal_shown');
         }
-
-        const res = await getUserDetailInformation(Number(id));
-        const info = (res && (res.user_info || res.data)) || res || {};
-        const isOperator = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
-        if (!isOperator) {
-          if (!sessionStorage.getItem('auth_modal_shown')) {
-            try {
-              sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
-            } finally {
-              sessionStorage.removeItem('auth_modal_shown');
-            }
-          }
-          handleAuthError(403, navigate);
-        }
-      } catch (e) {
-        if (!sessionStorage.getItem('auth_modal_shown')) {
-          try {
-            sessionStorage.setItem('auth_modal_shown', '1');
-            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-          } finally {
-            sessionStorage.removeItem('auth_modal_shown');
-          }
-        }
-        handleAuthError(401, navigate);
       }
-    };
-    checkAuthAndPerm();
-  }, [navigate]);
+      handleAuthError(401, navigate);
+      return;
+    }
+    if (!permLoaded) return;
+    if (!hasPermission('bypass_auth_entity')) {
+      if (!sessionStorage.getItem('auth_modal_shown')) {
+        try {
+          sessionStorage.setItem('auth_modal_shown', '1');
+          showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
+        } finally {
+          sessionStorage.removeItem('auth_modal_shown');
+        }
+      }
+      handleAuthError(403, navigate);
+    }
+  }, [navigate, permLoaded, hasPermission]);
 
   // 弹窗状态
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -888,7 +873,7 @@ const ManageMachine = () => {
         }
 
         const payload = {
-          owner_user_id: ownerUserId,
+          ...(ownerUserId > 0 ? { owner_user_id: ownerUserId } : {}),
           machine_id: machineId,
           container: {
             GPU_LIST: gpuList,

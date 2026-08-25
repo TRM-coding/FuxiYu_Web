@@ -12,7 +12,7 @@ const items = [
   },
   {
     label: '创建容器',
-    key: '/index/apply',
+    key: '/index/create',
     icon: <FormOutlined />,
   },
   // {

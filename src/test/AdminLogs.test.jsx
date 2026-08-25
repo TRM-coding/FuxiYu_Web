@@ -28,16 +28,24 @@ vi.mock('../api/operation_log_api', () => ({
 }));
 
 vi.mock('../api/user_api', () => ({
-  getUserDetailInformation: vi.fn().mockResolvedValue({
-    user_info: { id: 1, username: 'operator1', permission: 'operator' },
-  }),
+  getUserPermissions: vi.fn(),
   listAllUserBrefInformation: vi.fn().mockResolvedValue({
     users: [{ user_id: 1, username: 'operator1' }],
   }),
 }));
 
 import { listOperationLogs } from '../api/operation_log_api';
+import { getUserPermissions } from '../api/user_api';
+import { PermissionProvider } from '../contexts/PermissionContext';
 import AdminLogs from '../pages/AdminLogs';
+
+const renderPage = () => render(
+  <MemoryRouter>
+    <PermissionProvider>
+      <AdminLogs />
+    </PermissionProvider>
+  </MemoryRouter>,
+);
 
 // 注意：'更新机器' 会同时出现在操作列 Tag 与统计图条形标签里，
 // 多元素匹配时 findByText 会抛错，因此用 findAllByText。
@@ -51,10 +59,12 @@ describe('AdminLogs 日志页', () => {
     localStorage.setItem('currentUserName', 'operator1');
     localStorage.setItem('currentUserId', '1');
     listOperationLogs.mockClear();
+    getUserPermissions.mockReset();
   });
 
   it('渲染日志行：操作名走中文映射，操作人为系统', async () => {
-    render(<MemoryRouter><AdminLogs /></MemoryRouter>);
+    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    renderPage();
 
     await waitPageLoaded();
     expect(screen.getByText('系统')).toBeInTheDocument();
@@ -62,7 +72,8 @@ describe('AdminLogs 日志页', () => {
   });
 
   it('展开行显示前→后对比（状态值翻译）', async () => {
-    render(<MemoryRouter><AdminLogs /></MemoryRouter>);
+    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    renderPage();
 
     await waitPageLoaded();
     const expandBtn = screen.getByRole('button', { name: 'Expand row' });
@@ -75,7 +86,8 @@ describe('AdminLogs 日志页', () => {
   });
 
   it('点击「上一周」以新的时间范围重新查询', async () => {
-    render(<MemoryRouter><AdminLogs /></MemoryRouter>);
+    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    renderPage();
 
     await waitPageLoaded();
     await userEvent.click(screen.getByRole('button', { name: /上一周/ }));
@@ -89,8 +101,18 @@ describe('AdminLogs 日志页', () => {
     expect(lastCall.end).toBeTruthy();
   });
 
+  it('普通用户（无 bypass_auth_entity）被拒入，不渲染日志内容', async () => {
+    getUserPermissions.mockResolvedValue(['container:view']);
+    renderPage();
+
+    // 403 弹窗出现，operator 专属内容（统计/日志表）不渲染
+    expect(await screen.findByText('权限不足')).toBeInTheDocument();
+    expect(screen.queryByText('总操作数')).not.toBeInTheDocument();
+  });
+
   it('「本周」初始禁用；翻到上周后可用且点击跳回本周', async () => {
-    render(<MemoryRouter><AdminLogs /></MemoryRouter>);
+    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    renderPage();
 
     await waitPageLoaded();
     // antd 会给两字按钮自动插空格（渲染为「本 周」），用正则匹配

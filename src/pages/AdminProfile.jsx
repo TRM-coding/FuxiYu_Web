@@ -6,51 +6,53 @@ import { UserOutlined } from '@ant-design/icons'; // 管理员默认图标
 import showErrorModal from '../utils/showErrorModal';
 import { getUserDetailInformation } from '../api/user_api';
 import { handleAuthError } from '../utils/authHelpers';
+import { usePermission } from '../contexts/PermissionContext';
 import './AdminProfile.css';
 
 const AdminProfile = () => {
   const navigate = useNavigate();
+  const { hasPermission, loaded: permLoaded } = usePermission();
   const [userInfo, setUserInfo] = useState(null);
 
+  // auth + operator 门禁（PermissionContext 通配判定，替代旧 is_operator 字段猜测）
   useEffect(() => {
-    const checkAuthAndLoad = async () => {
-      try {
-        const name = localStorage.getItem('currentUserName');
-        const id = localStorage.getItem('currentUserId');
-        if (!name || !id) {
-          if (!sessionStorage.getItem('auth_modal_shown')) {
-            try {
-              sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-            } finally {
-              sessionStorage.removeItem('auth_modal_shown');
-            }
-          }
-          handleAuthError(401, navigate);
-          return;
+    const name = localStorage.getItem('currentUserName');
+    const id = localStorage.getItem('currentUserId');
+    if (!name || !id) {
+      if (!sessionStorage.getItem('auth_modal_shown')) {
+        try {
+          sessionStorage.setItem('auth_modal_shown', '1');
+          showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+        } finally {
+          sessionStorage.removeItem('auth_modal_shown');
         }
-
+      }
+      handleAuthError(401, navigate);
+      return;
+    }
+    if (!permLoaded) return;
+    if (!hasPermission('bypass_auth_entity')) {
+      if (!sessionStorage.getItem('auth_modal_shown')) {
+        try {
+          sessionStorage.setItem('auth_modal_shown', '1');
+          showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
+        } finally {
+          sessionStorage.removeItem('auth_modal_shown');
+        }
+      }
+      handleAuthError(403, navigate);
+      return;
+    }
+    const loadDetail = async () => {
+      try {
         const res = await getUserDetailInformation(Number(id));
         const info = (res && (res.user_info || res.data)) || res || {};
-        const isOperator = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
-        if (!isOperator) {
-          if (!sessionStorage.getItem('auth_modal_shown')) {
-            try {
-              sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
-            } finally {
-              sessionStorage.removeItem('auth_modal_shown');
-            }
-          }
-          handleAuthError(403, navigate);
-          return;
-        }
         setUserInfo(info);
       } catch (e) {
         if (!sessionStorage.getItem('auth_modal_shown')) {
           try {
             sessionStorage.setItem('auth_modal_shown', '1');
-            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+            showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
           } finally {
             sessionStorage.removeItem('auth_modal_shown');
           }
@@ -58,8 +60,8 @@ const AdminProfile = () => {
         handleAuthError(401, navigate);
       }
     };
-    checkAuthAndLoad();
-  }, [navigate]);
+    loadDetail();
+  }, [navigate, permLoaded, hasPermission]);
 
   return (
     <div className="ap-wrap">

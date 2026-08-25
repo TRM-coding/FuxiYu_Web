@@ -5,7 +5,8 @@ import { Flex, Typography, Row, Col, Button, Input, Space, Form, Tag, message, I
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { handleAuthError } from '../utils/authHelpers';
-import { listAllUserBrefInformation, getUserDetailInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
+import { listAllUserBrefInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
+import { usePermission } from '../contexts/PermissionContext';
 import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator, setLongTermContainer, startContainer, stopContainer, restartContainer } from '../api/container_api';
 import './ManageUser.css';
 import NestedEntityGrid from '../components/NestedEntityGrid';
@@ -206,58 +207,39 @@ const ManageUser = () => {
 
   const navigate = useNavigate();
 
-  // auth + permission check: show 401 then redirect if missing; fetch user detail to check operator permission
+  // auth + operator 门禁（PermissionContext 通配判定，替代旧 is_operator 字段猜测）
+  const { hasPermission, loaded: permLoaded } = usePermission();
   React.useEffect(() => {
-    const checkAuthAndPerm = async () => {
-      try {
-        const name = localStorage.getItem('currentUserName');
-        const id = localStorage.getItem('currentUserId');
-        if (!name || !id) {
-          if (!sessionStorage.getItem('auth_modal_shown')) {
-            try {
-              sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-            } finally {
-              sessionStorage.removeItem('auth_modal_shown');
-            }
-          }
-          // 401: clear auth and navigate to login
-          handleAuthError(401, navigate);
-          return;
+    const name = localStorage.getItem('currentUserName');
+    const id = localStorage.getItem('currentUserId');
+    if (!name || !id) {
+      if (!sessionStorage.getItem('auth_modal_shown')) {
+        try {
+          sessionStorage.setItem('auth_modal_shown', '1');
+          showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+        } finally {
+          sessionStorage.removeItem('auth_modal_shown');
         }
-
-        // fetch user detail to check permissions
-        const res = await getUserDetailInformation(Number(id));
-        const info = (res && (res.user_info || res.data)) || res || {};
-        const isOperator = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
-        if (!isOperator) {
-          if (!sessionStorage.getItem('auth_modal_shown')) {
-            try {
-              sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
-            } finally {
-              sessionStorage.removeItem('auth_modal_shown');
-            }
-          }
-          // For 403 do NOT clear login info; only navigate to /index
-          handleAuthError(403, navigate);
-          return;
-        }
-      } catch (e) {
-        if (!sessionStorage.getItem('auth_modal_shown')) {
-          try {
-            sessionStorage.setItem('auth_modal_shown', '1');
-            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-          } finally {
-            sessionStorage.removeItem('auth_modal_shown');
-          }
-        }
-        // For 401 clear auth and navigate to login
-        handleAuthError(401, navigate);
       }
-    };
-    checkAuthAndPerm();
-  }, [navigate]);
+      // 401: clear auth and navigate to login
+      handleAuthError(401, navigate);
+      return;
+    }
+    if (!permLoaded) return;
+    if (!hasPermission('bypass_auth_entity')) {
+      if (!sessionStorage.getItem('auth_modal_shown')) {
+        try {
+          sessionStorage.setItem('auth_modal_shown', '1');
+          showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
+        } finally {
+          sessionStorage.removeItem('auth_modal_shown');
+        }
+      }
+      // For 403 do NOT clear login info; only navigate to /index
+      handleAuthError(403, navigate);
+      return;
+    }
+  }, [navigate, permLoaded, hasPermission]);
 
   // load users on mount
   React.useEffect(() => {

@@ -17,7 +17,6 @@ const User = () => {
   const [graduation_year, setGraduationYear] = useState(null);
   const [originalInfo, setOriginalInfo] = useState({ username: '', email: '', graduation_year: null });
   const [currentUserId, setCurrentUserId] = useState(null);
-  const [isOperator, setIsOperator] = useState(false);
   const [usernameMsg, setUsernameMsg] = useState(null);
   const [emailMsg, setEmailMsg] = useState(null);
   const [yearMsg, setYearMsg] = useState(null);
@@ -90,8 +89,6 @@ const User = () => {
           functional: Number(info.amount_of_functional_container || 0),
           managed: Number(info.amount_of_managed_container || 0),
         });
-        const isOp = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
-        setIsOperator(Boolean(isOp));
         // clear inline messages when data loads
         setUsernameMsg(null);
         setEmailMsg(null);

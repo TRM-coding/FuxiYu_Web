@@ -10,6 +10,7 @@ import LoginBlock from '../pages/Login'
 import RegisterBlock from '../pages/Register'
 import Apply from '../pages/Apply'
 import CreateContainer from '../pages/CreateContainer'
+import CreateImage from '../pages/CreateImage'
 import User from '../pages/User'
 import ManageUser from '../pages/ManageUser'
 import ManageMachine from '../pages/ManageMachine'
@@ -29,6 +30,7 @@ export default function AppRoutes() {
         <Route path="docs" element={<Docs />} />
         <Route path="apply" element={<Apply />} />
         <Route path="create" element={<CreateContainer />} />
+        <Route path="images" element={<CreateImage />} />
         <Route path="user" element={<User />} />
       </Route>
 

@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookOutlined,
+  CodeOutlined,
   FormOutlined,
   HomeOutlined,
   InfoCircleOutlined,
@@ -11,9 +12,10 @@ import UserAvatar from '../components/UserAvatar';
 import './MainLayout.css';
 
 const userMenuItems = [
-  { label: 'Home', key: '/index', icon: <HomeOutlined /> },
-  { label: 'Apply', key: '/index/apply', icon: <FormOutlined /> },
-  { label: 'Docs', key: '/index/docs', icon: <BookOutlined /> },
+  { label: '我的容器', key: '/index', icon: <HomeOutlined /> },
+  { label: '创建容器', key: '/index/create', icon: <FormOutlined /> },
+  { label: '环境模板', key: '/index/images', icon: <CodeOutlined /> },
+  { label: '使用说明', key: '/index/docs', icon: <BookOutlined /> },
 ];
 
 export default function MainLayout() {
@@ -22,11 +24,13 @@ export default function MainLayout() {
   const touchStartXRef = useRef(0);
   const touchStartYRef = useRef(0);
   const touchStartTargetRef = useRef(null);
-  const swipePaths = useMemo(() => ['/index', '/index/apply', '/index/docs'], []);
+  const swipePaths = useMemo(() => ['/index', '/index/create', '/index/images', '/index/docs'], []);
 
   const normalizePath = (pathname) => {
     if (pathname === '/index') return '/index';
-    if (pathname.startsWith('/index/apply')) return '/index/apply';
+    if (pathname.startsWith('/index/create')) return '/index/create';
+    if (pathname.startsWith('/index/images')) return '/index/images';
+    if (pathname.startsWith('/index/apply')) return '/index/apply'; // 旧链接兼容
     if (pathname.startsWith('/index/docs')) return '/index/docs';
     return pathname;
   };

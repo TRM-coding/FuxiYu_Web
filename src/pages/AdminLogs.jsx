@@ -14,7 +14,8 @@ import timezone from 'dayjs/plugin/timezone';
 import TableComponent from '../components/TableComponent';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
-import { getUserDetailInformation, listAllUserBrefInformation } from '../api/user_api';
+import { listAllUserBrefInformation } from '../api/user_api';
+import { usePermission } from '../contexts/PermissionContext';
 import { listOperationLogs, getOperationLogStats } from '../api/operation_log_api';
 import { getDetailInformation as getMachineDetailInformation } from '../api/machine_api';
 import { getContainerDetailInformation } from '../api/container_api';
@@ -319,40 +320,34 @@ export default function AdminLogs() {
     return `${ws.format('YYYY-MM-DD')} ~ ${ws.add(6, 'day').format('YYYY-MM-DD')}`;
   }, [timeRange]);
 
-  // auth + operator 门禁（与 ManageUser 同模式）
+  // auth + operator 门禁（PermissionContext 通配判定，替代旧 is_operator 字段猜测）
+  const { hasPermission, loaded: permLoaded } = usePermission();
   useEffect(() => {
-    const checkAuthAndPerm = async () => {
+    const name = localStorage.getItem('currentUserName');
+    const id = localStorage.getItem('currentUserId');
+    if (!name || !id) {
+      showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
+      handleAuthError(401, navigate);
+      return;
+    }
+    if (!permLoaded) return;
+    if (!hasPermission('bypass_auth_entity')) {
+      showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
+      handleAuthError(403, navigate);
+      return;
+    }
+    setPermitted(true);
+    const loadUsers = async () => {
       try {
-        const name = localStorage.getItem('currentUserName');
-        const id = localStorage.getItem('currentUserId');
-        if (!name || !id) {
-          await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-          handleAuthError(401, navigate);
-          return;
-        }
-        const res = await getUserDetailInformation(Number(id));
-        const info = (res && (res.user_info || res.data)) || res || {};
-        const isOperator = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
-        if (!isOperator) {
-          await showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
-          handleAuthError(403, navigate);
-          return;
-        }
-        setPermitted(true);
-        try {
-          const ures = await listAllUserBrefInformation({ page_number: 1, page_size: 500 });
-          const items = (ures && (ures.users || ures.users_info || ures.data || ures.users_list)) || [];
-          setUsers(items.map(u => ({ id: u.user_id || u.id || u.uid, username: u.username || u.name || String(u.id) })));
-        } catch (e) {
-          // 用户列表拉取失败不阻塞页面
-        }
+        const ures = await listAllUserBrefInformation({ page_number: 1, page_size: 500 });
+        const items = (ures && (ures.users || ures.users_info || ures.data || ures.users_list)) || [];
+        setUsers(items.map(u => ({ id: u.user_id || u.id || u.uid, username: u.username || u.name || String(u.id) })));
       } catch (e) {
-        await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-        handleAuthError(401, navigate);
+        // 用户列表拉取失败不阻塞页面
       }
     };
-    checkAuthAndPerm();
-  }, [navigate]);
+    loadUsers();
+  }, [navigate, permLoaded, hasPermission]);
 
   const load = useCallback(async (p, ps, rangeOverride) => {
     setLoading(true);

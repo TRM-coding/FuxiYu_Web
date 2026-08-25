@@ -53,6 +53,13 @@ export const API_ROUTES = {
 	CONTAINERS_UNPAUSE: '/api/containers/unpause_container',
 	CONTAINERS_SET_LONG_TERM: '/api/containers/set_long_term_container',
 
+	// Image routes
+	IMAGES_CREATE: '/api/images/create_image',
+	IMAGES_UPDATE: '/api/images/update_image',
+	IMAGES_DELETE: '/api/images/delete_image',
+	IMAGES_GET_DETAIL: '/api/images/get_image_detail_information',
+	IMAGES_LIST: '/api/images/list_image_bref_information',
+
 	// Admin routes
 	ADMIN_OPERATION_LOGS: '/api/admin/operation_logs',
 	ADMIN_OPERATION_LOGS_STATS: '/api/admin/operation_logs/stats',
