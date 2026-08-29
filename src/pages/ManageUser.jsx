@@ -167,6 +167,21 @@ const ManageUser = () => {
           machine_id: c.machine_id,
           container_id: cid,
           container_name: c.container_name,
+          onProgress: (data) => {
+            const st = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+            if (!st) return;
+            setContainerMap(prev => {
+              const next = { ...prev };
+              for (const uid of Object.keys(next)) {
+                next[uid] = { ...next[uid], data: (next[uid]?.data || []).map(x => (
+                  String(x.key) === String(cid)
+                    ? applyContainerDisplayStatus({ ...x, container_status: st })
+                    : x
+                )) };
+              }
+              return next;
+            });
+          },
           onTerminal: (data) => {
             const finalSt = data && data.container_status ? String(data.container_status).toLowerCase() : null;
             if (!finalSt) return;

@@ -112,6 +112,8 @@ describe('CreateContainer 代建门禁（container:manage 分类显示）', () =
     await waitFor(() => expect(getUserPermissions).toHaveBeenCalled());
     await selectImage();
     await selectMachine();
+    // 容器名必填（不再自动生成），先填名再提交
+    await userEvent.type(screen.getByLabelText(/容器名/), 'test-container');
     await userEvent.click(screen.getByRole('button', { name: '创建容器' }));
 
     await waitFor(() => expect(createContainer).toHaveBeenCalled());
@@ -119,6 +121,7 @@ describe('CreateContainer 代建门禁（container:manage 分类显示）', () =
     const payload = createContainer.mock.calls[0][0];
     expect(payload.owner_user_id).toBeUndefined();
     expect(payload.image_id).toBe(7);
+    expect(payload.container.NAME).toBe('test-container');
   });
 
   it('代建者显示 ROOT 用户选择器；未选机器时禁用，选机器后默认当前用户', async () => {
@@ -144,10 +147,13 @@ describe('CreateContainer 代建门禁（container:manage 分类显示）', () =
     await selectImage();
     await selectMachine();
     await screen.findByText('运维一号');
+    // 容器名必填（不再自动生成），先填名再提交
+    await userEvent.type(screen.getByLabelText(/容器名/), 'test-container');
     await userEvent.click(screen.getByRole('button', { name: '创建容器' }));
 
     await waitFor(() => expect(createContainer).toHaveBeenCalled());
     const payload = createContainer.mock.calls[0][0];
     expect(payload.owner_user_id).toBe(1);
+    expect(payload.container.NAME).toBe('test-container');
   });
 });

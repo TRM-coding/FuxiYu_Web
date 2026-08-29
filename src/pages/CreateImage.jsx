@@ -74,9 +74,17 @@ export default function CreateImage() {
   const [deleting, setDeleting] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  // 加载时的原始值快照：与当前表单逐字段比较，有变化才展示保存键
+  const [originalForm, setOriginalForm] = useState(EMPTY_FORM);
 
   const canManage = permissions.includes('image:manage');
   const canEdit = permissions.includes('image:edit') || canManage;
+
+  // 脏检查：编辑字段与加载快照不一致 → 显示保存键（新建模式填了内容同样触发）
+  const formDirty = useMemo(() => {
+    const keys = ['name', 'description', 'status', 'base_image', 'dockerfile_body'];
+    return keys.some(k => (form[k] ?? '') !== (originalForm[k] ?? ''));
+  }, [form, originalForm]);
 
   const visibleImages = useMemo(() => {
     if (!mineOnly || !canManage) return images;
@@ -113,7 +121,9 @@ export default function CreateImage() {
     setLoadingDetail(true);
     try {
       const result = await getImageDetailInformation(imageId);
-      setForm(normalizeImage(result?.image || {}));
+      const loaded = normalizeImage(result?.image || {});
+      setForm(loaded);
+      setOriginalForm(loaded);
     } catch (err) {
       await showErrorModal({
         message: err?.body || err || '加载模板详情失败',
@@ -157,6 +167,7 @@ export default function CreateImage() {
   const startCreate = () => {
     setSelectedId(null);
     setForm(EMPTY_FORM);
+    setOriginalForm(EMPTY_FORM);
   };
 
   const saveImage = async () => {
@@ -214,6 +225,7 @@ export default function CreateImage() {
       message.success('模板已删除');
       setSelectedId(null);
       setForm(EMPTY_FORM);
+      setOriginalForm(EMPTY_FORM);
       await loadImages(keyword);
     } catch (err) {
       await showErrorModal({
@@ -310,9 +322,11 @@ export default function CreateImage() {
                 删除
               </Button>
             )}
-            <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveImage} disabled={!canEdit}>
-              保存
-            </Button>
+            {formDirty && (
+              <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveImage} disabled={!canEdit}>
+                保存
+              </Button>
+            )}
           </div>
         </div>
 

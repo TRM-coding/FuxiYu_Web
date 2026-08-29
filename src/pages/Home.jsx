@@ -8,7 +8,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
 import { parseSshTimeToDate, formatDuration } from '../utils/timeFormat';
-import { createContainerStatusTransition, deriveContainerDisplayStatus, getContainerActionState, getRoleActionSet } from '../utils/containerActions';
+import { CONTAINER_TERMINAL_STATES, createContainerStatusTransition, deriveContainerDisplayStatus, getContainerActionState, getRoleActionSet } from '../utils/containerActions';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -288,6 +288,10 @@ const Home = () => {
         machine_id: c.machine_id,
         container_id: cid,
         container_name: c.container_name,
+        onProgress: (data) => {
+          const st = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+          if (st) patchContainerStatus(cid, st);
+        },
         onTerminal: (data) => {
           const finalSt = data && data.container_status ? String(data.container_status).toLowerCase() : null;
           if (!finalSt) return;
@@ -354,11 +358,25 @@ const Home = () => {
     );
     if (!matched) return;
     applyHeartbeatStartedRef.current = true;
+    const matchedStatus = String(matched.container_status || '').toLowerCase();
+    if (CONTAINER_TERMINAL_STATES.has(matchedStatus)) {
+      clearContainerTransition(matched.key);
+      patchContainerStatus(matched.key, matchedStatus);
+      return;
+    }
+    // 两轮三态（building → creating → online）：轮 1 从 building 起步等 creating，
+    // 中间态由 onProgress 喂入 deriveContainerDisplayStatus 推进轮 2
+    markContainerTransition(matched, 'building', 'creating');
+    patchContainerStatus(matched.key, 'building');
     try {
       startContainerStatusHeartbeat({
         machine_id: req.machine_id,
         container_name: req.container_name,
         container_id: matched.key,
+        onProgress: (data) => {
+          const st = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+          if (st) patchContainerStatus(matched.key, st);
+        },
         onRunning: async (data) => {
           // heartbeat may return a payload with container_status; handle 'failed' explicitly
           const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;

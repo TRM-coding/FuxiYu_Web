@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Typography, Input, InputNumber, Button, Card, Tag, message, Empty, Spin, Slider, Select } from 'antd';
 import { SearchOutlined, CheckCircleFilled, ThunderboltOutlined, CodeOutlined, LockOutlined } from '@ant-design/icons';
 import showErrorModal from '../utils/showErrorModal';
@@ -93,6 +93,7 @@ const clampNum = (v, max, min) => {
 
 const CreateContainer = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [currentUserName, setCurrentUserName] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
 
@@ -257,6 +258,19 @@ const CreateContainer = () => {
     fetchMachines();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 从管理页「创建容器」跳转进入：机器列表加载完成后自动选中对应机器（仅执行一次）
+  const preselectMachineId = location.state?.machineId ?? null;
+  const preselectHandledRef = useRef(false);
+  useEffect(() => {
+    if (preselectHandledRef.current || !preselectMachineId || machines.length === 0) return;
+    const target = machines.find(m => String(m.machine_id ?? m.id) === String(preselectMachineId));
+    if (target) {
+      preselectHandledRef.current = true;
+      handleSelectMachine(target);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [machines, preselectMachineId]);
+
   // 代建门禁：权限接口失败时保守隐藏选择器（按无代建能力处理）
   useEffect(() => {
     let mounted = true;
@@ -334,6 +348,10 @@ const CreateContainer = () => {
       message.warning('请先选择环境与机器');
       return;
     }
+    if (!name.trim()) {
+      message.warning('请填写容器名');
+      return;
+    }
     const machineId = selectedMachine.machine_id ?? selectedMachine.id;
     const gpuList = gpuCount > 0 ? Array.from({ length: gpuCount }, (_, i) => i) : [];
     const payload = {
@@ -347,7 +365,7 @@ const CreateContainer = () => {
         GPU_LIST: gpuList,
         CPU_NUMBER: cpuCount || 1,
         MEMORY: memoryGb || 1,
-        NAME: name || `container-${Date.now()}`,
+        NAME: name.trim(),
         image: selectedImage.base_image || selectedImage.name || '',
         shared_memory: sharedGb || 0,
       },
@@ -498,8 +516,8 @@ const CreateContainer = () => {
                 </div>
               )}
               <div className="cc-field">
-                <label className="cc-field-label" htmlFor="cc-name">容器名</label>
-                <Input id="cc-name" value={name} onChange={e => setName(e.target.value)} />
+                <label className="cc-field-label" htmlFor="cc-name">容器名 <span className="cc-required">*</span></label>
+                <Input id="cc-name" value={name} onChange={e => setName(e.target.value)} placeholder="必填，仅字母、数字、下划线" />
               </div>
               <div className="cc-field">
                 <label className="cc-field-label" htmlFor="cc-remark">备注</label>
@@ -565,7 +583,12 @@ const CreateContainer = () => {
               <span className="cc-summary-item">机器 <b className="cc-mono">{selectedMachine?.machine_name || '—'}</b></span>
               <span className="cc-summary-item">配额 <b className="cc-mono">{gpuCount || 0} GPU / {cpuCount || 1} 核 / {memoryGb || 1}G</b></span>
             </div>
-            <Button type="primary" loading={submitting} onClick={handleSubmit}>创建容器</Button>
+            <Button
+              type="primary"
+              loading={submitting}
+              onClick={handleSubmit}
+              disabled={!selectedImage || !selectedMachine || !name.trim()}
+            >创建容器</Button>
           </div>
         </div>
       </section>

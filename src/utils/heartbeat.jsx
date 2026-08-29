@@ -122,7 +122,7 @@ export const ING_CONTAINER_STATES = new Set([
   'building', 'creating', 'starting', 'stopping', 'restarting', 'pausing', 'unpausing',
 ]);
 
-export function watchIngContainerUntilTerminal({ machine_id, container_id, container_name, onTerminal, timeout = 3600000, interval = 3000 }) {
+export function watchIngContainerUntilTerminal({ machine_id, container_id, container_name, onTerminal, onProgress, timeout = 3600000, interval = 3000 }) {
   let stopped = false;
   const startTs = Date.now();
   let timerId = null;
@@ -149,6 +149,10 @@ export function watchIngContainerUntilTerminal({ machine_id, container_id, conta
       if (res.ok) {
         const data = await res.json().catch(() => null);
         const st = data && data.container_status ? String(data.container_status).toLowerCase() : '';
+        // 中间态也回调：列表渲染侧借 onProgress 实时 patch，避免 UI 停留在加载时的旧 ing 态
+        if (st && typeof onProgress === 'function') {
+          onProgress(data);
+        }
         if (st && !ING_CONTAINER_STATES.has(st)) {
           stopped = true;
           if (typeof onTerminal === 'function') onTerminal(data);

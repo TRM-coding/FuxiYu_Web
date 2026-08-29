@@ -143,6 +143,20 @@ describe('deriveContainerDisplayStatus', () => {
     expect(online.cleared).toBe(true);
   });
 
+  it('does not force building over an already online container', () => {
+    const pending = createContainerStatusTransition('online', 'building', {
+      targetStatus: 'creating',
+      startedAt: 1000,
+      timeoutMs: 60000,
+    });
+
+    const result = deriveContainerDisplayStatus('online', pending, 2000);
+
+    expect(result.status).toBe('online');
+    expect(result.pendingTransition).toBe(null);
+    expect(result.cleared).toBe(true);
+  });
+
   it('clears sticky state on failure or timeout', () => {
     const pending = createContainerStatusTransition('online', 'restarting', {
       targetStatus: 'online',

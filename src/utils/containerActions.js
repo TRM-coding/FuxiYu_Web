@@ -86,6 +86,12 @@ export function deriveContainerDisplayStatus(rawStatus, pendingTransition, now =
   const startedAt = Number(pendingTransition.startedAt || 0);
   const timeoutMs = Number(pendingTransition.timeoutMs || DEFAULT_TRANSITION_TIMEOUT_MS);
 
+  // building 只允许从空状态或 building/creating 链路进入。
+  // 如果刷新后后端已给出 online/failed 等终态，说明创建链路已结束，不应再把终态压回构建中。
+  if (transition === 'building' && CONTAINER_TERMINAL_STATES.has(from) && incoming === from) {
+    return { status: incoming, pendingTransition: null, cleared: true };
+  }
+
   if (startedAt > 0 && now - startedAt > timeoutMs) {
     return { status: incoming, pendingTransition: null, cleared: true };
   }

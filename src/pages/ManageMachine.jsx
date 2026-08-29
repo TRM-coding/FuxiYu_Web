@@ -175,6 +175,24 @@ const ManageMachine = () => {
           machine_id: c.machine_id,
           container_id: cid,
           container_name: c.container_name,
+          onProgress: (data) => {
+            const st = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+            if (!st) return;
+            setContainerMap(prev => {
+              const next = { ...prev };
+              for (const mid of Object.keys(next)) {
+                next[mid] = {
+                  ...next[mid],
+                  data: (next[mid]?.data || []).map(x => (
+                    String(x.key) === String(cid)
+                      ? applyContainerDisplayStatus({ ...x, container_status: st })
+                      : x
+                  )),
+                };
+              }
+              return next;
+            });
+          },
           onTerminal: (data) => {
             const finalSt = data && data.container_status ? String(data.container_status).toLowerCase() : null;
             if (!finalSt) return;
@@ -277,17 +295,6 @@ const ManageMachine = () => {
   const [addHostVisible, setAddHostVisible] = useState(false);
   const [addHostLoading, setAddHostLoading] = useState(false);
   const [addHostForm] = Form.useForm();
-  // 添加容器弹窗
-  const [addContainerVisible, setAddContainerVisible] = useState(false);
-  const [addContainerLoading, setAddContainerLoading] = useState(false);
-  const [addContainerForm] = Form.useForm();
-  const [addContainerMachineId, setAddContainerMachineId] = useState(null);
-  const [addContainerUnsafe, setAddContainerUnsafe] = useState(false);
-  const [addContainerMachineType, setAddContainerMachineType] = useState('CPU');
-  const [addContainerRootUsersLoading, setAddContainerRootUsersLoading] = useState(false);
-  const [addContainerAllowedRootUserIds, setAddContainerAllowedRootUserIds] = useState([]);
-  const [addContainerFieldErrors, setAddContainerFieldErrors] = useState({});
-  const addContainerMachine = machines.find(m => String(m.machine_id || m.key) === String(addContainerMachineId));
   // 编辑模式
   const [isEditMode, setIsEditMode] = useState(false);
   const [editTargetMachine, setEditTargetMachine] = useState(null);
@@ -800,120 +807,6 @@ const ManageMachine = () => {
     setIsEditMode(false);
     setEditTargetMachine(null);
     setAddHostVisible(true);
-  };
-
-  // 打开添加容器弹窗（基于宿主机）
-  const openAddContainerModal = async (machine) => {
-    // machine may be a record from table
-    const mid = machine?.machine_id ?? machine?.key ?? null;
-    setAddContainerMachineId(mid);
-    addContainerForm.resetFields();
-    setAddContainerFieldErrors({});
-    setAddContainerAllowedRootUserIds([]);
-    // prefill machine id and defaults
-    const mtype = (machine && (machine.machine_type || machine.machine_type === 0) ? (machine.machine_type || 'CPU') : 'CPU');
-    setAddContainerMachineType((mtype || 'CPU').toUpperCase());
-    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SHARED_MEM: 0, GPU_LIST: [], gpu_number: 0, owner_user_id: undefined });
-    setAddContainerVisible(true);
-    if (!mid) return;
-
-    setAddContainerRootUsersLoading(true);
-    try {
-      const res = await listMachinePermissions(Number(mid));
-      const assigned = Array.isArray(res?.user_ids) ? res.user_ids.map(v => Number(v)).filter(Boolean) : [];
-      setAddContainerAllowedRootUserIds(assigned);
-      const currentUserId = Number(localStorage.getItem('currentUserId') || 0);
-      const defaultOwnerId = assigned.includes(currentUserId) ? currentUserId : assigned[0];
-      if (defaultOwnerId) {
-        addContainerForm.setFieldsValue({ owner_user_id: defaultOwnerId });
-      }
-    } catch (err) {
-      console.error('listMachinePermissions for create container failed', err);
-      setAddContainerAllowedRootUserIds([]);
-      await showErrorModal({ message: '加载可用 Root 用户失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-    } finally {
-      setAddContainerRootUsersLoading(false);
-    }
-  };
-
-  // 添加容器确认
-  const handleAddContainerConfirm = async () => {
-    try {
-      const values = await addContainerForm.validateFields();
-      // quick client-side guard: shared must not exceed memory
-      try {
-        const mem = Number(values.MEMORY || 0);
-        const shared = Number(values.SHARED_MEM || 0);
-        if (shared > mem) {
-          setAddContainerFieldErrors(prev => ({ ...(prev || {}), SHARED_MEM: `共享空间不得大于内存 (${mem} GB)` }));
-          message.error('共享空间不得大于内存');
-          return;
-        }
-      } catch (e) {
-        // ignore parse errors and continue to server-side validation
-      }
-      setAddContainerLoading(true);
-      const machineId = values.machine_id || addContainerMachineId;
-      const ownerUserId = Number(values.owner_user_id || 0);
-        // build GPU_LIST according to host type and requested gpu_number
-        let gpuList = [];
-        try {
-          if ((addContainerMachineType || '').toUpperCase() === 'GPU') {
-            const gnum = Number(values.gpu_number || 0);
-            if (Number.isInteger(gnum) && gnum > 0) {
-              gpuList = Array.from({ length: gnum }, (_, i) => i);
-            } else {
-              gpuList = values.GPU_LIST || [];
-            }
-          } else {
-            gpuList = [];
-          }
-        } catch (e) {
-          gpuList = values.GPU_LIST || [];
-        }
-
-        const payload = {
-          ...(ownerUserId > 0 ? { owner_user_id: ownerUserId } : {}),
-          machine_id: machineId,
-          container: {
-            GPU_LIST: gpuList,
-            CPU_NUMBER: values.CPU_NUMBER || 1,
-            MEMORY: values.MEMORY || 1,
-            NAME: values.NAME || `container-${Date.now()}`,
-            image: values.image || '',
-            shared_memory: values.SHARED_MEM || 0
-          },
-          public_key: values.public_key || ''
-        };
-      let success = false;
-      try {
-        const res = await createContainer(payload);
-        // refresh container list for the machine（回到第一页）
-        if (machineId) {
-          const mid = String(machineId);
-          await fetchContainersForMachine(mid, 0);
-        }
-        message.success('容器添加成功');
-        // 状态收敛交给渲染侧 ing 看护：列表已刷新，新容器以 creating/starting 出现，
-        // watcher 自动轮询至终态（原动作心跳引用未定义 container，已移除）
-        success = true;
-      } catch (err) {
-        console.error('createContainer failed', err);
-        const status = err?.response?.status || err?.status;
-        await showErrorModal({ message: err?.body || err || '添加容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-        if (status === 403) {
-          handleAuthError(403, navigate);
-        }
-      } finally {
-        setAddContainerLoading(false);
-        if (success) {
-          setAddContainerVisible(false);
-          setAddContainerMachineId(null);
-        }
-      }
-    } catch (err) {
-      // validation failed
-    }
   };
 
   // 打开编辑宿主机弹窗（与添加使用同一表单，但为编辑模式）
@@ -1491,7 +1384,7 @@ const ManageMachine = () => {
                 : entry.loading ? '容器加载中' : `${entry.total_number ?? containers.length ?? 0} 个容器`}
             </Typography.Text>
             <Space size={6}>
-              <Button size="small" icon={<PlusOutlined />} onClick={(e) => { e.stopPropagation(); openAddContainerModal(record); }}>
+              <Button size="small" icon={<PlusOutlined />} onClick={(e) => { e.stopPropagation(); navigate('/index/create', { state: { machineId: record.machine_id ?? record.key } }); }}>
                 添加容器
               </Button>
               <Button size="small" icon={<ReloadOutlined />} onClick={(e) => { e.stopPropagation(); fetchContainersForMachine(record.key); }} />
@@ -1585,6 +1478,13 @@ const ManageMachine = () => {
         message={isEditMode ? "请修改宿主机信息并确认更新" : "请填写宿主机信息并确认"}
         loading={addHostLoading}
         confirmText={isEditMode ? '更新' : '添加'}
+        onConfirm={handleAddHostConfirm}
+        onCancel={() => {
+          setAddHostVisible(false);
+          setIsEditMode(false);
+          setEditTargetMachine(null);
+          addHostForm.resetFields();
+        }}
         content={
           !isEditMode ? (
             <Form form={addHostForm} layout="vertical">
@@ -2074,177 +1974,6 @@ const ManageMachine = () => {
         </Space>
       </Modal>
 
-      <ConfirmModal
-        visible={addContainerVisible}
-        title="添加容器"
-        message="请填写容器信息并确认添加"
-        onConfirm={handleAddContainerConfirm}
-        onCancel={() => { setAddContainerVisible(false); setAddContainerMachineId(null); setAddContainerFieldErrors({}); }}
-        loading={addContainerLoading}
-        confirmText="添加"
-        confirmDisabled={addContainerUnsafe || addContainerRootUsersLoading || addContainerAllowedRootUserIds.length === 0}
-        content={
-          <Form
-            form={addContainerForm}
-            layout="vertical"
-            initialValues={{ CPU_NUMBER: 1, MEMORY: 1, SHARED_MEM: 0, GPU_LIST: [], gpu_number: 0 }}
-            onValuesChange={(_changed, allVals) => {
-              try {
-                const vals = allVals || addContainerForm.getFieldsValue();
-                const name = vals.NAME || '';
-                const image = vals.image || '';
-                const pub = vals.public_key || '';
-                import('../utils/validateCmdArg').then(mod => {
-                  setAddContainerUnsafe(Boolean(mod.anyUnsafe(name, image, pub)));
-                }).catch(() => setAddContainerUnsafe(false));
-
-                const errs = {};
-                const m = addContainerMachine || {};
-                const cpu = Number(vals.CPU_NUMBER || 0);
-                const mem = Number(vals.MEMORY || 0);
-                const shared = Number(vals.SHARED_MEM || 0);
-                const gnum = Number(vals.gpu_number || 0);
-                const maxCpu = m.max_cpu_core_number ?? m.cpu_core_number ?? null;
-                const maxMem = m.max_memory_gb ?? m.memory_size_gb ?? null;
-                const maxShared = m.max_shared_gb ?? m.max_shared_gb ?? null;
-                const maxGpu = m.max_gpu_number ?? m.gpu_number ?? null;
-                if (maxCpu != null && cpu > Number(maxCpu)) errs.CPU_NUMBER = `超出最大 CPU (${maxCpu})`;
-                if (maxMem != null && mem > Number(maxMem)) errs.MEMORY = `超出最大内存 (${maxMem} GB)`;
-                // shared should also not exceed requested memory
-                if (maxShared != null && shared > Number(maxShared)) errs.SHARED_MEM = `超出最大共享空间 (${maxShared} GB)`;
-                if (shared > mem) errs.SHARED_MEM = `共享空间不得大于内存 (${mem} GB)`;
-                if ((addContainerMachineType || '').toUpperCase() === 'GPU' && maxGpu != null && gnum > Number(maxGpu)) errs.gpu_number = `超出最大 GPU (${maxGpu})`;
-                setAddContainerFieldErrors(errs);
-              } catch (e) {
-                setAddContainerUnsafe(false);
-                setAddContainerFieldErrors({});
-              }
-            }}
-          >
-            <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name="NAME" label="容器名" rules={[{ required: true, message: '请输入容器名' }, { max: 115, message: '容器名长度不得超过115个字符' }, { validator: (_, value) => {
-                      try { const mod = require('../utils/validateCmdArg'); return mod.isValidName(value) ? Promise.resolve() : Promise.reject(new Error('容器名仅允许英文、数字和下划线')); } catch (e) { return Promise.resolve(); }
-                    } }]}>
-                      <Input placeholder="容器名" maxLength={115} />
-                    </Form.Item>
-                  </Col>
-              <Col span={12}>
-                <Form.Item name="image" label="镜像地址" rules={[{ required: true, message: '请输入镜像地址' }]}>
-                  <Select placeholder="选择镜像" defaultValue="ubuntu:24.04" style={{ width: '100%' }}>
-                    <Select.Option value="ubuntu:24.04">ubuntu:24.04</Select.Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Typography.Text type="secondary">请注意：下面的资源参数用于校验并限制容器申请，请不要超过宿主机的算力/内存/共享空间上限。</Typography.Text>
-            <br />
-            <br />
-
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="CPU_NUMBER"
-                  label={<span>CPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (闄?{addContainerMachine?.max_cpu_core_number ?? addContainerMachine?.cpu_core_number ?? '-'})</span></span>}
-                  validateStatus={addContainerFieldErrors.CPU_NUMBER ? 'error' : undefined}
-                  help={addContainerFieldErrors.CPU_NUMBER || null}
-                >
-                  <InputNumber min={1} className="mm-width-100" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="MEMORY"
-                  label={<span>内存 (GB) <span style={{ color: '#888', fontSize: 12 }}> (闄?{addContainerMachine?.max_memory_gb ?? addContainerMachine?.memory_size_gb ?? '-'})</span></span>}
-                  validateStatus={addContainerFieldErrors.MEMORY ? 'error' : undefined}
-                  help={addContainerFieldErrors.MEMORY || null}
-                >
-                  <InputNumber min={1} className="mm-width-100" />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            {/* GPU count: shown only when the selected machine is a GPU machine */}
-            {addContainerMachineType === 'GPU' && (
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item
-                    name="gpu_number"
-                    label={<span>请求 GPU 数量 <span style={{ color: '#888', fontSize: 12 }}> (闄?{addContainerMachine?.max_gpu_number ?? addContainerMachine?.gpu_number ?? '-'})</span></span>}
-                    validateStatus={addContainerFieldErrors.gpu_number ? 'error' : undefined}
-                    help={addContainerFieldErrors.gpu_number || null}
-                  >
-                    <InputNumber min={0} className="mm-width-100" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    name="SHARED_MEM"
-                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (闄?{addContainerMachine?.max_shared_gb ?? addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
-                    validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
-                    help={addContainerFieldErrors.SHARED_MEM || null}
-                  >
-                    <InputNumber min={0} className="mm-width-100" />
-                  </Form.Item>
-                </Col>
-              </Row>
-            )}
-
-            {addContainerMachineType !== 'GPU' && (
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item
-                    name="SHARED_MEM"
-                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (闄?{addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
-                    validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
-                    help={addContainerFieldErrors.SHARED_MEM || null}
-                  >
-                    <InputNumber min={0} className="mm-width-100" />
-                  </Form.Item>
-                </Col>
-                <Col span={12} />
-              </Row>
-            )}
-
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="owner_user_id" label="Root 用户" rules={[{ required: true, message: '请选择Root用户' }]}>
-                  <Select
-                    placeholder="选择Root用户"
-                    loading={usersLoading || addContainerRootUsersLoading}
-                    showSearch
-                    optionFilterProp="label"
-                    notFoundContent={addContainerRootUsersLoading ? '加载中' : '暂无已授权用户'}
-                    filterOption={(input, option) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())}
-                  >
-                    {(usersList || [])
-                      .filter(u => addContainerAllowedRootUserIds.includes(Number(u.id)))
-                      .map(u => (
-                        <Option key={u.id} value={Number(u.id)} label={`${u.name || u.username} ${u.username}`}>
-                          <span>{u.name} (@{u.username})</span>
-                        </Option>
-                      ))}
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="machine_id" label="宿主机ID">
-                  <Input disabled value={addContainerMachineId || ''} />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Row gutter={16}>
-              <Col span={24}>
-                <Form.Item name="public_key" label="公钥（可选）" rules={[{ max: 495, message: '公钥长度不得超过495个字符' }]}>
-                  <Input.TextArea rows={2} placeholder="可选，用于容器访问的公钥" maxLength={495} />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
-        }
-      />
 
       {/* 编辑用户弹窗 */}
       <EditUserModal
