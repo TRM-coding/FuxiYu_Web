@@ -66,7 +66,6 @@ vi.mock('../api/image_api', () => ({
       base_image: 'ubuntu:22.04',
       status: 'ready',
       dockerfile_body: 'RUN echo torch',
-      pre_build: '',
     },
   }),
 }));

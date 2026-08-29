@@ -26,7 +26,6 @@ const normalizeImage = (image = {}) => {
     status: image.status || 'draft',
     base_image: base,
     dockerfile_body: image.dockerfile_body ?? '',
-    pre_build: image.pre_build ?? '',
     updated_at: image.updated_at || null,
     icon: /(cuda|gpu|pytorch|tensorflow)/.test(haystack) ? 'gpu' : 'base',
   };

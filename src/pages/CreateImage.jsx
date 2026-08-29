@@ -28,7 +28,6 @@ const EMPTY_FORM = {
   status: 'draft',
   base_image: 'ubuntu:22.04',
   dockerfile_body: '',
-  pre_build: '',
   created_by_user_id: null,
 };
 
@@ -58,7 +57,6 @@ const normalizeImage = (image = {}) => ({
   status: image.status || 'draft',
   base_image: image.base_image || 'ubuntu:22.04',
   dockerfile_body: image.dockerfile_body ?? '',
-  pre_build: image.pre_build ?? '',
   created_by_user_id: image.created_by_user_id ?? null,
   updated_at: image.updated_at || null,
 });
@@ -183,7 +181,6 @@ export default function CreateImage() {
           status: form.status,
           base_image: baseImage,
           dockerfile_body: dockerfileBody,
-          pre_build: form.pre_build || '',
         });
         message.success('模板已保存');
         await selectImage(form.image_id);
@@ -193,7 +190,6 @@ export default function CreateImage() {
           description: form.description || '',
           base_image: baseImage,
           dockerfile_body: dockerfileBody,
-          pre_build: form.pre_build || null,
         });
         message.success('模板已创建');
         await loadImages(keyword);
@@ -233,7 +229,7 @@ export default function CreateImage() {
   const removeImage = () => {
     Modal.confirm({
       title: '删除环境模板',
-      content: `确认删除「${form.name || form.image_id}」？此操作会同时移除 Dockerfile 与 pre_build.sh 文件。`,
+      content: `确认删除「${form.name || form.image_id}」？此操作会移除该环境模板。`,
       okText: '删除',
       okType: 'danger',
       cancelText: '取消',
@@ -247,7 +243,7 @@ export default function CreateImage() {
         <div className="ci-panel-head">
           <div>
             <Typography.Title level={4} className="ci-title">环境模板</Typography.Title>
-            <Typography.Text type="secondary" className="ci-subtitle">Dockerfile 与构建前脚本</Typography.Text>
+            <Typography.Text type="secondary" className="ci-subtitle">Dockerfile 环境定义</Typography.Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={startCreate} disabled={!canEdit}>
             新建
@@ -385,21 +381,6 @@ export default function CreateImage() {
                   placeholder="WORKDIR /workspace&#10;RUN pip install -r requirements.txt"
                 />
               </div>
-            </div>
-
-            <div className="ci-code-card">
-              <div className="ci-code-head">
-                <span><FileTextOutlined /> pre_build.sh</span>
-                <Tag>可选</Tag>
-              </div>
-              <Input.TextArea
-                className="ci-code-area"
-                value={form.pre_build}
-                onChange={e => updateField('pre_build', e.target.value)}
-                disabled={!canEdit}
-                spellCheck={false}
-                placeholder="# docker build 前的准备脚本"
-              />
             </div>
           </div>
 
