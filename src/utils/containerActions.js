@@ -26,7 +26,7 @@ export function getRoleActionSet(role) {
 }
 
 export const CONTAINER_ING_STATES = new Set([
-  'creating', 'starting', 'stopping', 'restarting', 'pausing', 'unpausing',
+  'building', 'creating', 'starting', 'stopping', 'restarting', 'pausing', 'unpausing',
 ]);
 
 export const CONTAINER_TERMINAL_STATES = new Set([
@@ -34,13 +34,28 @@ export const CONTAINER_TERMINAL_STATES = new Set([
 ]);
 
 const DEFAULT_TRANSITION_TIMEOUT_MS = 60000;
+const LONG_CREATE_TRANSITION_TIMEOUT_MS = 1800000;
 
 const DEFAULT_TARGET_STATUS = {
+  building: 'creating',
+  creating: 'online',
   starting: 'online',
   stopping: 'offline',
   restarting: 'online',
   pausing: 'paused',
   unpausing: 'online',
+};
+
+const DEFAULT_TIMEOUT_STATUS = {
+  building: LONG_CREATE_TRANSITION_TIMEOUT_MS,
+  creating: LONG_CREATE_TRANSITION_TIMEOUT_MS,
+};
+
+const FOLLOW_UP_TRANSITION = {
+  building: {
+    on: 'creating',
+    target: 'online',
+  },
 };
 
 export function normalizeContainerStatus(status) {
@@ -54,7 +69,7 @@ export function createContainerStatusTransition(fromStatus, transitionStatus, op
     transition,
     target: normalizeContainerStatus(options.targetStatus || DEFAULT_TARGET_STATUS[transition] || ''),
     startedAt: options.startedAt || Date.now(),
-    timeoutMs: options.timeoutMs || DEFAULT_TRANSITION_TIMEOUT_MS,
+    timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_STATUS[transition] || DEFAULT_TRANSITION_TIMEOUT_MS,
     reachedTransition: false,
   };
 }
@@ -84,6 +99,18 @@ export function deriveContainerDisplayStatus(rawStatus, pendingTransition, now =
       return {
         status: incoming,
         pendingTransition: { ...pendingTransition, reachedTransition: true },
+        cleared: false,
+      };
+    }
+    const followUp = FOLLOW_UP_TRANSITION[transition];
+    if (followUp && incoming === target && incoming === followUp.on) {
+      return {
+        status: incoming,
+        pendingTransition: createContainerStatusTransition(incoming, incoming, {
+          targetStatus: followUp.target,
+          startedAt: now,
+          timeoutMs: pendingTransition.timeoutMs,
+        }),
         cleared: false,
       };
     }

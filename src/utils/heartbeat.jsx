@@ -119,7 +119,7 @@ export function startMachineStatusHeartbeat({ machine_id, onTerminal, terminalSt
 // ing 态在 DB 侧本身有界（Node pending TTL 兜底，create 最长 1800s），
 // 客户端给 60 分钟安全上限防止异常服务器下无限轮询。
 export const ING_CONTAINER_STATES = new Set([
-  'creating', 'starting', 'stopping', 'restarting', 'pausing', 'unpausing',
+  'building', 'creating', 'starting', 'stopping', 'restarting', 'pausing', 'unpausing',
 ]);
 
 export function watchIngContainerUntilTerminal({ machine_id, container_id, container_name, onTerminal, timeout = 3600000, interval = 3000 }) {

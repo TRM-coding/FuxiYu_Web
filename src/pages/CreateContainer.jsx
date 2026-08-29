@@ -7,19 +7,29 @@ import { handleAuthError } from '../utils/authHelpers';
 import { listAllMachineBrefInformation, getDetailInformation, listMachinePermissions } from '../api/machine_api';
 import { getUserPermissions, listAllUserBrefInformation } from '../api/user_api';
 import { createContainer } from '../api/container_api';
+import { listImageBrefInformation, getImageDetailInformation } from '../api/image_api';
 import './CreateContainer.css';
 
-// 镜像模板：后端镜像域基础设施（构建/模板管理）落地前，先以静态配置提供；
-// 数据结构与后续镜像 API 对齐（name/ref/tag），接入时替换数据源即可。
-const IMAGE_TEMPLATES = [
-  { name: 'PyTorch 2.x · CUDA 12.1', ref: 'pytorch:2.1-cuda12.1', tag: 'GPU 训练镜像', icon: 'gpu' },
-  { name: 'TensorFlow 2.16 · CUDA 12', ref: 'tensorflow:2.16-gpu', tag: 'GPU 训练镜像', icon: 'gpu' },
-  { name: 'Ubuntu 22.04 · 基础', ref: 'ubuntu:22.04', tag: '通用环境', icon: 'base' },
-];
-
+// 环境模板由后端 image list/detail 提供；创建容器时只提交 image_id。
 const IMAGE_ICONS = {
   gpu: <ThunderboltOutlined />,
   base: <CodeOutlined />,
+};
+
+const normalizeImage = (image = {}) => {
+  const base = image.base_image || '';
+  const haystack = String((image.name || "") + " " + base + " " + (image.description || "")).toLowerCase();
+  return {
+    image_id: image.image_id ?? image.id ?? null,
+    name: image.name || ("环境 " + (image.image_id ?? "")),
+    description: image.description || '',
+    status: image.status || 'draft',
+    base_image: base,
+    dockerfile_body: image.dockerfile_body ?? '',
+    pre_build: image.pre_build ?? '',
+    updated_at: image.updated_at || null,
+    icon: /(cuda|gpu|pytorch|tensorflow)/.test(haystack) ? 'gpu' : 'base',
+  };
 };
 
 // 配额行：滑条为主、读数加粗、窄输入框为辅（与「编辑机器」弹窗同一套交互语言）
@@ -89,6 +99,8 @@ const CreateContainer = () => {
 
   // 环境(镜像)选择
   const [imageKeyword, setImageKeyword] = useState('');
+  const [images, setImages] = useState([]);
+  const [imagesLoading, setImagesLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
 
   // 机器选择
@@ -146,6 +158,61 @@ const CreateContainer = () => {
     };
     checkAuth();
   }, [navigate]);
+
+  const fetchImages = async (keyword = '') => {
+    setImagesLoading(true);
+    try {
+      const res = await listImageBrefInformation({
+        page_number: 1,
+        page_size: 100,
+        image_search: keyword,
+      });
+      const items = Array.isArray(res?.images) ? res.images.map(normalizeImage) : [];
+      const readyImages = items.filter(item => (item.status || '').toLowerCase() === 'ready');
+      setImages(readyImages);
+      setSelectedImage(prev => {
+        if (!prev) return null;
+        return readyImages.some(item => String(item.image_id) === String(prev.image_id)) ? prev : null;
+      });
+    } catch (err) {
+      setImages([]);
+      setSelectedImage(null);
+      await showErrorModal({
+        message: err?.body || err || '加载环境模板失败',
+        status: err?.status || err?.response?.status,
+        route: err?.route || err?.response?.url,
+      });
+    } finally {
+      setImagesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchImages(imageKeyword);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [imageKeyword]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectImage = async (image) => {
+    const imageId = image?.image_id;
+    if (!imageId) return;
+    if (String(selectedImage?.image_id) === String(imageId)) {
+      setSelectedImage(null);
+      return;
+    }
+    setSelectedImage(image);
+    try {
+      const res = await getImageDetailInformation(imageId);
+      if (res?.image) setSelectedImage(normalizeImage(res.image));
+    } catch (err) {
+      await showErrorModal({
+        message: err?.body || err || '加载环境模板详情失败',
+        status: err?.status || err?.response?.status,
+        route: err?.route || err?.response?.url,
+      });
+    }
+  };
 
   const fetchMachines = async () => {
     setMachinesLoading(true);
@@ -208,15 +275,20 @@ const CreateContainer = () => {
   // 仅运行中的机器可创建（维护/离线机器不可选）
   const onlineMachines = machines.filter(m => (m.machine_status || '').toLowerCase() === 'online');
 
-  const filteredImages = IMAGE_TEMPLATES.filter(img =>
-    !imageKeyword
-    || img.name.toLowerCase().includes(imageKeyword.toLowerCase())
-    || img.ref.toLowerCase().includes(imageKeyword.toLowerCase())
-  );
-
   // 选择机器：配额初始化/收敛进新机器的上限；CPU 机器 GPU 恒为 0。
   // 代建者：拉取该机器已授权用户作为 ROOT 用户候选，默认当前用户。
   const handleSelectMachine = async (m) => {
+    const mid = m.machine_id ?? m.id;
+    if (selectedMachine && String(selectedMachine.machine_id ?? selectedMachine.id) === String(mid)) {
+      setSelectedMachine(null);
+      setGpuCount(0);
+      setCpuCount(1);
+      setMemoryGb(1);
+      setSharedGb(0);
+      setRootUsers([]);
+      setOwnerUserId(null);
+      return;
+    }
     setSelectedMachine(m);
     const isGpu = (m.machine_type || '').toUpperCase() === 'GPU';
     setGpuCount(!isGpu || (m.max_gpu_number ?? 0) <= 0 ? 0 : clampNum(gpuCount ?? 1, m.max_gpu_number, 0));
@@ -226,7 +298,6 @@ const CreateContainer = () => {
     if (!hasManage) return;
     setRootUsersLoading(true);
     try {
-      const mid = m.machine_id ?? m.id;
       const permRes = await listMachinePermissions(mid);
       const ids = Array.isArray(permRes?.user_ids)
         ? permRes.user_ids.map(v => Number(v)).filter(Boolean)
@@ -272,12 +343,13 @@ const CreateContainer = () => {
       user_name: currentUserName || '',
       user_id: currentUserId || null,
       machine_id: machineId,
+      image_id: selectedImage.image_id,
       container: {
         GPU_LIST: gpuList,
         CPU_NUMBER: cpuCount || 1,
         MEMORY: memoryGb || 1,
         NAME: name || `container-${Date.now()}`,
-        image: selectedImage.ref,
+        image: selectedImage.base_image || selectedImage.name || '',
         shared_memory: sharedGb || 0,
       },
       public_key: publicKey || '',
@@ -323,22 +395,24 @@ const CreateContainer = () => {
           onChange={e => setImageKeyword(e.target.value)}
         />
         <div className="cc-image-list">
-          {filteredImages.length === 0 ? (
+          {imagesLoading ? (
+            <div className="cc-images-loading"><Spin /></div>
+          ) : images.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无匹配镜像" />
-          ) : filteredImages.map(img => {
-            const isSel = selectedImage?.ref === img.ref;
+          ) : images.map(img => {
+            const isSel = String(selectedImage?.image_id) === String(img.image_id);
             return (
               <button
-                key={img.ref}
+                key={img.image_id}
                 type="button"
                 className={`cc-image-card${isSel ? ' is-selected' : ''}`}
-                onClick={() => setSelectedImage(img)}
+                onClick={() => selectImage(img)}
               >
                 <span className="cc-image-icon">{IMAGE_ICONS[img.icon] || <CodeOutlined />}</span>
                 <span className="cc-image-body">
                   <span className="cc-image-name">{img.name}</span>
-                  <span className="cc-image-ref">{img.ref}</span>
-                  <span className="cc-image-tag">{img.tag}</span>
+                  <span className="cc-image-ref">{img.base_image || "未记录基础镜像"}</span>
+                  <span className="cc-image-tag">{img.description || img.status}</span>
                 </span>
                 {isSel && <CheckCircleFilled className="cc-card-check" />}
               </button>
@@ -488,7 +562,7 @@ const CreateContainer = () => {
           {/* 已选配置 + 提交 */}
           <div className="cc-submit-row">
             <div className="cc-summary">
-              <span className="cc-summary-item">环境 <b className="cc-mono">{selectedImage?.ref || '—'}</b></span>
+              <span className="cc-summary-item">环境 <b className="cc-mono">{selectedImage?.name || selectedImage?.base_image || '—'}</b></span>
               <span className="cc-summary-item">机器 <b className="cc-mono">{selectedMachine?.machine_name || '—'}</b></span>
               <span className="cc-summary-item">配额 <b className="cc-mono">{gpuCount || 0} GPU / {cpuCount || 1} 核 / {memoryGb || 1}G</b></span>
             </div>

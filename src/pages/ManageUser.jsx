@@ -418,7 +418,9 @@ const ManageUser = () => {
         ? 'volcano'
         : normalized === 'paused'
           ? 'volcano'
-          : normalized === 'creating'
+          : normalized === 'building'
+            ? 'geekblue'
+            : normalized === 'creating'
             ? 'blue'
             : normalized === 'starting'
               ? 'cyan'
@@ -433,6 +435,7 @@ const ManageUser = () => {
       online: '运行中',
       offline: '已停止',
       paused: '磁盘已冻结',
+      building: '构建中',
       creating: '创建中',
       starting: '启动中',
       restarting: '重启中',

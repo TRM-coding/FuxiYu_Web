@@ -177,7 +177,7 @@
 
 .ci-code-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
   gap: 12px;
 }
 
@@ -200,15 +200,61 @@
   font-weight: 600;
 }
 
+.ci-code-section {
+  border-bottom: 1px solid #e7edf5;
+}
+
+.ci-code-section:last-child {
+  border-bottom: 0;
+}
+
+.ci-code-from-row {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+}
+
+.ci-code-from-label {
+  flex: 0 0 auto;
+  padding: 0 0 0 12px;
+  color: #475467;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 38px;
+}
+
 .ci-code-area {
   border: 0 !important;
   border-radius: 0 !important;
-  min-height: 410px !important;
   resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 1.55;
   background: #ffffff;
+}
+
+.ci-code-area-from {
+  flex: 1 1 auto;
+  min-height: 38px !important;
+  resize: none;
+  padding-top: 8px !important;
+  padding-bottom: 6px !important;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ci-code-area-platform {
+  min-height: 112px !important;
+  resize: none;
+}
+
+.ci-code-area-body {
+  min-height: 260px !important;
+}
+
+.ci-code-card > .ci-code-area {
+  min-height: 490px !important;
 }
 
 .ci-review-placeholder {

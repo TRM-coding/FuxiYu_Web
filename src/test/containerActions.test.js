@@ -22,8 +22,8 @@ describe('getContainerActionState', () => {
     expect(s.canRestart).toBe(false);
   });
 
-  it('过渡态（creating/starting/stopping）全部不可操作', () => {
-    for (const st of ['creating', 'starting', 'stopping', 'failed', 'paused']) {
+  it('过渡态（building/creating/starting/stopping）全部不可操作', () => {
+    for (const st of ['building', 'creating', 'starting', 'stopping', 'failed', 'paused']) {
       const s = getContainerActionState(st);
       expect(s.canStart).toBe(false);
       expect(s.canStop).toBe(false);
@@ -115,6 +115,32 @@ describe('deriveContainerDisplayStatus', () => {
 
     expect(result.status).toBe('starting');
     expect(result.pendingTransition).toEqual(pending);
+  });
+
+  it('continues building into creating before accepting online', () => {
+    const pending = createContainerStatusTransition('', 'building', {
+      targetStatus: 'creating',
+      startedAt: 1000,
+      timeoutMs: 60000,
+    });
+
+    const stale = deriveContainerDisplayStatus('', pending, 2000);
+    const creating = deriveContainerDisplayStatus('creating', stale.pendingTransition, 3000);
+    const online = deriveContainerDisplayStatus('online', creating.pendingTransition, 4000);
+
+    expect(stale.status).toBe('building');
+    expect(stale.pendingTransition).toEqual(pending);
+    expect(creating.status).toBe('creating');
+    expect(creating.pendingTransition).toMatchObject({
+      from: 'creating',
+      transition: 'creating',
+      target: 'online',
+      startedAt: 3000,
+      timeoutMs: 60000,
+    });
+    expect(online.status).toBe('online');
+    expect(online.pendingTransition).toBe(null);
+    expect(online.cleared).toBe(true);
   });
 
   it('clears sticky state on failure or timeout', () => {

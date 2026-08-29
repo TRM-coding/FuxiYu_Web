@@ -857,6 +857,7 @@ const Home = () => {
     const statusLabelMap = {
       online: '运行中',
       offline: '已停止',
+      building: '构建中',
       creating: '创建中',
       starting: '启动中',
       restarting: '重启中',
@@ -871,9 +872,11 @@ const Home = () => {
       ? 'green'
       : status === 'offline'
         ? 'volcano'
-        : status === 'paused'
-          ? 'volcano'
-          : status === 'creating'
+          : status === 'paused'
+            ? 'volcano'
+            : status === 'building'
+              ? 'geekblue'
+              : status === 'creating'
             ? 'blue'
             : status === 'starting'
               ? 'cyan'

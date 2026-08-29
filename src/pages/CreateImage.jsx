@@ -26,10 +26,18 @@ const EMPTY_FORM = {
   name: '',
   description: '',
   status: 'draft',
-  dockerfile: 'FROM ubuntu:22.04\n',
+  base_image: 'ubuntu:22.04',
+  dockerfile_body: '',
   pre_build: '',
   created_by_user_id: null,
 };
+
+const PLATFORM_INJECTION_PREVIEW = [
+  '# 平台自动注入片段，实际内容由 ctrl 配置文件维护',
+  'USER root',
+  'RUN ... install openssh-server / useradd tools ...',
+  'EXPOSE 22',
+].join('\n');
 
 const statusText = {
   draft: '草稿',
@@ -48,7 +56,8 @@ const normalizeImage = (image = {}) => ({
   name: image.name || '',
   description: image.description || '',
   status: image.status || 'draft',
-  dockerfile: image.dockerfile ?? '',
+  base_image: image.base_image || 'ubuntu:22.04',
+  dockerfile_body: image.dockerfile_body ?? '',
   pre_build: image.pre_build ?? '',
   created_by_user_id: image.created_by_user_id ?? null,
   updated_at: image.updated_at || null,
@@ -154,13 +163,14 @@ export default function CreateImage() {
 
   const saveImage = async () => {
     const name = form.name.trim();
-    const dockerfile = form.dockerfile.trimEnd();
+    const baseImage = form.base_image.trim();
+    const dockerfileBody = form.dockerfile_body.trimEnd();
     if (!name) {
       message.warning('请填写模板名称');
       return;
     }
-    if (!dockerfile.trim()) {
-      message.warning('Dockerfile 不能为空');
+    if (!baseImage) {
+      message.warning('请填写基础镜像');
       return;
     }
     setSaving(true);
@@ -171,7 +181,8 @@ export default function CreateImage() {
           name,
           description: form.description || '',
           status: form.status,
-          dockerfile,
+          base_image: baseImage,
+          dockerfile_body: dockerfileBody,
           pre_build: form.pre_build || '',
         });
         message.success('模板已保存');
@@ -180,7 +191,8 @@ export default function CreateImage() {
         const result = await createImage({
           name,
           description: form.description || '',
-          dockerfile,
+          base_image: baseImage,
+          dockerfile_body: dockerfileBody,
           pre_build: form.pre_build || null,
         });
         message.success('模板已创建');
@@ -342,15 +354,37 @@ export default function CreateImage() {
             <div className="ci-code-card">
               <div className="ci-code-head">
                 <span><FileTextOutlined /> Dockerfile</span>
-                <Tag color="blue">必填</Tag>
               </div>
-              <Input.TextArea
-                className="ci-code-area"
-                value={form.dockerfile}
-                onChange={e => updateField('dockerfile', e.target.value)}
-                disabled={!canEdit}
-                spellCheck={false}
-              />
+              <div className="ci-code-section ci-code-from-row">
+                <span className="ci-code-from-label">FROM</span>
+                <Input.TextArea
+                  className="ci-code-area ci-code-area-from"
+                  value={form.base_image}
+                  onChange={e => updateField('base_image', e.target.value)}
+                  disabled={!canEdit}
+                  spellCheck={false}
+                  autoSize={{ minRows: 1, maxRows: 2 }}
+                  placeholder="ubuntu:22.04"
+                />
+              </div>
+              <div className="ci-code-section">
+                <Input.TextArea
+                  className="ci-code-area ci-code-area-platform"
+                  value={PLATFORM_INJECTION_PREVIEW}
+                  disabled
+                  spellCheck={false}
+                />
+              </div>
+              <div className="ci-code-section">
+                <Input.TextArea
+                  className="ci-code-area ci-code-area-body"
+                  value={form.dockerfile_body}
+                  onChange={e => updateField('dockerfile_body', e.target.value)}
+                  disabled={!canEdit}
+                  spellCheck={false}
+                  placeholder="WORKDIR /workspace&#10;RUN pip install -r requirements.txt"
+                />
+              </div>
             </div>
 
             <div className="ci-code-card">

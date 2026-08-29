@@ -46,13 +46,39 @@ vi.mock('../api/container_api', () => ({
   createContainer: vi.fn().mockResolvedValue({ success: 1 }),
 }));
 
+vi.mock('../api/image_api', () => ({
+  listImageBrefInformation: vi.fn().mockResolvedValue({
+    images: [
+      {
+        image_id: 7,
+        name: 'PyTorch 2.x + CUDA 12.1',
+        description: 'GPU 训练环境',
+        base_image: 'ubuntu:22.04',
+        status: 'ready',
+      },
+    ],
+  }),
+  getImageDetailInformation: vi.fn().mockResolvedValue({
+    image: {
+      image_id: 7,
+      name: 'PyTorch 2.x + CUDA 12.1',
+      description: 'GPU 训练环境',
+      base_image: 'ubuntu:22.04',
+      status: 'ready',
+      dockerfile_body: 'RUN echo torch',
+      pre_build: '',
+    },
+  }),
+}));
+
 import { getUserPermissions } from '../api/user_api';
 import { createContainer } from '../api/container_api';
 import { listMachinePermissions } from '../api/machine_api';
+import { listImageBrefInformation, getImageDetailInformation } from '../api/image_api';
 import CreateContainer from '../pages/CreateContainer';
 
 const selectImage = async () => {
-  await userEvent.click(screen.getByRole('button', { name: /PyTorch/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /PyTorch/ }));
 };
 
 const selectMachine = async () => {
@@ -66,6 +92,8 @@ describe('CreateContainer 代建门禁（container:manage 分类显示）', () =
     getUserPermissions.mockReset();
     createContainer.mockClear();
     listMachinePermissions.mockClear();
+    listImageBrefInformation.mockClear();
+    getImageDetailInformation.mockClear();
   });
 
   it('普通用户（无 container:manage）不显示 ROOT 用户选择器', async () => {
@@ -88,8 +116,10 @@ describe('CreateContainer 代建门禁（container:manage 分类显示）', () =
     await userEvent.click(screen.getByRole('button', { name: '创建容器' }));
 
     await waitFor(() => expect(createContainer).toHaveBeenCalled());
+    expect(getImageDetailInformation).toHaveBeenCalledWith(7);
     const payload = createContainer.mock.calls[0][0];
     expect(payload.owner_user_id).toBeUndefined();
+    expect(payload.image_id).toBe(7);
   });
 
   it('代建者显示 ROOT 用户选择器；未选机器时禁用，选机器后默认当前用户', async () => {
