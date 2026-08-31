@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { listAllMachineBrefInformation, getDetailInformation, registerMachine, removeMachine, updateMachine, setMachineMaintenance, addMachinePermission, listMachinePermissions } from '../api/machine_api';
+import { listAllMachineBrefInformation, getDetailInformation, getMachineStatus, registerMachine, removeMachine, updateMachine, setMachineMaintenance, addMachinePermission, listMachinePermissions } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
 import { ReloadOutlined, UserOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Slider, Checkbox } from 'antd';
@@ -19,7 +19,7 @@ import { createContainerStatusTransition, deriveContainerDisplayStatus } from '.
 const { Option } = Select;
 
 import { startContainerStatusHeartbeat, startMachineStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
-import { parseSshTimeToDate, formatDuration } from '../utils/timeFormat';
+import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
 
 
 import './ManageMachine.css';
@@ -53,42 +53,6 @@ const ROLE_CONFIG = {
     icon: <UserAddOutlined />,
     description: '可使用容器，但操作权限有限'
   }
-};
-
-const SSH_CLEANUP_WINDOW_DAYS = 7;
-
-const formatBeijingDateTime = (date) => date.toLocaleString('zh-CN', {
-  timeZone: 'Asia/Shanghai',
-  hour12: false,
-});
-
-const formatLastSshTime = (raw) => {
-  if (!raw) return '从未登录';
-  const d = parseSshTimeToDate(raw);
-  if (!d) return String(raw);
-  return formatBeijingDateTime(d);
-};
-
-const formatCleanupCountdown = (raw, record = null) => {
-  if (record?.is_long_term === true) return '长期容器';
-  if (!raw && (!record || record.cleanup_status === 'unknown' || record.seconds_until_cleanup == null)) {
-    return '从未登录';
-  }
-  if (record && typeof record === 'object') {
-    const status = record.cleanup_status;
-    const seconds = Number(record.seconds_until_cleanup);
-    if (status === 'due') return '可清理';
-    if (Number.isFinite(seconds) && seconds >= 0) {
-      return formatDuration(seconds);
-    }
-  }
-
-  const d = parseSshTimeToDate(raw);
-  if (!d) return '从未登录';
-  const expireAt = d.getTime() + SSH_CLEANUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-  const diff = expireAt - Date.now();
-  if (diff <= 0) return '可清理';
-  return formatDuration(Math.floor(diff / 1000));
 };
 
 const ManageMachine = () => {
@@ -393,6 +357,7 @@ const ManageMachine = () => {
         gpu_number: null,
         gpu_type: null,
         disk_size_gb: null,
+        runtime_snapshot: null,
         machine_description: ''
       }));
 
@@ -415,7 +380,8 @@ const ManageMachine = () => {
                 max_cpu_core_number: detail.max_cpu_core_number ?? it.max_cpu_core_number,
                 machine_description: detail.machine_description ?? it.machine_description,
                 machine_type: (detail.machine_type ?? it.machine_type).toUpperCase(),
-                machine_status: (detail.machine_status ?? it.machine_status).toLowerCase()
+                machine_status: (detail.machine_status ?? it.machine_status).toLowerCase(),
+                runtime_snapshot: detail.runtime_snapshot ?? it.runtime_snapshot
               };
             } catch (err) {
               console.warn('detail fetch failed for', it.machine_id, err?.message);
@@ -444,6 +410,25 @@ const ManageMachine = () => {
       if (mounted) setMachines(list);
     })();
     return () => { mounted = false; };
+  }, []);
+
+  // 机器实时数据轮询（runtime_snapshot 常新，与详情页同频 5s；无快照跳过）
+  const machinesRef = useRef(machines);
+  machinesRef.current = machines;
+  useEffect(() => {
+    if (!machinesRef.current.length) return undefined;
+    let mounted = true;
+    const timer = setInterval(async () => {
+      const ids = machinesRef.current.map(m => Number(m.machine_id ?? m.key));
+      const results = await Promise.allSettled(ids.map(id => getMachineStatus(id)));
+      if (!mounted) return;
+      setMachines(prev => prev.map((m, idx) => {
+        const r = results[idx];
+        if (r.status !== 'fulfilled' || !r.value?.runtime_snapshot) return m;
+        return { ...m, runtime_snapshot: r.value.runtime_snapshot };
+      }));
+    }, 5000);
+    return () => { mounted = false; clearInterval(timer); };
   }, []);
 
   // 机器框搜索：防抖后走后端 machine_search 重新拉取
@@ -1223,24 +1208,18 @@ const ManageMachine = () => {
     }
   };
 
-  const formatLimitPair = (current, limit, unit = '') => {
-    const cur = current === null || current === undefined || current === '' ? '-' : current;
-    const max = limit === null || limit === undefined || limit === '' ? '-' : limit;
-    return `${cur}${unit} / ${max}${unit}`;
-  };
-
-  const renderResourceMeter = (label, current, limit, className = '') => {
-    const cur = Number(current || 0);
-    const max = Number(limit || 0);
-    const pct = max > 0 ? Math.min(Math.round((cur / max) * 100), 100) : 0;
+  // 机器实时数据 meter（runtime_snapshot 使用率）；无快照显示 '-'
+  const renderLiveMeter = (label, usagePercent, className = '') => {
+    const num = Number(usagePercent);
+    const pct = Number.isFinite(num) ? Math.min(Math.max(num, 0), 100) : null;
     return (
       <div className="mm-resource-meter">
         <div className="mm-resource-meter-head">
           <Typography.Text type="secondary">{label}</Typography.Text>
-          <Typography.Text>{formatLimitPair(current, limit)}</Typography.Text>
+          <Typography.Text>{pct != null ? `${Math.round(pct)}%` : '-'}</Typography.Text>
         </div>
         <div className="mm-resource-meter-track">
-          <div className={`mm-resource-meter-fill ${className}`} style={{ width: `${pct}%` }} />
+          <div className={`mm-resource-meter-fill ${className}`} style={{ width: pct != null ? `${pct}%` : '0%' }} />
         </div>
       </div>
     );
@@ -1288,6 +1267,7 @@ const ManageMachine = () => {
     const restartDisabled = status !== 'online';
     const stopDisabled = status !== 'online';
     const sshRefreshLoading = !!sshRefreshingMap[String(containerRecord?.key)];
+    const cleanupText = formatCleanupCountdown(containerRecord?.last_ssh_login_time, containerRecord);
 
     return (
       <article className="mm-container-card" key={containerRecord.key || containerRecord.container_id}>
@@ -1295,7 +1275,7 @@ const ManageMachine = () => {
           <button
             type="button"
             className="mm-card-title-button"
-            onClick={() => openContainerDetail(containerRecord)}
+            onClick={() => navigate(`/index/containers/${containerRecord.key || containerRecord.container_id}`)}
             title={containerRecord.container_name}
           >
             {containerRecord.container_name || '未命名容器'}
@@ -1304,7 +1284,8 @@ const ManageMachine = () => {
         </div>
         <div className="mm-container-card-meta">
           <CopyChip value={containerRecord.port || ''}>{containerRecord.port ? `:${containerRecord.port}` : '-'}</CopyChip>
-          <span>SSH {formatLastSshTime(containerRecord?.last_ssh_login_time)}</span>
+          <span title={formatLastSshTime(containerRecord?.last_ssh_login_time)}>上次SSH {formatLastSshTime(containerRecord?.last_ssh_login_time)}</span>
+          <span>清理倒计时 {cleanupText}</span>
         </div>
         {renderDiskUsage(containerRecord)}
         <div className="mm-container-card-actions">
@@ -1359,11 +1340,28 @@ const ManageMachine = () => {
             </CopyChip>
           </div>
           <div className="mm-machine-rail-meters">
-            {renderResourceMeter('CPU', record.cpu_core_number, record.max_cpu_core_number, 'cpu')}
-            {renderResourceMeter('内存', record.memory_size_gb, record.max_memory_gb, 'memory')}
-            {renderResourceMeter('GPU', record.gpu_number, record.max_gpu_number, 'gpu')}
+            {(() => {
+              // 实时数据（runtime_snapshot 使用率）；GPU 取多卡平均利用率
+              const snap = record?.runtime_snapshot || {};
+              const cpuLive = Number(snap?.cpu?.usage_percent);
+              const memLive = Number(snap?.memory?.usage_percent);
+              const gpuArr = Array.isArray(snap?.gpu) ? snap.gpu : [];
+              const gpuLive = gpuArr.length
+                ? gpuArr.reduce((sum, g) => sum + Number(g?.utilization_gpu_percent || 0), 0) / gpuArr.length
+                : null;
+              return (
+                <>
+                  {renderLiveMeter('CPU', Number.isFinite(cpuLive) ? cpuLive : null, 'cpu')}
+                  {renderLiveMeter('内存', Number.isFinite(memLive) ? memLive : null, 'memory')}
+                  {renderLiveMeter('GPU', gpuLive, 'gpu')}
+                </>
+              );
+            })()}
           </div>
           <div className="mm-machine-rail-actions">
+            <Button size="small" icon={<DesktopOutlined />} onClick={(e) => { e.stopPropagation(); navigate(`/index/machines/${record.machine_id ?? record.key}`); }}>
+              详情
+            </Button>
             <Button size="small" icon={<SafetyCertificateOutlined />} onClick={(e) => { e.stopPropagation(); openPermissionModal(record); }}>
               权限
             </Button>

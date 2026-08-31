@@ -14,7 +14,7 @@ import timezone from 'dayjs/plugin/timezone';
 import TableComponent from '../components/TableComponent';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
-import { listAllUserBrefInformation } from '../api/user_api';
+import { listAllUserBrefInformation, getUserDetailInformation } from '../api/user_api';
 import { usePermission } from '../contexts/PermissionContext';
 import { listOperationLogs, getOperationLogStats } from '../api/operation_log_api';
 import { getDetailInformation as getMachineDetailInformation } from '../api/machine_api';
@@ -437,6 +437,11 @@ export default function AdminLogs() {
         }
         setDetailModal({ type: 'machine', data });
       } else if (tt === 'container') {
+        // 上一代容器日志（后端校验 target_name=None）不做导航
+        if (!record.target_name) {
+          message.info('该日志属于已删除的上一代容器，仅展示 ID');
+          return;
+        }
         const res = await getContainerDetailInformation(record.target_id);
         const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
         if (!detail || !detail.container_name) {
@@ -781,6 +786,11 @@ export default function AdminLogs() {
               let label = r.target_name || `#${r.target_id}`;
               if (r.target_type === 'container' && r.root_owner) {
                 label = `${label} · 超管 ${r.root_owner}`;
+              }
+              // 容器且无名称 = 上一代容器日志（后端身份校验后 target_name=None）：
+              // 只显示 #id，不渲染超链接、不做错误导航。
+              if (r.target_type === 'container' && !r.target_name) {
+                return <span>{prefix}{label}</span>;
               }
               return <a onClick={() => openTargetDetail(r)}>{prefix}{label}</a>;
             }}

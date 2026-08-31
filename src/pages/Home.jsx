@@ -7,7 +7,7 @@ import { handleAuthError } from '../utils/authHelpers';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
-import { parseSshTimeToDate, formatDuration } from '../utils/timeFormat';
+import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
 import { CONTAINER_TERMINAL_STATES, createContainerStatusTransition, deriveContainerDisplayStatus, getContainerActionState, getRoleActionSet } from '../utils/containerActions';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
@@ -29,7 +29,6 @@ const Desc = props => (
 
 // will be populated from backend
 const initialContainers = [];
-const SSH_CLEANUP_WINDOW_DAYS = 7;
 
 const Home = () => {
   const [value3, setValue3] = useState('Any');
@@ -124,51 +123,6 @@ const Home = () => {
   };
 
 
-  const formatBeijingDateTime = (date) => date.toLocaleString('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    hour12: false,
-  });
-
-
-  const formatLastSshTime = (raw) => {
-    if (!raw) return '从未登录';
-    const d = parseSshTimeToDate(raw);
-    if (!d) return String(raw);
-    return formatBeijingDateTime(d);
-  };
-
-  const formatCleanupCountdown = (raw, record = null) => {
-    // 长期容器被冻结 → 显示升级倒计时
-    if (record?.is_long_term === true && record?.freeze_days_frozen != null) {
-      const daysFrozen = Number(record.freeze_days_frozen);
-      const escalationDays = Number(record.freeze_escalation_days) || 7;
-      const remaining = escalationDays - daysFrozen;
-      if (remaining <= 0) return '即将清除';
-      if (record.freeze_grace_until) return `宽限中 · 冻结第${daysFrozen}天`;
-      return `冻结第${daysFrozen}天 (${remaining}天后清除)`;
-    }
-    if (record?.is_long_term === true) return '长期容器';
-    if (!raw && (!record || record.cleanup_status === 'unknown' || record.seconds_until_cleanup == null)) {
-      return '从未登录';
-    }
-    // Prefer backend-calculated fields (authoritative and format-independent).
-    if (record && typeof record === 'object') {
-      const status = record.cleanup_status;
-      const seconds = Number(record.seconds_until_cleanup);
-      if (status === 'due') return '可清理';
-      if (Number.isFinite(seconds) && seconds >= 0) {
-        return formatDuration(seconds);
-      }
-    }
-
-    const d = parseSshTimeToDate(raw);
-    if (!d) return '从未登录';
-    const expireAt = d.getTime() + SSH_CLEANUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-    const diff = expireAt - Date.now();
-    if (diff <= 0) return '可清理';
-    return formatDuration(Math.floor(diff / 1000));
-  };
-
   const refreshSshTimeForContainer = async (containerId, options = {}) => {
     const { silent = false } = options;
     if (!containerId) return null;
@@ -236,6 +190,7 @@ const Home = () => {
           machine_ip: c.machine_ip || '',
           accounts: c.accounts || [],
           is_long_term: c.is_long_term === true,
+          long_term_container_can_enable: c.long_term_container_can_enable !== false,
           last_ssh_login_time: c.last_ssh_login_time ?? null,
           cleanup_after_days: c.cleanup_after_days ?? null,
           cleanup_at: c.cleanup_at ?? null,
@@ -244,6 +199,7 @@ const Home = () => {
           disk_total_gb: c.disk_total_gb ?? null,
           disk_limit_gb: c.disk_limit_gb ?? null,
           disk_usage_percent: c.disk_usage_percent ?? null,
+          runtime_metrics: c.runtime_metrics ?? null,
           freeze_first_frozen_at: c.freeze_first_frozen_at ?? null,
           freeze_grace_until: c.freeze_grace_until ?? null,
           freeze_days_frozen: c.freeze_days_frozen ?? null,
@@ -737,6 +693,10 @@ const Home = () => {
         gpu_number: detail.gpu_number || container.gpu_number || 0,
         memory_gb: detail.memory_gb || container.memory_gb || 0,
         shared_gb: detail.shared_gb || container.shared_gb || 0,
+        disk_usage: detail.disk_usage || null,
+        disk_total_gb: detail.disk_total_gb ?? container.disk_total_gb ?? null,
+        disk_limit_gb: detail.disk_limit_gb ?? container.disk_limit_gb ?? null,
+        disk_usage_percent: detail.disk_usage_percent ?? container.disk_usage_percent ?? null,
         owners: detail.owners || detail.owner_list || container.owners || [],
         accounts: detail.accounts || detail.account_list || container.accounts || []
       };
@@ -910,11 +870,19 @@ const Home = () => {
     const cleanupText = formatCleanupCountdown(record?.last_ssh_login_time, record);
     const actionState = getContainerActionState(record.container_status, record.display_status);
     const roleColor = myRole === 'ROOT' ? 'purple' : myRole === 'ADMIN' ? 'volcano' : myRole === 'COLLABORATOR' ? 'green' : 'default';
+    // 磁盘使用情况（进度条为主）：容量检测是本系统核心机制，卡片优先展示它
+    const diskTotal = record?.disk_total_gb;
+    const diskLimit = record?.disk_limit_gb;
+    const diskPct = Number(record?.disk_usage_percent || 0);
+    const diskText = diskTotal == null
+      ? '磁盘 -'
+      : `磁盘 ${diskTotal}G / ${diskLimit != null ? `${diskLimit}G` : '-'}`;
+    const diskFillClass = diskPct >= 90 ? 'home-container-disk-fill danger' : diskPct >= 75 ? 'home-container-disk-fill warn' : 'home-container-disk-fill';
 
     return (
       <article className="home-container-card" key={record.key}>
         <div className="home-container-card-head">
-          <button type="button" className="home-card-title-button" onClick={() => openContainerDetail(record)}>
+          <button type="button" className="home-card-title-button" onClick={() => navigate(`/index/containers/${record.key}`)}>
             {record.container_name || '未命名容器'}
           </button>
           <Tag color={color}>{statusLabelMap[status] || status || '未知'}</Tag>
@@ -924,11 +892,27 @@ const Home = () => {
           <CopyChip value={record.machine_ip || record.machine_id || ''}>{record.machine_ip || record.machine_id || '-'}</CopyChip>
           <CopyChip value={record.port || ''}>{record.port ? `:${record.port}` : '无端口'}</CopyChip>
           <Tag color={roleColor}>{myRole || '未授权'}</Tag>
-          <span>{record.is_long_term ? '长期容器' : cleanupText}</span>
+          <span>{record.is_long_term ? '长期容器' : `清理倒计时 ${cleanupText}`}</span>
         </div>
         <div className="home-container-card-dynamic">
-          <span>SSH {sshText}</span>
-          <span>资源数据待接入</span>
+          <span title={sshText}>上次SSH {sshText}</span>
+          <span className="home-container-disk-label">
+            <span className="home-container-disk-label-text" title={diskText}>{diskText}</span>
+            <Checkbox
+              checked={record.is_long_term === true}
+              disabled={
+                !!longTermUpdatingMap[String(record.key)] ||
+                (record.is_long_term !== true && record.long_term_container_can_enable === false)
+              }
+              onChange={e => handleLongTermChange(record, e.target.checked)}
+              onClick={e => e.stopPropagation()}
+            >长期</Checkbox>
+          </span>
+        </div>
+        <div className="home-container-disk-line">
+          <div className="home-container-disk-track">
+            <div className={diskFillClass} style={{ width: `${Math.min(diskPct, 100)}%` }} />
+          </div>
         </div>
         <div className="home-container-card-foot">
           <Typography.Text type="secondary" ellipsis>{record.container_image || '未记录镜像'}</Typography.Text>
@@ -956,7 +940,7 @@ const Home = () => {
             >
               重启
             </Button>
-            <Button size="small" onClick={() => openContainerDetail(record)}>详情</Button>
+            <Button size="small" onClick={() => navigate(`/index/containers/${record.key}`)}>详情</Button>
           </div>
         </div>
       </article>

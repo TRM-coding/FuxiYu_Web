@@ -19,6 +19,8 @@ import Announcements from '../pages/Announcements'
 import AnnouncementEditor from '../pages/AnnouncementEditor'
 import TemplateManager from '../pages/TemplateManager'
 import AdminLogs from '../pages/AdminLogs'
+import ContainerDetailPage from '../pages/ContainerDetailPage'
+import MachineDetailPage from '../pages/MachineDetailPage'
 
 
 export default function AppRoutes() {
@@ -33,6 +35,10 @@ export default function AppRoutes() {
         <Route path="images" element={<CreateImage />} />
         <Route path="user" element={<User />} />
       </Route>
+
+      {/* 独立详情页：使用 Ctrl DB id，不强制展示一般导航栏 */}
+      <Route path="/index/containers/:containerId" element={<ContainerDetailPage />} />
+      <Route path="/index/machines/:machineId" element={<MachineDetailPage />} />
 
       {/* 带导航栏的管理页面 */}
       <Route path="/admin" element={<AdminLayout />}>

@@ -17,6 +17,7 @@ import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONT
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import EntitySearchBar from '../components/EntitySearchBar';
 import { createContainerStatusTransition, deriveContainerDisplayStatus } from '../utils/containerActions';
+import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
 
 // users and containers will be fetched from backend
 const initialUsers = [];
@@ -526,6 +527,11 @@ const ManageUser = () => {
         long_term_container_can_enable: c.long_term_container_can_enable !== false,
         long_term_container_blocked_user_ids: c.long_term_container_blocked_user_ids || [],
         long_term_container_remaining_by_user: c.long_term_container_remaining_by_user || {},
+        last_ssh_login_time: c.last_ssh_login_time ?? null,
+        cleanup_after_days: c.cleanup_after_days ?? null,
+        cleanup_at: c.cleanup_at ?? null,
+        seconds_until_cleanup: c.seconds_until_cleanup ?? null,
+        cleanup_status: c.cleanup_status ?? null,
         disk_total_gb: c.disk_total_gb ?? null,
         disk_limit_gb: c.disk_limit_gb ?? null,
         disk_usage_percent: c.disk_usage_percent ?? null,
@@ -1285,7 +1291,7 @@ const ManageUser = () => {
                     title={containerRecord.container_name}
                     onClick={(event) => {
                       event.stopPropagation();
-                      openContainerDetail(containerRecord);
+                      navigate(`/index/containers/${containerRecord.key || containerRecord.container_id}`);
                     }}
                   >
                     {containerRecord.container_name || '未命名容器'}
@@ -1298,6 +1304,8 @@ const ManageUser = () => {
                 <div className="fuxi-nested-child-card-meta">
                   <CopyChip value={containerRecord.machine_ip || containerRecord.machine_id || ''}>{containerRecord.machine_ip || containerRecord.machine_id || '-'}</CopyChip>
                   <CopyChip value={containerRecord.port || ''}>{containerRecord.port ? `:${containerRecord.port}` : '无端口'}</CopyChip>
+                  <span title={formatLastSshTime(containerRecord?.last_ssh_login_time)}>上次SSH {formatLastSshTime(containerRecord?.last_ssh_login_time)}</span>
+                  <span>清理倒计时 {formatCleanupCountdown(containerRecord?.last_ssh_login_time, containerRecord)}</span>
                 </div>
                 {renderDiskUsage(containerRecord, (
                   <Checkbox

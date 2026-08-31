@@ -196,6 +196,56 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 	}
 };
 
+export const getContainerOperationLogs = async (container_id = 0, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_OPERATION_LOGS, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Get container operation logs');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Get container operation logs request timed out');
+		throw err;
+	}
+};
+
+export const getContainerStatus = async (container_id = 0, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_STATUS, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Get container status');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Get container status request timed out');
+		throw err;
+	}
+};
+
 export const listAllContainerBrefInformation = async ({ machine_id = '', user_id = '', container_search = '', page_number = 1, page_size = 10 } = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
@@ -378,6 +428,8 @@ export default {
 	removeCollaborator,
 	updateRole,
 	getContainerDetailInformation,
+	getContainerOperationLogs,
+	getContainerStatus,
 	listAllContainerBrefInformation,
 	startContainer,
 	stopContainer,

@@ -189,6 +189,31 @@ export const getDetailInformation = async (machine_id = 0, timeout = null) => {
   }
 };
 
+export const getMachineStatus = async (machine_id = 0, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.MACHINES_STATUS, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ machine_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Get machine status');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Get machine status request timed out');
+    throw err;
+  }
+};
+
 export const listAllMachineBrefInformation = async ({ page_number = 1, page_size = 10, machine_search = '' } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {

@@ -144,6 +144,44 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.home-container-disk-label {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  overflow: visible !important;
+}
+.home-container-disk-label-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-container-disk-label .ant-checkbox-wrapper {
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+.home-container-disk-line {
+  margin-top: 8px;
+  padding: 0 2px;
+}
+.home-container-disk-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #eef2f6;
+  overflow: hidden;
+}
+.home-container-disk-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #13a17b;
+  transition: width 0.3s;
+}
+.home-container-disk-fill.warn {
+  background: #faad14;
+}
+.home-container-disk-fill.danger {
+  background: #ff4d4f;
+}
 .home-show-more-button {
   margin-top: 10px;
   padding-left: 0;

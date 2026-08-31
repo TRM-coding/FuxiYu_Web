@@ -1,6 +1,16 @@
 import React from 'react';
-import { Modal, Button, Typography, Row, Col, Space, Tag, Avatar } from 'antd';
-import { SettingOutlined, GlobalOutlined, ClockCircleOutlined, TeamOutlined, EditOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { Modal, Button, Typography, Row, Col, Space, Tag, Avatar, Progress } from 'antd';
+import {
+  SettingOutlined,
+  GlobalOutlined,
+  ClockCircleOutlined,
+  TeamOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  PlayCircleOutlined,
+  HddOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons';
 import './ContainerDetailModal.css';
 
 const ROLE = {
@@ -18,8 +28,37 @@ const ROLE_CONFIG = {
 const getAvatarUrl = (username) => `https://api.dicebear.com/7.x/miniavs/svg?seed=${username}`;
 const formatRole = (role) => (ROLE_CONFIG[role] ? ROLE_CONFIG[role].label : role);
 const getRoleColor = (role) => (ROLE_CONFIG[role] ? ROLE_CONFIG[role].color : 'default');
+const hasValue = value => value !== null && value !== undefined && value !== '';
+const formatValue = (value, suffix = '') => (hasValue(value) ? `${value}${suffix}` : '-');
+const formatPercent = value => {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+};
+const formatRuntime = (value, suffix = '') => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return `${n.toFixed(n % 1 === 0 ? 0 : 1)}${suffix}`;
+};
+const formatTime = value => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('zh-CN', { hour12: false });
+};
+const formatCleanup = container => {
+  if (container?.is_long_term) return '长期保留';
+  if (container?.cleanup_status === 'overdue') return '待清理';
+  if (container?.seconds_until_cleanup !== null && container?.seconds_until_cleanup !== undefined) {
+    const seconds = Math.max(0, Number(container.seconds_until_cleanup) || 0);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    if (days > 0) return `${days}天${hours}小时`;
+    return `${hours}小时`;
+  }
+  return '-';
+};
 
-const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, onUnpause, usersList = [], currentUserName = null, currentUserId = null, forceSystemAdmin = false, readOnly = false }) => {
+const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, onUnpause, usersList = [], currentUserId = null, forceSystemAdmin = false, readOnly = false }) => {
   if (!container) return null;
 
   const accountsByRole = container.accounts?.reduce((acc, account) => {
@@ -29,11 +68,24 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
     acc[role].push({ ...account, ownerName });
     return acc;
   }, {});
+  const roleOrder = [ROLE.ROOT, ROLE.ADMIN, ROLE.COLLABORATOR];
+  const orderedRoleEntries = Object.entries(accountsByRole || {}).sort(([a], [b]) => {
+    const ai = roleOrder.indexOf(a);
+    const bi = roleOrder.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
 
   // 使用 user_id 精确判断当前用户是否为 ROOT（避免 username 修改导致匹配失败）
   const isRoot = forceSystemAdmin || (container.accounts || []).some(acc => acc.role === ROLE.ROOT && String(acc.user_id) === String(currentUserId));
+  const canManagePeople = !readOnly && isRoot && typeof onEdit === 'function' && container.container_status === 'online';
 
   const isHostOffline = container.display_status === 'host_offline';
+  const runtime = container.runtime_metrics || {};
+  const diskUsage = container.disk_usage || {};
+  const gpuDevices = runtime.gpu?.devices || [];
+  const cpuPercent = formatPercent(runtime.cpu_usage_percent);
+  const memoryPercent = formatPercent(runtime.memory_usage_percent);
+  const diskPercent = formatPercent(diskUsage.usage_percent ?? container.disk_usage_percent);
   const statusColor = isHostOffline
     ? 'default'
     : container.container_status === 'online'
@@ -67,6 +119,8 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
         ? '创建中'
         : container.container_status === 'starting'
           ? '启动中'
+          : container.container_status === 'restarting'
+            ? '重启中'
           : container.container_status === 'stopping'
             ? '停止中'
             : container.container_status === 'paused'
@@ -90,10 +144,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
         <Button key="deleteContainer" danger icon={<DeleteOutlined />} onClick={() => onDelete && onDelete(container)}>删除容器</Button>
       ) : (
         <Button key="leave" icon={<DeleteOutlined />} disabled={container.container_status !== 'online'} onClick={() => onLeave && onLeave(container)}>解除关联</Button>
-      )),
-      !readOnly && (isRoot ? (
-        <Button key="edit" type="primary" icon={<EditOutlined />} disabled={container.container_status !== 'online'} onClick={() => { onEdit && onEdit(container); }}>编辑用户</Button>
-      ) : null)
+      ))
     ]}>
       <div className="cdm-body">
         <div className="cdm-header">
@@ -147,83 +198,162 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
           </Row>
         </div>
 
-        <div className="cdm-resources-card">
-          <Row gutter={[24, 16]}>
-            <Col xs={12} sm={12} md={6}>
-              <Space align="start">
-                <SettingOutlined className="cdm-icon" />
-                <div>
-                  <Typography.Text strong className="cdm-item-label">CPU 核数</Typography.Text>
-                  <Typography.Text className="cdm-machine-text">{container.cpu_number ?? container.cpu_number === 0 ? String(container.cpu_number) : '-'}</Typography.Text>
-                </div>
-              </Space>
-            </Col>
-
-            <Col xs={12} sm={12} md={6}>
-              <Space align="start">
-                <SettingOutlined className="cdm-icon" />
-                <div>
-                  <Typography.Text strong className="cdm-item-label">GPU 数量</Typography.Text>
-                  <Typography.Text className="cdm-machine-text">{container.gpu_number ?? container.gpu_number === 0 ? String(container.gpu_number) : '-'}</Typography.Text>
-                </div>
-              </Space>
-            </Col>
-
-            <Col xs={12} sm={12} md={6}>
-              <Space align="start">
-                <ClockCircleOutlined className="cdm-icon" />
-                <div>
-                  <Typography.Text strong className="cdm-item-label">内存 (GB)</Typography.Text>
-                  <Typography.Text className="cdm-machine-text">{container.memory_gb ?? container.memory_gb === 0 ? String(container.memory_gb) : '-'}</Typography.Text>
-                </div>
-              </Space>
-            </Col>
-
-            <Col xs={12} sm={12} md={6}>
-              <Space align="start">
-                <GlobalOutlined className="cdm-icon" />
-                <div>
-                  <Typography.Text strong className="cdm-item-label">共享 (GB)</Typography.Text>
-                  <Typography.Text className="cdm-machine-text">{(container.shared_gb !== null && container.shared_gb !== undefined) ? String(container.shared_gb) : '-'}</Typography.Text>
-                </div>
-              </Space>
-            </Col>
-          </Row>
-        </div>
-
-        <div className="cdm-roles-wrap">
-          <Typography.Title level={5} className="cdm-roles-title"><TeamOutlined className="cdm-roles-icon" /> 用户权限 ({container.accounts?.length || 0}人)</Typography.Title>
-
-          {Object.entries(accountsByRole || {}).map(([role, accounts]) => (
-            <div key={role} className="cdm-role-group">
-              <div className="cdm-role-header">
-                <Space>
-                  <Typography.Text strong>{formatRole(role)}</Typography.Text>
-                  <Tag color={getRoleColor(role)} className="cdm-role-count">{accounts.length}人</Tag>
-                </Space>
-                <Typography.Text type="secondary" className="cdm-role-desc">{ROLE_CONFIG[role]?.description}</Typography.Text>
-              </div>
-
-              <div className="cdm-role-body">
-                <Row gutter={[16, 16]}>
-                  {accounts.map((account, index) => (
-                    <Col xs={24} sm={24} md={12} key={index}>
-                      <Space align="center" className="cdm-account-item">
-                        <Avatar src={getAvatarUrl(account.username)} size="large" />
-                        <div className="cdm-account-meta">
-                          <div className="cdm-account-row">
-                            <Typography.Text strong>{account.ownerName}</Typography.Text>
-                          </div>
-                          <Typography.Text type="secondary" className="cdm-account-username">@{account.username}</Typography.Text>
-                        </div>
-                      </Space>
-                    </Col>
-                  ))}
-                </Row>
-              </div>
+        <div className="cdm-admin-row">
+          <div className="cdm-personnel-card">
+            <div className="cdm-section-head">
+              <Typography.Title level={5} className="cdm-roles-title">
+                <TeamOutlined className="cdm-roles-icon" /> 人员管理 ({container.accounts?.length || 0}人)
+              </Typography.Title>
+              {canManagePeople && (
+                <Button size="small" type="primary" icon={<EditOutlined />} onClick={() => onEdit(container)}>
+                  管理人员
+                </Button>
+              )}
             </div>
-          ))}
+
+            {orderedRoleEntries.length > 0 ? orderedRoleEntries.map(([role, accounts]) => (
+              <div key={role} className="cdm-role-group">
+                <div className="cdm-role-header">
+                  <Space>
+                    <Typography.Text strong>{formatRole(role)}</Typography.Text>
+                    <Tag color={getRoleColor(role)} className="cdm-role-count">{accounts.length}人</Tag>
+                  </Space>
+                  <Typography.Text type="secondary" className="cdm-role-desc">{ROLE_CONFIG[role]?.description}</Typography.Text>
+                </div>
+
+                <div className="cdm-role-body">
+                  <Row gutter={[12, 12]}>
+                    {accounts.map((account, index) => (
+                      <Col xs={24} sm={12} key={index}>
+                        <Space align="center" className="cdm-account-item">
+                          <Avatar src={getAvatarUrl(account.username)} size="default" />
+                          <div className="cdm-account-meta">
+                            <div className="cdm-account-row">
+                              <Typography.Text strong ellipsis>{account.ownerName}</Typography.Text>
+                              <Tag className="cdm-account-id">ID {account.user_id}</Tag>
+                            </div>
+                            <Typography.Text type="secondary" className="cdm-account-username" ellipsis>@{account.username}</Typography.Text>
+                          </div>
+                        </Space>
+                      </Col>
+                    ))}
+                  </Row>
+                </div>
+              </div>
+            )) : (
+              <Typography.Text type="secondary" className="cdm-empty-text">暂无人员关联</Typography.Text>
+            )}
+          </div>
+
+          <div className="cdm-port-card">
+            <div className="cdm-metric-head">
+              <GlobalOutlined />
+              <Typography.Text strong>端口管理</Typography.Text>
+            </div>
+            <div className="cdm-port-main">
+              <Typography.Text type="secondary">SSH 端口</Typography.Text>
+              <Tag color="purple" className="cdm-port-tag">:{container.port || '-'}</Tag>
+            </div>
+            <Typography.Text type="secondary" className="cdm-subline">
+              所属机器 {container.machine_ip || container.machine_id || '-'}
+            </Typography.Text>
+          </div>
         </div>
+
+        {(container.failed_reason || container.failed_detail) && (
+          <div className="cdm-diagnostic-card">
+            <Typography.Text strong className="cdm-item-label">失败诊断</Typography.Text>
+            {container.failed_reason && <Tag color="red">{container.failed_reason}</Tag>}
+            {container.failed_detail && (
+              <Typography.Paragraph className="cdm-diagnostic-detail">
+                {container.failed_detail}
+              </Typography.Paragraph>
+            )}
+          </div>
+        )}
+
+        <div className="cdm-metrics-grid">
+          <div className="cdm-metric-card cdm-runtime-card">
+            <div className="cdm-metric-head">
+              <ThunderboltOutlined />
+              <Typography.Text strong>运行摘要</Typography.Text>
+            </div>
+            <Row gutter={[12, 12]}>
+              <Col xs={24} sm={12}>
+                <Typography.Text className="cdm-item-label">CPU</Typography.Text>
+                <Progress percent={cpuPercent} size="small" format={() => formatRuntime(runtime.cpu_usage_percent, '%')} />
+              </Col>
+              <Col xs={24} sm={12}>
+                <Typography.Text className="cdm-item-label">内存</Typography.Text>
+                <Progress percent={memoryPercent} size="small" status="active" format={() => formatRuntime(runtime.memory_usage_percent, '%')} />
+                <Typography.Text type="secondary" className="cdm-subline">
+                  {formatRuntime(runtime.memory_usage_mb, ' MB')} / {formatRuntime(runtime.memory_limit_mb, ' MB')}
+                </Typography.Text>
+              </Col>
+              <Col xs={24} sm={12}>
+                <Typography.Text className="cdm-item-label">网络</Typography.Text>
+                <Typography.Text className="cdm-machine-text">
+                  入 {formatRuntime(runtime.network_rx_mb, ' MB')} / 出 {formatRuntime(runtime.network_tx_mb, ' MB')}
+                </Typography.Text>
+              </Col>
+              <Col xs={24} sm={12}>
+                <Typography.Text className="cdm-item-label">块 IO</Typography.Text>
+                <Typography.Text className="cdm-machine-text">
+                  读 {formatRuntime(runtime.block_read_mb, ' MB')} / 写 {formatRuntime(runtime.block_write_mb, ' MB')}
+                </Typography.Text>
+              </Col>
+            </Row>
+          </div>
+
+          <div className="cdm-metric-card">
+            <div className="cdm-metric-head">
+              <HddOutlined />
+              <Typography.Text strong>清理与磁盘</Typography.Text>
+            </div>
+            <Row gutter={[12, 12]}>
+              <Col xs={24} sm={12}>
+                <Typography.Text className="cdm-item-label">最后 SSH</Typography.Text>
+                <Typography.Text className="cdm-machine-text">{formatTime(container.last_ssh_login_time)}</Typography.Text>
+              </Col>
+              <Col xs={24} sm={12}>
+                <Typography.Text className="cdm-item-label">清理倒计时</Typography.Text>
+                <Typography.Text className="cdm-machine-text">{formatCleanup(container)}</Typography.Text>
+              </Col>
+              <Col xs={24}>
+                <Typography.Text className="cdm-item-label">磁盘用量</Typography.Text>
+                <Progress percent={diskPercent} size="small" status={diskPercent >= 100 ? 'exception' : undefined} />
+                <Typography.Text type="secondary" className="cdm-subline">
+                  {formatRuntime(diskUsage.total_gb ?? container.disk_total_gb, ' GB')} / {formatRuntime(diskUsage.limit_gb ?? container.disk_limit_gb, ' GB')}
+                </Typography.Text>
+              </Col>
+              {container.freeze_state?.is_frozen && (
+                <Col xs={24}>
+                  <Tag color="volcano">冻结 {formatValue(container.freeze_state.days_frozen, ' 天')}</Tag>
+                  <Typography.Text type="secondary">宽限至 {formatTime(container.freeze_state.grace_until)}</Typography.Text>
+                </Col>
+              )}
+            </Row>
+          </div>
+        </div>
+
+        {gpuDevices.length > 0 && (
+          <div className="cdm-gpu-card">
+            <Typography.Text strong className="cdm-item-label">GPU 运行情况</Typography.Text>
+            <div className="cdm-gpu-list">
+              {gpuDevices.map(gpu => (
+                <div key={`${gpu.vendor || 'gpu'}-${gpu.index}`} className="cdm-gpu-row">
+                  <Typography.Text className="cdm-gpu-name">{gpu.name || `GPU ${gpu.index}`}</Typography.Text>
+                  <Tag color="geekblue">#{gpu.index}</Tag>
+                  <Typography.Text>{formatRuntime(gpu.utilization_gpu_percent, '%')}</Typography.Text>
+                  <Typography.Text type="secondary">
+                    {formatRuntime(gpu.memory_used_mb, ' MB')} / {formatRuntime(gpu.memory_total_mb, ' MB')}
+                  </Typography.Text>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
       </div>
     </Modal>
   );
