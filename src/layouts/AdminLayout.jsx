@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   DatabaseOutlined,
+  DeleteOutlined,
   FileTextOutlined,
   InfoCircleOutlined,
   SendOutlined,
@@ -17,6 +18,7 @@ import './AdminLayout.css';
 const adminMenuItems = [
   { label: '用户管理', key: '/admin/users', icon: <UserOutlined />, requiredPermission: 'user:manage' },
   { label: '机器管理', key: '/admin/machines', icon: <DatabaseOutlined />, requiredPermission: 'machine:manage' },
+  { label: '已删除容器', key: '/admin/deleted-containers', icon: <DeleteOutlined />, requiredPermission: 'container:manage' },
   { label: '公告管理', key: '/admin/announcements', icon: <SendOutlined />, requiredPermission: 'announcement:manage' },
   { label: '操作日志', key: '/admin/logs', icon: <FileTextOutlined />, requiredPermission: 'operation_log:manage' },
   { label: '系统设置', key: '/admin/settings', icon: <SettingOutlined />, requiredPermission: 'settings:manage' },
@@ -46,6 +48,7 @@ export default function AdminLayout() {
   const normalizePath = (pathname) => {
     if (pathname.startsWith('/admin/users')) return '/admin/users';
     if (pathname.startsWith('/admin/machines')) return '/admin/machines';
+    if (pathname.startsWith('/admin/deleted-containers')) return '/admin/deleted-containers';
     if (pathname.startsWith('/admin/announcements')) return '/admin/announcements';
     if (pathname.startsWith('/admin/logs')) return '/admin/logs';
     if (pathname.startsWith('/admin/settings')) return '/admin/settings';

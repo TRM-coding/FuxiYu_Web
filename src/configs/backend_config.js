@@ -55,6 +55,8 @@ export const API_ROUTES = {
 	CONTAINERS_REFRESH_LAST_SSH_TIME: '/api/containers/refresh_last_ssh_login_time',
 	CONTAINERS_UNPAUSE: '/api/containers/unpause_container',
 	CONTAINERS_SET_LONG_TERM: '/api/containers/set_long_term_container',
+	CONTAINERS_LIST_DELETED: '/api/containers/list_deleted_containers',
+	CONTAINERS_CLEAN_DELETED_MOUNT: '/api/containers/clean_deleted_container_mount',
 
 	// Image routes
 	IMAGES_CREATE: '/api/images/create_image',

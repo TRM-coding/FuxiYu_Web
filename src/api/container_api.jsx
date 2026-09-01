@@ -274,6 +274,52 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 	}
 };
 
+export const listDeletedContainers = async ({ page_number = 1, page_size = 20 } = {}, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_LIST_DELETED, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ page_number, page_size }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'List deleted containers');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('List deleted containers request timed out');
+		throw err;
+	}
+};
+
+export const cleanDeletedContainerMount = async (mount_cleanup_id = 0, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_CLEAN_DELETED_MOUNT, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ mount_cleanup_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Clean deleted container mount');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Clean deleted container mount request timed out');
+		throw err;
+	}
+};
+
 export const startContainer = async (container_id = 0, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
@@ -431,6 +477,8 @@ export default {
 	getContainerOperationLogs,
 	getContainerStatus,
 	listAllContainerBrefInformation,
+	listDeletedContainers,
+	cleanDeletedContainerMount,
 	startContainer,
 	stopContainer,
 	restartContainer,
