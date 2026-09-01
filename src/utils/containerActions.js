@@ -11,6 +11,7 @@ export function getContainerActionState(containerStatus, displayStatus = null) {
     canStart: !hostOffline && status === 'offline',
     canStop: !hostOffline && status === 'online',
     canRestart: !hostOffline && status === 'online',
+    canUnpause: !hostOffline && status === 'paused',
   };
 }
 

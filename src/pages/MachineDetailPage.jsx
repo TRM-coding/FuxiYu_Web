@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, message, Slider, Spin, Tag, Typography } from 'antd';
-import { ArrowLeftOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons';
-import { getDetailInformation, getMachineStatus, updateMachine } from '../api/machine_api';
+import { Button, Input, message, Modal, Select, Slider, Spin, Switch, Tag, Typography } from 'antd';
+import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons';
+import { getDetailInformation, getMachineStatus, removeMachine, setMachineMaintenance, updateMachine } from '../api/machine_api';
 import CopyChip from '../components/CopyChip';
 import RuntimeTrendChart from '../components/RuntimeTrendChart';
 import showErrorModal from '../utils/showErrorModal';
@@ -43,7 +43,66 @@ const MachineDetailPage = () => {
   const [limitDraft, setLimitDraft] = useState(null); // { max_cpu_core_number, max_memory_gb, max_shared_gb }
   const [selectedGpuIndices, setSelectedGpuIndices] = useState(new Set());
   const [savingLimits, setSavingLimits] = useState(false);
+  const [deletingMachine, setDeletingMachine] = useState(false);
+  // 机器基本信息编辑（名称/类型/IP；IP 变更后端自动校验证书并重 pin）
+  const [editBasicVisible, setEditBasicVisible] = useState(false);
+  const [basicDraft, setBasicDraft] = useState(null);
+  const [savingBasic, setSavingBasic] = useState(false);
   const limitsInitializedRef = useRef(false);
+
+  const openEditBasic = () => {
+    setBasicDraft({
+      machine_name: machine?.machine_name || '',
+      machine_type: (machine?.machine_type || 'CPU').toUpperCase() === 'GPU' ? 'GPU' : 'CPU',
+      machine_ip: machine?.machine_ip || '',
+      is_maintenance: machine?.is_maintenance === true,
+    });
+    setEditBasicVisible(true);
+  };
+  const handleSaveBasic = async () => {
+    if (!basicDraft || !machineId) return;
+    setSavingBasic(true);
+    try {
+      await updateMachine(Number(machineId), {
+        machine_name: basicDraft.machine_name,
+        machine_type: basicDraft.machine_type,
+        machine_ip: basicDraft.machine_ip,
+      });
+      if (Boolean(basicDraft.is_maintenance) !== (machine?.is_maintenance === true)) {
+        await setMachineMaintenance(Number(machineId), Boolean(basicDraft.is_maintenance));
+      }
+      message.success('机器基本信息已保存');
+      setEditBasicVisible(false);
+      await loadDetail({ silent: true });
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '保存失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setSavingBasic(false);
+    }
+  };
+
+  // 删除机器（2026-09：机器上有容器时后端拒绝并提示先手动清理）
+  const handleDeleteMachine = () => {
+    Modal.confirm({
+      title: '删除机器',
+      content: `确定删除机器「${machine?.machine_name || ''}」吗？删除前请先手动清理该机器上的容器。`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        setDeletingMachine(true);
+        try {
+          await removeMachine([Number(machineId)]);
+          message.success('机器已删除');
+          navigate('/admin/machines');
+        } catch (err) {
+          await showErrorModal({ message: err?.body || err || '删除机器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        } finally {
+          setDeletingMachine(false);
+        }
+      },
+    });
+  };
 
   const loadDetail = async ({ silent = false } = {}) => {
     if (!machineId) return;
@@ -231,8 +290,11 @@ const MachineDetailPage = () => {
     <main className="detail-page">
       <div className="detail-shell">
         <div className="detail-topbar">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/admin/machines'))}>返回</Button>
-          <Button icon={<ReloadOutlined />} onClick={() => loadDetail()}>刷新</Button>
+          <div className="detail-topbar-actions">
+            <Button icon={<ArrowLeftOutlined />} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/admin/machines'))}>返回</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => loadDetail()}>刷新</Button>
+            <Button danger icon={<DeleteOutlined />} loading={deletingMachine} onClick={handleDeleteMachine}>删除</Button>
+          </div>
         </div>
 
         {loading && !machine ? <Spin /> : (
@@ -241,6 +303,7 @@ const MachineDetailPage = () => {
               <div className="detail-title">
                 <h1>{machine?.machine_name || `机器 ${machineId}`}</h1>
                 <Tag color={statusDisplay.color}>{statusDisplay.label}</Tag>
+                <Button size="small" icon={<EditOutlined />} onClick={openEditBasic}>编辑</Button>
               </div>
               <div className="detail-subtitle">
                 <span>ID {machineId}</span>
@@ -249,6 +312,56 @@ const MachineDetailPage = () => {
                 <Tag color={collectedAt ? 'blue' : 'default'}>采集 {formatSnapshotTime(collectedAt)}</Tag>
               </div>
             </div>
+
+            <Modal
+              title="编辑机器基本信息"
+              open={editBasicVisible}
+              onCancel={() => setEditBasicVisible(false)}
+              onOk={handleSaveBasic}
+              confirmLoading={savingBasic}
+              okText="保存"
+              cancelText="取消"
+            >
+              <div className="detail-field-grid">
+                <div className="detail-field">
+                  <span className="detail-field-label">机器名</span>
+                  <Input
+                    value={basicDraft?.machine_name ?? ''}
+                    onChange={e => setBasicDraft(d => ({ ...d, machine_name: e.target.value }))}
+                    placeholder="机器名"
+                  />
+                </div>
+                <div className="detail-field">
+                  <span className="detail-field-label">类型</span>
+                  <Select
+                    style={{ width: '100%' }}
+                    value={basicDraft?.machine_type ?? 'CPU'}
+                    onChange={v => setBasicDraft(d => ({ ...d, machine_type: v }))}
+                    options={[
+                      { value: 'CPU', label: 'CPU' },
+                      { value: 'GPU', label: 'GPU' },
+                    ]}
+                  />
+                </div>
+                <div className="detail-field">
+                  <span className="detail-field-label">IP</span>
+                  <Input
+                    value={basicDraft?.machine_ip ?? ''}
+                    onChange={e => setBasicDraft(d => ({ ...d, machine_ip: e.target.value }))}
+                    placeholder="10.0.0.x"
+                  />
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>IP 变更将自动校验证书并重新 pin（证书不一致会被拒绝）</Typography.Text>
+                </div>
+                <div className="detail-field">
+                  <span className="detail-field-label">维护状态</span>
+                  <Switch
+                    checked={basicDraft?.is_maintenance === true}
+                    onChange={v => setBasicDraft(d => ({ ...d, is_maintenance: v }))}
+                  />
+                  <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>维护中机器不参与调度</Typography.Text>
+                </div>
+              </div>
+            </Modal>
 
             <section className="machine-detail-layout">
               <div className="machine-detail-summary-row machine-detail-summary-row-wide">

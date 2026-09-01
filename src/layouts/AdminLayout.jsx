@@ -5,6 +5,7 @@ import {
   FileTextOutlined,
   InfoCircleOutlined,
   SendOutlined,
+  SettingOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { Menu, Typography } from 'antd';
@@ -18,6 +19,7 @@ const adminMenuItems = [
   { label: '机器管理', key: '/admin/machines', icon: <DatabaseOutlined />, requiredPermission: 'machine:manage' },
   { label: '公告管理', key: '/admin/announcements', icon: <SendOutlined />, requiredPermission: 'announcement:manage' },
   { label: '操作日志', key: '/admin/logs', icon: <FileTextOutlined />, requiredPermission: 'operation_log:manage' },
+  { label: '系统设置', key: '/admin/settings', icon: <SettingOutlined />, requiredPermission: 'settings:manage' },
 ];
 
 export default function AdminLayout() {
@@ -46,6 +48,7 @@ export default function AdminLayout() {
     if (pathname.startsWith('/admin/machines')) return '/admin/machines';
     if (pathname.startsWith('/admin/announcements')) return '/admin/announcements';
     if (pathname.startsWith('/admin/logs')) return '/admin/logs';
+    if (pathname.startsWith('/admin/settings')) return '/admin/settings';
     if (pathname.startsWith('/admin/profile')) return '/admin/profile';
     return pathname;
   };

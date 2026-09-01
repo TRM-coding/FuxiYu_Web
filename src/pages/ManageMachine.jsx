@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { listAllMachineBrefInformation, getDetailInformation, getMachineStatus, registerMachine, removeMachine, updateMachine, setMachineMaintenance, addMachinePermission, listMachinePermissions } from '../api/machine_api';
+import { listAllMachineBrefInformation, getDetailInformation, getMachineStatus, registerMachine, removeMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
 import { ReloadOutlined, UserOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Slider, Checkbox } from 'antd';
@@ -15,7 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import CopyChip from '../components/CopyChip';
 import EntitySearchBar from '../components/EntitySearchBar';
-import { createContainerStatusTransition, deriveContainerDisplayStatus } from '../utils/containerActions';
+import { createContainerStatusTransition, deriveContainerDisplayStatus, getContainerActionState } from '../utils/containerActions';
 const { Option } = Select;
 
 import { startContainerStatusHeartbeat, startMachineStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
@@ -260,8 +260,6 @@ const ManageMachine = () => {
   const [addHostLoading, setAddHostLoading] = useState(false);
   const [addHostForm] = Form.useForm();
   // 编辑模式
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [editTargetMachine, setEditTargetMachine] = useState(null);
   // 删除机器的确认弹窗
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deleteTargetMachine, setDeleteTargetMachine] = useState(null);
@@ -789,51 +787,7 @@ const ManageMachine = () => {
     addHostForm.resetFields();
     // set defaults for add mode: default status = maintenance
     addHostForm.setFieldsValue({ maintenance_mode: 'normal', machine_type: 'CPU', gpu_number: 0, max_shared_gb: 0 });
-    setIsEditMode(false);
-    setEditTargetMachine(null);
     setAddHostVisible(true);
-  };
-
-  // 打开编辑宿主机弹窗（与添加使用同一表单，但为编辑模式）
-  const openEditMachine = async (machine) => {
-    setIsEditMode(true);
-    setEditTargetMachine(machine);
-    setAddHostLoading(true);
-    // try to fetch detailed info from backend to populate max_* fields
-    try {
-      const mid = machine.machine_id || machine.key;
-      let detail = null;
-      try {
-        detail = await getDetailInformation(Number(mid));
-      } catch (e) {
-        // fallback to passed machine object if API call fails
-        detail = null;
-      }
-      const src = detail || machine || {};
-      addHostForm.setFieldsValue({
-        machine_name: src.machine_name || machine.machine_name || '',
-        machine_ip: src.machine_ip || machine.machine_ip || '',
-        machine_type: (src.machine_type || machine.machine_type || 'CPU').toUpperCase() === 'GPU' ? 'GPU' : 'CPU',
-        machine_status: (src.machine_status || machine.machine_status || 'online').toLowerCase(),
-        maintenance_mode: (src.is_maintenance ?? machine.is_maintenance) ? 'maintenance' : 'normal',
-        cpu_core_number: src.cpu_core_number ?? machine.cpu_core_number ?? null,
-        gpu_number: src.gpu_number ?? machine.gpu_number ?? 0,
-        gpu_type: src.gpu_type || machine.gpu_type || '',
-        memory_size: src.memory_size_gb ?? machine.memory_size_gb ?? null,
-        max_memory_gb: src.max_memory_gb ?? machine.max_memory_gb ?? 0,
-        max_gpu_number: src.max_gpu_number ?? machine.max_gpu_number ?? 0,
-        max_cpu_core_number: src.max_cpu_core_number ?? machine.max_cpu_core_number ?? 0,
-        max_shared_gb: src.max_shared_gb ?? machine.max_shared_gb ?? null,
-        disk_size: src.disk_size_gb ?? machine.disk_size_gb ?? null,
-        machine_description: src.machine_description || machine.machine_description || ''
-      });
-      setAddHostVisible(true);
-    } catch (err) {
-      console.error('openEditMachine failed', err);
-      await showErrorModal({ message: err?.body || err || '获取宿主机详情失败，请重试' });
-    } finally {
-      setAddHostLoading(false);
-    }
   };
 
   // 添加宿主机确认
@@ -858,87 +812,44 @@ const ManageMachine = () => {
         disk_size: values.disk_size || null,
       };
 
-      if (isEditMode && editTargetMachine) {
-        // 编辑模式 -> 调用更新接口
-        let success = false;
-        try {
-          const mid = editTargetMachine.machine_id || editTargetMachine.key;
-          await updateMachine(mid, payload);
-          const requestedMaintenance = values.maintenance_mode === 'maintenance';
-          const oldMaintenance = Boolean(editTargetMachine.is_maintenance);
-          if (requestedMaintenance !== oldMaintenance) {
-            await setMachineMaintenance(mid, requestedMaintenance);
-          }
-          const realStatus = String(editTargetMachine.machine_status || 'offline').toLowerCase();
-          const updatedMachine = {
-            ...editTargetMachine,
-            machine_name: payload.machine_name,
-            machine_ip: payload.machine_ip,
-            machine_type: (payload.machine_type || '').toUpperCase(),
-            machine_status: realStatus,
-            is_maintenance: requestedMaintenance,
-            display_status: requestedMaintenance ? 'maintenance' : realStatus,
-            cpu_core_number: payload.cpu_core_number,
-            memory_size_gb: payload.memory_size,
-            max_memory_gb: payload.max_memory_gb,
-            max_gpu_number: payload.max_gpu_number,
-            max_cpu_core_number: payload.max_cpu_core_number,
-            max_shared_gb: payload.max_shared_gb,
-            gpu_number: payload.gpu_number,
-            gpu_type: payload.gpu_type,
-            disk_size_gb: payload.disk_size,
-            machine_description: payload.machine_description || ''
-          };
-          setMachines(prev => prev.map(m => (m.key === editTargetMachine.key ? updatedMachine : m)));
-          message.success('宿主机已更新');
-          success = true;
-          } catch (err) {
-          console.error('updateMachine failed', err);
-          const status = err?.response?.status || err?.status;
-          await showErrorModal({ message: err?.body || err || ('更新宿主机失败：' + (err?.message || '未知错误')), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-          if (status === 403) {
-            handleAuthError(403, navigate);
-          }
-        } finally {
-          setAddHostLoading(false);
-          if (success) {
-            setIsEditMode(false);
-            setEditTargetMachine(null);
-            setAddHostVisible(false);
-          }
+
+      // 添加模式：机器建档走 register_machine，硬件信息由 node 首连返回。
+      let success = false;
+      try {
+        await registerMachine({
+          machine_name: payload.machine_name,
+          machine_ip: payload.machine_ip,
+          machine_description: payload.machine_description || '',
+        });
+        const refreshed = await fetchMachinesFromApi();
+        setMachines(refreshed);
+        message.success('机器已完成注册建档');
+        success = true;
+      } catch (err) {
+        console.error('registerMachine failed', err);
+        const status = err?.response?.status || err?.status;
+        await showErrorModal({ message: err?.body || err || '注册机器失败，请检查 node 是否可达', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        if (status === 403) {
+          handleAuthError(403, navigate);
         }
-      } else {
-        // 添加模式：机器建档走 register_machine，硬件信息由 node 首连返回。
-        let success = false;
-        try {
-          await registerMachine({
-            machine_name: payload.machine_name,
-            machine_ip: payload.machine_ip,
-            machine_description: payload.machine_description || '',
-          });
-          const refreshed = await fetchMachinesFromApi();
-          setMachines(refreshed);
-          message.success('机器已完成注册建档');
-          success = true;
-        } catch (err) {
-          console.error('registerMachine failed', err);
-          const status = err?.response?.status || err?.status;
-          await showErrorModal({ message: err?.body || err || '注册机器失败，请检查 node 是否可达', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-          if (status === 403) {
-            handleAuthError(403, navigate);
-          }
-        } finally {
-          setAddHostLoading(false);
-          if (success) setAddHostVisible(false);
-        }
+      } finally {
+        setAddHostLoading(false);
+        if (success) setAddHostVisible(false);
       }
     } catch (err) {
       // validation failed
     }
   };
 
-  // 打开删除确认弹窗
+  // 打开删除确认弹窗（2026-09：机器上仍有容器 → 提前拦截，提示先手动清理；后端 409 兜底）
   const openDeleteConfirm = (machine) => {
+    const mid = String(machine.machine_id ?? machine.key);
+    const entry = containerMap[mid] || {};
+    const containerCount = entry.total_number ?? (entry.data ? entry.data.length : 0);
+    if (containerCount > 0) {
+      message.warning(`该机器仍有 ${containerCount} 个容器，请先手动清理后再删除`);
+      return;
+    }
     setDeleteTargetMachine(machine);
     setDeleteConfirmVisible(true);
   };
@@ -1263,6 +1174,7 @@ const ManageMachine = () => {
     }
 
     const status = String(containerRecord?.container_status || '').toLowerCase();
+    const actionState = getContainerActionState(containerRecord?.container_status, containerRecord?.display_status);
     const startDisabled = status !== 'offline';
     const restartDisabled = status !== 'online';
     const stopDisabled = status !== 'online';
@@ -1289,13 +1201,12 @@ const ManageMachine = () => {
         </div>
         {renderDiskUsage(containerRecord)}
         <div className="mm-container-card-actions">
-          {status === 'paused' ? (
-            <Button size="small" onClick={() => handleUnpauseContainer(containerRecord)}>
+          <Button size="small" type="primary" disabled={startDisabled} onClick={() => handleStartContainer(containerRecord)}>
+            启动
+          </Button>
+          {hasPermission('container:manage') && (
+            <Button size="small" disabled={!actionState.canUnpause} onClick={() => handleUnpauseContainer(containerRecord)}>
               解冻
-            </Button>
-          ) : (
-            <Button size="small" type="primary" disabled={startDisabled} onClick={() => handleStartContainer(containerRecord)}>
-              启动
             </Button>
           )}
           <Button size="small" danger disabled={stopDisabled} onClick={() => openActionConfirm('stop', { record: containerRecord })}>
@@ -1364,9 +1275,6 @@ const ManageMachine = () => {
             </Button>
             <Button size="small" icon={<SafetyCertificateOutlined />} onClick={(e) => { e.stopPropagation(); openPermissionModal(record); }}>
               权限
-            </Button>
-            <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEditMachine(record); }}>
-              编辑
             </Button>
             <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); openDeleteConfirm(record); }}>
               删除
@@ -1472,20 +1380,17 @@ const ManageMachine = () => {
 
       <ConfirmModal
         visible={addHostVisible}
-        title={isEditMode ? "编辑宿主机" : "添加宿主机"}
-        message={isEditMode ? "请修改宿主机信息并确认更新" : "请填写宿主机信息并确认"}
+        title="添加宿主机"
+        message="请填写宿主机信息并确认"
         loading={addHostLoading}
-        confirmText={isEditMode ? '更新' : '添加'}
+        confirmText='添加'
         onConfirm={handleAddHostConfirm}
         onCancel={() => {
           setAddHostVisible(false);
-          setIsEditMode(false);
-          setEditTargetMachine(null);
           addHostForm.resetFields();
         }}
         content={
-          !isEditMode ? (
-            <Form form={addHostForm} layout="vertical">
+          <Form form={addHostForm} layout="vertical">
               <Typography.Text type="secondary">
                 新机器通过 register_machine 建档。这里只填写最小信任锚，硬件信息由 node 首连返回，资源上限由 ctrl 默认策略生成。
               </Typography.Text>
@@ -1505,292 +1410,6 @@ const ManageMachine = () => {
                 <Input.TextArea rows={3} placeholder="可选，机器位置、用途或维护说明" maxLength={115} />
               </Form.Item>
             </Form>
-          ) : (
-          <Form
-            form={addHostForm}
-            layout="vertical"
-            initialValues={{ machine_type: 'CPU', gpu_number: 0, maintenance_mode: 'normal', max_memory_gb: 0, max_gpu_number: 0, max_cpu_core_number: 0, max_shared_gb: 0 }}
-              onValuesChange={(changedValues) => {
-                if (changedValues.machine_type) {
-                  if (changedValues.machine_type !== 'GPU') {
-                    // when switching away from GPU, reset gpu-related fields
-                    addHostForm.setFieldsValue({ gpu_number: 0, gpu_type: '' });
-                  }
-                }
-              }}
-          >
-            <Typography.Text type="secondary">这些机器参数用于上限控制，请谨慎填写（系统会在创建容器时校验上限）。</Typography.Text>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="machine_name" label="机器名" rules={[{ required: true, message: '请输入机器名' }, { max: 115, message: '机器名长度不得超过115个字符' }]}>
-                  <Input placeholder="机器名" maxLength={115} />
-                </Form.Item>
-              </Col>
-
-              <Col span={12}>
-                <Form.Item name="machine_ip" label="IP 地址" rules={[{ required: true, message: '请输入 IP 地址' }]}>
-                  <Input placeholder="192.168.x.x" />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            
-
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="machine_type" label="机器类型" initialValue="CPU">
-                  <Radio.Group
-                    options={[
-                      { label: 'CPU', value: 'CPU' },
-                      { label: 'GPU', value: 'GPU' }
-                    ]}
-                    optionType="button"
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="maintenance_mode" label="运行模式" initialValue="normal">
-                  <Radio.Group
-                    disabled={!isEditMode}
-                    optionType="button"
-                    buttonStyle="solid"
-                    options={[
-                      { label: '正常', value: 'normal' },
-                      { label: '维护', value: 'maintenance' },
-                    ]}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            
-
-            <Row gutter={16} align="middle">
-              <Col xs={24} sm={18} md={18} lg={18} xl={18}>
-                <Form.Item shouldUpdate noStyle>
-                  {() => {
-                    const cpuMax = addHostForm.getFieldValue('cpu_core_number') || 1;
-                    const val = addHostForm.getFieldValue('max_cpu_core_number') || 0;
-                    return (
-                          <Form.Item name="max_cpu_core_number" label={`CPU 最大允许分配（整数，单位：核）`}>
-                            <>
-                              <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
-                                <div style={{ minHeight: 22, marginBottom: 8 }}>
-                                  {(cpuMax > 0 && val > Math.floor(cpuMax * 0.8)) ? (
-                                    <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
-                                  ) : (
-                                    <span style={{ visibility: 'hidden' }}>占位</span>
-                                  )}
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
-                                  <Slider
-                                    min={0}
-                                    max={Math.max(1, cpuMax)}
-                                    step={1}
-                                    value={typeof val === 'number' ? val : 0}
-                                    onChange={(v) => addHostForm.setFieldsValue({ max_cpu_core_number: v })}
-                                    style={{ flex: 1, minWidth: 0 }}
-                                  />
-                                  <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val} 核` : '0 核'}</div>
-                                </div>
-                              </div>
-                            </>
-                          </Form.Item>
-                        );
-                  }}
-                </Form.Item>
-              </Col>
-                  <Col xs={24} sm={6} md={6} lg={6} xl={6}>
-                    <Form.Item name="cpu_core_number" label="CPU 核心数">
-                      <InputNumber min={1} style={{ width: '100%', maxWidth: 110 }} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-            <Form.Item shouldUpdate noStyle>
-              {() => {
-                const mt = addHostForm.getFieldValue('machine_type');
-                const gpuMax = addHostForm.getFieldValue('gpu_number') || 0;
-                const val = addHostForm.getFieldValue('max_gpu_number') || 0;
-                if (mt === 'GPU' && gpuMax > 0 && val > Math.floor(gpuMax * 0.8)) {
-                  return <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
-                }
-                return null;
-              }}
-            </Form.Item>
-
-            <Row gutter={16} align="middle">
-              <Col xs={24} sm={18} md={18} lg={18} xl={18}>
-                <Form.Item shouldUpdate noStyle>
-                  {() => {
-                    const memMax = addHostForm.getFieldValue('memory_size') || 1;
-                    const val = addHostForm.getFieldValue('max_memory_gb') || 0;
-                    return (
-                      <Form.Item name="max_memory_gb" label={`内存 最大允许分配（GB，整数）`}>
-                        <>
-                          <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
-                            <div style={{ minHeight: 22, marginBottom: 8 }}>
-                              {(memMax > 0 && val > Math.floor(memMax * 0.8)) ? (
-                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
-                              ) : (
-                                <span style={{ visibility: 'hidden' }}>占位</span>
-                              )}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
-                              <Slider
-                                min={0}
-                                max={Math.max(1, memMax)}
-                                step={1}
-                                value={typeof val === 'number' ? val : 0}
-                                onChange={(v) => addHostForm.setFieldsValue({ max_memory_gb: v })}
-                                style={{ flex: 1, minWidth: 0 }}
-                              />
-                              <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val} GB` : '0 GB'}</div>
-                            </div>
-                          </div>
-                        </>
-                      </Form.Item>
-                    );
-                  }}
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={6} md={6} lg={6} xl={6}>
-                <Form.Item name="memory_size" label="内存 (GB)">
-                  <InputNumber min={1} style={{ width: '100%', maxWidth: 110 }} />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Row gutter={16} align="middle">
-              <Col xs={24} sm={18} md={18} lg={18} xl={18}>
-                <Form.Item shouldUpdate noStyle>
-                  {() => {
-                    const mt = addHostForm.getFieldValue('machine_type');
-                    const gpuMax = addHostForm.getFieldValue('gpu_number') || 0;
-                    const val = addHostForm.getFieldValue('max_gpu_number') || 0;
-                    return (
-                      <Form.Item name="max_gpu_number" label={`GPU 最大允许分配（整数）`}>
-                        <>
-                          <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
-                            <div style={{ minHeight: 22, marginBottom: 8 }}>
-                              {(mt === 'GPU' && gpuMax > 0 && val > Math.floor(gpuMax * 0.8)) ? (
-                                <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
-                              ) : (
-                                <span style={{ visibility: 'hidden' }}>占位</span>
-                              )}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
-                              <Slider
-                                min={0}
-                                max={Math.max(0, gpuMax)}
-                                step={1}
-                                value={typeof val === 'number' ? val : 0}
-                                onChange={(v) => addHostForm.setFieldsValue({ max_gpu_number: v })}
-                                disabled={mt !== 'GPU'}
-                                style={{ flex: 1, minWidth: 0 }}
-                              />
-                              <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val}` : '0'}</div>
-                            </div>
-                          </div>
-                        </>
-                      </Form.Item>
-                    );
-                  }}
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={6} md={6} lg={6} xl={6}>
-                <Form.Item shouldUpdate noStyle>
-                  {() => {
-                    const mt = addHostForm.getFieldValue('machine_type');
-                    return (
-                      <Form.Item name="gpu_number" label="GPU 数量">
-                        <InputNumber min={0} style={{ width: '100%', maxWidth: 110 }} disabled={mt !== 'GPU'} />
-                      </Form.Item>
-                    );
-                  }}
-                </Form.Item>
-              </Col>
-            </Row>
-            <Row>
-              <Col span={24}>
-                <Form.Item shouldUpdate noStyle>
-                  {() => {
-                    const mt = addHostForm.getFieldValue('machine_type');
-                        const gnum = addHostForm.getFieldValue('gpu_number');
-                        if (mt === 'GPU' || (typeof gnum === 'number' && gnum > 0)) {
-                      return (
-                        <Row gutter={16}>
-                          <Col xs={24} sm={12} md={12} lg={12} xl={12}>
-                            <Form.Item name="gpu_type" label="GPU 型号">
-                              <Input placeholder="例如：NVIDIA Tesla V100" maxLength={115} />
-                            </Form.Item>
-                          </Col>
-                          <Col xs={24} sm={12} md={12} lg={12} xl={12} />
-                        </Row>
-                      );
-                    }
-                    return null;
-                  }}
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="disk_size" label="磁盘 (GB)">
-                  <InputNumber min={1} className="mm-width-100" />
-                </Form.Item>
-              </Col>
-            </Row>
-
-              <Row gutter={16} align="middle">
-                <Col xs={24} sm={18} md={18} lg={18} xl={18}>
-                  <Form.Item shouldUpdate noStyle>
-                    {() => {
-                      const base = addHostForm.getFieldValue('memory_size') || 1;
-                      const val = addHostForm.getFieldValue('max_shared_gb') || 0;
-                      const maxMemoryField = addHostForm.getFieldValue('max_memory_gb');
-                      const sliderMax = (typeof maxMemoryField === 'number' && maxMemoryField > 0) ? Math.max(1, Math.floor(maxMemoryField)) : Math.max(1, Math.floor(base * 2));
-                      return (
-                        <Form.Item name="max_shared_gb" label={`共享空间 最大允许分配（GB，整数）`}>
-                          <>
-                            <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
-                              <div style={{ minHeight: 22, marginBottom: 8 }}>
-                                {(sliderMax > 0 && val > Math.floor(sliderMax * 0.8)) ? (
-                                  <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
-                                ) : (
-                                  <span style={{ visibility: 'hidden' }}>占位</span>
-                                )}
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
-                                <Slider
-                                  min={0}
-                                  max={sliderMax}
-                                  step={1}
-                                  value={typeof val === 'number' ? val : 0}
-                                  onChange={(v) => addHostForm.setFieldsValue({ max_shared_gb: v })}
-                                  style={{ flex: 1, minWidth: 0 }}
-                                />
-                                <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val} GB` : '0 GB'}</div>
-                              </div>
-                            </div>
-                          </>
-                        </Form.Item>
-                      );
-                    }}
-                  </Form.Item>
-                </Col>
-                {/* removed individual shared_size field per API; only slider `max_shared_gb` is used */}
-              </Row>
-
-            <Row>
-              <Col span={24}>
-                <Form.Item name="machine_description" label="描述">
-                  <Input.TextArea rows={3} placeholder="可选，机器描述" maxLength={115} />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
-          )
         }
       />
 

@@ -35,6 +35,7 @@ describe('AdminLayout 权限过滤与守卫', () => {
     expect(screen.queryAllByText('机器管理').length).toBeGreaterThan(0);
     expect(screen.queryAllByText('公告管理').length).toBeGreaterThan(0);
     expect(screen.queryAllByText('操作日志').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('系统设置').length).toBeGreaterThan(0);
   });
 
   it('只有 machine:manage 时只显示机器管理', () => {
@@ -44,6 +45,7 @@ describe('AdminLayout 权限过滤与守卫', () => {
     expect(screen.queryAllByText('用户管理')).toHaveLength(0);
     expect(screen.queryAllByText('公告管理')).toHaveLength(0);
     expect(screen.queryAllByText('操作日志')).toHaveLength(0);
+    expect(screen.queryAllByText('系统设置')).toHaveLength(0);
   });
 
   it('无任何 manage 权限时渲染 403', () => {

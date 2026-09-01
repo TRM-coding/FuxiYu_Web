@@ -69,6 +69,9 @@ export const routeErrorMap = {
     '/machines/get_detail_information': { machine_not_found: '机器不存在', machine_offline: '机器离线', machine_maintenance: '机器正在维护中' },
     '/machines/list_all_machine_bref_information': { list_failed: '获取机器列表失败', machine_offline: '机器离线' },
 
+    // 设置相关
+    '/settings': { invalid_setting: '设置项不合法', update_failed: '保存设置失败' },
+
     // 通用/鉴权
     '': { invalid_token: '身份验证失败，请重新登录', insufficient_permission: '权限不足', unexpected_response: '远端返回意外响应', NODE_error: '节点错误' },
     '*': {

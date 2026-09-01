@@ -66,6 +66,8 @@ export const API_ROUTES = {
 	// Admin routes
 	ADMIN_OPERATION_LOGS: '/api/admin/operation_logs',
 	ADMIN_OPERATION_LOGS_STATS: '/api/admin/operation_logs/stats',
+	SETTINGS_LIST: '/api/settings',
+	SETTINGS_UPDATE: '/api/settings',
 
 	// Announcement routes
 	ANNOUNCEMENTS_TEMPLATES: '/api/announcements/templates',

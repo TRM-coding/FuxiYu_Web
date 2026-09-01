@@ -13,6 +13,7 @@ import {
   setLongTermContainer,
   startContainer,
   stopContainer,
+  unpauseContainer,
   updateRole,
 } from '../api/container_api';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -38,6 +39,7 @@ const CONTAINER_OPERATION_LABELS = {
   send_cleanup_reminder: '发送清理提醒',
 };
 import { getContainerStatusDisplay } from '../utils/statusDisplay';
+import { usePermission } from '../contexts/PermissionContext';
 import { getContainerActionState } from '../utils/containerActions';
 import './DetailPages.css';
 
@@ -123,7 +125,8 @@ const ContainerDetailPage = () => {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [selectedRole, setSelectedRole] = useState(ROLE.COLLABORATOR);
   const [peopleSaving, setPeopleSaving] = useState(false);
-  const [actionLoading, setActionLoading] = useState(null); // 'start' | 'stop' | 'restart' | 'delete' | null
+  const [actionLoading, setActionLoading] = useState(null); // 'start' | 'stop' | 'restart' | 'unpause' | 'delete' | null
+  const { hasPermission } = usePermission();
 
   const loadDetail = async ({ silent = false } = {}) => {
     if (!containerId) return;
@@ -420,6 +423,13 @@ const ContainerDetailPage = () => {
                     loading={actionLoading === '重启'}
                     onClick={() => runAction(restartContainer, '重启')}
                   >重启</Button>
+                  {hasPermission('container:manage') && (
+                    <Button
+                      disabled={!actionState.canUnpause}
+                      loading={actionLoading === '解冻'}
+                      onClick={() => runAction(unpauseContainer, '解冻')}
+                    >解冻</Button>
+                  )}
                   <Button
                     danger
                     icon={<DeleteOutlined />}

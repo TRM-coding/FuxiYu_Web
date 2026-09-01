@@ -18,6 +18,12 @@
   margin-bottom: 18px;
 }
 
+.detail-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .detail-title-wrap {
   min-width: 0;
 }

@@ -7,7 +7,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { listAllUserBrefInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
 import { usePermission } from '../contexts/PermissionContext';
-import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator, setLongTermContainer, startContainer, stopContainer, restartContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator, setLongTermContainer, startContainer, stopContainer, restartContainer, unpauseContainer } from '../api/container_api';
 import './ManageUser.css';
 import NestedEntityGrid from '../components/NestedEntityGrid';
 import CopyChip from '../components/CopyChip';
@@ -733,6 +733,26 @@ const ManageUser = () => {
     });
   };
 
+  const handleUnpauseUserContainer = async (userRecord, containerRecord) => {
+    const cid = containerRecord?.key;
+    if (!cid) return;
+    const actionKey = `unpause-${cid}`;
+    setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
+    markContainerTransition(containerRecord, 'unpausing', 'online');
+    patchUserContainer(userRecord.key, cid, { container_status: 'unpausing' });
+    try {
+      message.loading({ content: `正在解冻 ${containerRecord.container_name}...`, key: actionKey });
+      await unpauseContainer(Number(cid));
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
+      runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'online' });
+      message.success({ content: '解冻指令已发送', key: actionKey, duration: 2 });
+    } catch (err) {
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
+      patchUserContainer(userRecord.key, cid, { container_status: 'paused' });
+      await showErrorModal({ message: err?.body || err || '解冻失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    }
+  };
+
   const handleStartContainer = async (userRecord, containerRecord) => {
     const cid = containerRecord?.key;
     if (!cid) return;
@@ -1358,6 +1378,19 @@ const ManageUser = () => {
                         >
                           重启
                         </Button>
+                        {hasPermission('container:manage') && (
+                          <Button
+                            size="small"
+                            disabled={status !== 'paused' || !!containerActionMap[`unpause-${cid}`]}
+                            loading={!!containerActionMap[`unpause-${cid}`]}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleUnpauseUserContainer(userRecord, containerRecord);
+                            }}
+                          >
+                            解冻
+                          </Button>
+                        )}
                       </>
                     );
                   })()}
