@@ -5,6 +5,7 @@ import {
   DeleteOutlined,
   FileTextOutlined,
   InfoCircleOutlined,
+  SafetyCertificateOutlined,
   SendOutlined,
   SettingOutlined,
   UserOutlined,
@@ -22,6 +23,7 @@ const adminMenuItems = [
   { label: '公告管理', key: '/admin/announcements', icon: <SendOutlined />, requiredPermission: 'announcement:manage' },
   { label: '操作日志', key: '/admin/logs', icon: <FileTextOutlined />, requiredPermission: 'operation_log:manage' },
   { label: '系统设置', key: '/admin/settings', icon: <SettingOutlined />, requiredPermission: 'settings:manage' },
+  { label: '权限管理', key: '/admin/rbac', icon: <SafetyCertificateOutlined />, requiredPermission: 'rbac:manage' },
 ];
 
 export default function AdminLayout() {
@@ -52,6 +54,7 @@ export default function AdminLayout() {
     if (pathname.startsWith('/admin/announcements')) return '/admin/announcements';
     if (pathname.startsWith('/admin/logs')) return '/admin/logs';
     if (pathname.startsWith('/admin/settings')) return '/admin/settings';
+    if (pathname.startsWith('/admin/rbac')) return '/admin/rbac';
     if (pathname.startsWith('/admin/profile')) return '/admin/profile';
     return pathname;
   };

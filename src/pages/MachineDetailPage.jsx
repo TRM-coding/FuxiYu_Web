@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Input, message, Modal, Select, Slider, Spin, Switch, Tag, Typography } from 'antd';
-import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons';
+import { Button, Col, Input, message, Modal, Row, Select, Slider, Spin, Switch, Tag, Typography } from 'antd';
+import { ArrowLeftOutlined, DeleteOutlined, DesktopOutlined, EditOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { getDetailInformation, getMachineStatus, removeMachine, setMachineMaintenance, updateMachine } from '../api/machine_api';
 import CopyChip from '../components/CopyChip';
+import ConfirmModal from '../components/ConfirmModal';
 import RuntimeTrendChart from '../components/RuntimeTrendChart';
 import showErrorModal from '../utils/showErrorModal';
 import { formatNumber, formatSnapshotTime } from '../utils/detailFormat';
@@ -44,6 +45,7 @@ const MachineDetailPage = () => {
   const [selectedGpuIndices, setSelectedGpuIndices] = useState(new Set());
   const [savingLimits, setSavingLimits] = useState(false);
   const [deletingMachine, setDeletingMachine] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   // 机器基本信息编辑（名称/类型/IP；IP 变更后端自动校验证书并重 pin）
   const [editBasicVisible, setEditBasicVisible] = useState(false);
   const [basicDraft, setBasicDraft] = useState(null);
@@ -83,25 +85,20 @@ const MachineDetailPage = () => {
 
   // 删除机器（2026-09：机器上有容器时后端拒绝并提示先手动清理）
   const handleDeleteMachine = () => {
-    Modal.confirm({
-      title: '删除机器',
-      content: `确定删除机器「${machine?.machine_name || ''}」吗？删除前请先手动清理该机器上的容器。`,
-      okText: '删除',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: async () => {
-        setDeletingMachine(true);
-        try {
-          await removeMachine([Number(machineId)]);
-          message.success('机器已删除');
-          navigate('/admin/machines');
-        } catch (err) {
-          await showErrorModal({ message: err?.body || err || '删除机器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-        } finally {
-          setDeletingMachine(false);
-        }
-      },
-    });
+    setDeleteConfirmVisible(true);
+  };
+  const handleConfirmDeleteMachine = async () => {
+    setDeletingMachine(true);
+    try {
+      await removeMachine([Number(machineId)]);
+      message.success('机器已删除');
+      setDeleteConfirmVisible(false);
+      navigate('/admin/machines');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '删除机器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setDeletingMachine(false);
+    }
   };
 
   const loadDetail = async ({ silent = false } = {}) => {
@@ -475,8 +472,55 @@ const MachineDetailPage = () => {
               </div>
 
             </section>
+
           </>
         )}
+        <ConfirmModal
+          visible={deleteConfirmVisible}
+          title="确认删除宿主机"
+          icon={<DesktopOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />}
+          message={(
+            <div>
+              <div className="mm-delete-headline">你即将<span className="mm-action-verb">删除</span>的是：<span className="mm-delete-headline-type">机器</span></div>
+              <div className="mm-delete-name">名称：{machine?.machine_name || machineId}</div>
+            </div>
+          )}
+          content={(
+            <div className="mm-danger-box">
+              <Row gutter={[0, 8]}>
+                <Col span={24}>
+                  <Typography.Text type="secondary">机器ID：</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{machineId}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">机器名：</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{machine?.machine_name || '-'}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">IP：</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{machine?.machine_ip || '-'}</Typography.Text>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">类型：</Typography.Text>
+                  <Tag className="mm-ml-8">{(machine?.machine_type || '').toUpperCase()}</Tag>
+                </Col>
+                <Col span={24}>
+                  <Typography.Text type="secondary">状态：</Typography.Text>
+                  <Typography.Text className="mm-ml-8">{(machine?.machine_status || '').toLowerCase()}</Typography.Text>
+                </Col>
+              </Row>
+              <Typography.Text type="danger" className="mm-danger-text">
+                此操作不可恢复！删除前务必先手动清理该机器上的容器。
+              </Typography.Text>
+            </div>
+          )}
+          danger
+          iconColor="#ff4d4f"
+          onConfirm={handleConfirmDeleteMachine}
+          onCancel={() => setDeleteConfirmVisible(false)}
+          loading={deletingMachine}
+          confirmText="删除"
+        />
       </div>
     </main>
   );

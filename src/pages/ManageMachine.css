@@ -244,6 +244,17 @@
   flex: 0 0 auto;
   font-size: 12px;
 }
+.mm-container-disk-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.mm-container-disk-actions .ant-btn {
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding-inline: 8px;
+}
 .mm-container-disk-track {
   position: absolute;
   left: 0;
@@ -414,6 +425,14 @@
   color: #cf1322;
   font-weight: 800;
   border-bottom: 2px solid #cf1322;
+  padding: 0 2px;
+}
+
+.mm-action-verb {
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
   padding: 0 2px;
 }
 

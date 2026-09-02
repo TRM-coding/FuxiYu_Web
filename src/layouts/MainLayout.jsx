@@ -9,12 +9,14 @@ import {
 } from '@ant-design/icons';
 import { Menu, Typography } from 'antd';
 import UserAvatar from '../components/UserAvatar';
+import { usePermission } from '../contexts/PermissionContext';
 import './MainLayout.css';
 
 const userMenuItems = [
   { label: '我的容器', key: '/index', icon: <HomeOutlined /> },
   { label: '创建容器', key: '/index/create', icon: <FormOutlined /> },
-  { label: '环境模板', key: '/index/images', icon: <CodeOutlined /> },
+  // 环境模板是管理/编辑页（2026-09 决策）：入口按 image:edit 过滤（manage 隐含 edit）
+  { label: '环境模板', key: '/index/images', icon: <CodeOutlined />, requiredPermission: 'image:edit' },
   { label: '使用说明', key: '/index/docs', icon: <BookOutlined /> },
 ];
 
@@ -38,6 +40,17 @@ export default function MainLayout() {
   const handleNavigate = (path) => {
     navigate(path);
   };
+
+  // 菜单按权限过滤：环境模板页需 image:edit（2026-09 决策）；
+  // manage 隐含 edit 是后端语义，前端实体列表不含推导——此处显式兼容 manage。
+  const { hasPermission } = usePermission();
+  const visibleMenuItems = useMemo(() => {
+    const items = userMenuItems.filter(item => {
+      if (!item.requiredPermission) return true;
+      return hasPermission(item.requiredPermission) || hasPermission(item.requiredPermission.replace(':edit', ':manage'));
+    });
+    return items;
+  }, [hasPermission]);
 
   const handleTouchStart = (e) => {
     if (window.innerWidth > 768) return;
@@ -90,7 +103,7 @@ export default function MainLayout() {
           className="main-side-menu"
           mode="inline"
           selectedKeys={selectedKeys}
-          items={userMenuItems}
+          items={visibleMenuItems}
           onClick={(e) => navigate(e.key)}
         />
       </aside>
@@ -100,7 +113,7 @@ export default function MainLayout() {
           className="main-mobile-menu"
           mode="horizontal"
           selectedKeys={selectedKeys}
-          items={userMenuItems}
+          items={visibleMenuItems}
           onClick={(e) => navigate(e.key)}
         />
         <UserAvatar onNavigate={handleNavigate} />

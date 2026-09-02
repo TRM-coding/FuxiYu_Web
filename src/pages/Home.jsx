@@ -5,6 +5,7 @@ import { Flex, Typography, Row, Col, Button, Input, Space, Tag, message, Checkbo
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 import ConfirmModal from '../components/ConfirmModal';
+import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
@@ -648,6 +649,8 @@ const Home = () => {
         message.success(`已变更 ${data.username} 的角色`);
       } else if (type === 'invite') {
         message.success(`已发送邀请`);
+      } else if (type === 'start') {
+        await handleStartContainer(data.record);
       } else if (type === 'stop') {
         // stop container (high-risk)
         const cid = data?.record?.key || data?.record?.container_id;
@@ -800,31 +803,6 @@ const Home = () => {
         iconColor: '#52c41a',
         confirmText: '确认邀请'
       }
-      ,
-      stop: {
-        title: '确认停止容器',
-        message: `确定要停止容器 ${data?.record?.container_name} 吗？`,
-        content: (
-          <div className="home-modal-danger">
-            <Typography.Text type="danger">停止容器是高风险操作，可能导致服务中断或数据不可用。</Typography.Text>
-          </div>
-        ),
-        danger: true,
-        iconColor: '#ff4d4f',
-        confirmText: '确认停止'
-      },
-      restart: {
-        title: '确认重启容器',
-        message: `确定要重启容器 ${data?.record?.container_name} 吗？`,
-        content: (
-          <div className="home-modal-danger">
-            <Typography.Text type="danger">重启容器是高风险操作，可能会中断正在运行的任务。</Typography.Text>
-          </div>
-        ),
-        danger: true,
-        iconColor: '#ff4d4f',
-        confirmText: '确认重启'
-      }
     };
     
     return configs[type] || {};
@@ -921,7 +899,7 @@ const Home = () => {
               size="small"
               type="primary"
               disabled={!actionState.canStart}
-              onClick={() => handleStartContainer(record)}
+              onClick={() => openConfirm('start', { record })}
             >
               启动
             </Button>
@@ -949,18 +927,29 @@ const Home = () => {
 
   return (
     <div>
-      <ConfirmModal
-        visible={modal.visible}
-        title={getModalConfig().title}
-        message={getModalConfig().message}
-        content={getModalConfig().content}
-        danger={getModalConfig().danger}
-        iconColor={getModalConfig().iconColor}
-        confirmText={getModalConfig().confirmText}
-        onConfirm={handleModalConfirm}
-        onCancel={closeModal}
-        loading={modal.loading}
-      />
+      {['start', 'stop', 'restart', 'delete'].includes(modal.type) ? (
+        <ContainerActionConfirmModal
+          visible={modal.visible}
+          action={modal.type}
+          container={modal.data?.record}
+          loading={modal.loading}
+          onConfirm={handleModalConfirm}
+          onCancel={closeModal}
+        />
+      ) : (
+        <ConfirmModal
+          visible={modal.visible}
+          title={getModalConfig().title}
+          message={getModalConfig().message}
+          content={getModalConfig().content}
+          danger={getModalConfig().danger}
+          iconColor={getModalConfig().iconColor}
+          confirmText={getModalConfig().confirmText}
+          onConfirm={handleModalConfirm}
+          onCancel={closeModal}
+          loading={modal.loading}
+        />
+      )}
       
       <div className="home-root">
         <div ref={statsBarRef} style={statsBarStyle} className="home-hero home-auto-hide-bar">

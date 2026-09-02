@@ -70,6 +70,9 @@ export const API_ROUTES = {
 	ADMIN_OPERATION_LOGS_STATS: '/api/admin/operation_logs/stats',
 	SETTINGS_LIST: '/api/settings',
 	SETTINGS_UPDATE: '/api/settings',
+	RBAC_MATRIX: '/api/rbac/matrix',
+	RBAC_GROUPS: '/api/rbac/groups',
+	RBAC_UPDATE_GROUP_ENTITIES: (groupId) => `/api/rbac/groups/${groupId}/entities`,
 
 	// Announcement routes
 	ANNOUNCEMENTS_TEMPLATES: '/api/announcements/templates',

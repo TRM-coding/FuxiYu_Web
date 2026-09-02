@@ -164,6 +164,19 @@
   color: #334155;
 }
 
+.fuxi-nested-child-disk-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fuxi-nested-child-disk-actions .ant-btn {
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding-inline: 8px;
+}
+
 .fuxi-nested-child-disk-track {
   position: absolute;
   left: 0;

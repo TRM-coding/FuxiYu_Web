@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckOutlined, ReloadOutlined } from '@ant-design/icons';
+import { CheckOutlined, ReloadOutlined, UnlockOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Form, Tag, message, InputNumber, Segmented, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
+import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { listAllUserBrefInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
 import { usePermission } from '../contexts/PermissionContext';
@@ -382,10 +383,14 @@ const ManageUser = () => {
           return { ...prev, [id]: { ...(entry || {}), loading: false, data: newData } };
         });
         message.success('关联已移除');
+      } else if (type === 'startContainer') {
+        await handleStartContainer(data?.userRecord, data?.containerRecord);
       } else if (type === 'stopContainer') {
         await handleStopContainer(data?.userRecord, data?.containerRecord);
       } else if (type === 'restartContainer') {
         await handleRestartContainer(data?.userRecord, data?.containerRecord);
+      } else if (type === 'unpauseContainer') {
+        await handleUnpauseUserContainer(data?.userRecord, data?.containerRecord);
       }
     } catch (err) {
       console.error('modal action failed', err);
@@ -1053,26 +1058,6 @@ const ManageUser = () => {
           </div>
         );
       }
-      case 'stopContainer':
-      case 'restartContainer': {
-        const container = data?.containerRecord || {};
-        const isRestart = type === 'restartContainer';
-        return (
-          <div className="manage-user-modal-remove">
-            <Row gutter={[0, 12]}>
-              <Col span={24}>
-                <Typography.Text type="secondary">容器：</Typography.Text>
-                <Typography.Text className="manage-user-text-gap">{container.container_name}</Typography.Text>
-              </Col>
-              <Col span={24}>
-                <Typography.Text type="danger">
-                  {isRestart ? '重启会中断正在运行的任务。' : '停止会导致服务中断或数据不可用。'}
-                </Typography.Text>
-              </Col>
-            </Row>
-          </div>
-        );
-      }
       default:
         return null;
     }
@@ -1091,10 +1076,6 @@ const ManageUser = () => {
         return `确定要重置用户 ${data?.username} 的密码吗？`;
       case 'removeAssociation':
         return `确定要将用户 ${data?.username} 从容器 ${data?.container?.container_name} 中移除吗？`;
-      case 'stopContainer':
-        return `确定要停止容器 ${data?.containerRecord?.container_name || ''} 吗？`;
-      case 'restartContainer':
-        return `确定要重启容器 ${data?.containerRecord?.container_name || ''} 吗？`;
       default:
         return '';
     }
@@ -1128,18 +1109,6 @@ const ManageUser = () => {
         danger: true,
         iconColor: '#ff4d4f',
         confirmText: '确认移除'
-      },
-      stopContainer: {
-        title: '确认停止容器',
-        danger: true,
-        iconColor: '#ff4d4f',
-        confirmText: '确认停止'
-      },
-      restartContainer: {
-        title: '确认重启容器',
-        danger: true,
-        iconColor: '#faad14',
-        confirmText: '确认重启'
       }
     };
     
@@ -1149,18 +1118,34 @@ const ManageUser = () => {
   return (
     <>
       {/* 通用确认弹窗 */}
-      <ConfirmModal
-        visible={modal.visible}
-        title={getModalConfig().title}
-        message={getModalTitle()}
-        content={getModalContent()}
-        danger={getModalConfig().danger}
-        iconColor={getModalConfig().iconColor}
-        confirmText={getModalConfig().confirmText}
-        onConfirm={handleModalConfirm}
-        onCancel={closeModal}
-        loading={modal.loading}
-      />
+      {['startContainer', 'stopContainer', 'restartContainer', 'unpauseContainer'].includes(modal.type) ? (
+        <ContainerActionConfirmModal
+          visible={modal.visible}
+          action={{
+            startContainer: 'start',
+            stopContainer: 'stop',
+            restartContainer: 'restart',
+            unpauseContainer: 'unpause',
+          }[modal.type]}
+          container={modal.data?.containerRecord}
+          onConfirm={handleModalConfirm}
+          onCancel={closeModal}
+          loading={modal.loading}
+        />
+      ) : (
+        <ConfirmModal
+          visible={modal.visible}
+          title={getModalConfig().title}
+          message={getModalTitle()}
+          content={getModalContent()}
+          danger={getModalConfig().danger}
+          iconColor={getModalConfig().iconColor}
+          confirmText={getModalConfig().confirmText}
+          onConfirm={handleModalConfirm}
+          onCancel={closeModal}
+          loading={modal.loading}
+        />
+      )}
 
       <ContainerDetailModal
         visible={detailModalVisible}
@@ -1328,14 +1313,30 @@ const ManageUser = () => {
                   <span>清理倒计时 {formatCleanupCountdown(containerRecord?.last_ssh_login_time, containerRecord)}</span>
                 </div>
                 {renderDiskUsage(containerRecord, (
-                  <Checkbox
-                    checked={containerRecord.is_long_term === true}
-                    disabled={!!longTermUpdatingMap[String(containerRecord.key)] || (!containerRecord.is_long_term && containerRecord.long_term_container_can_enable === false)}
-                    onClick={(event) => event.stopPropagation()}
-                    onChange={(event) => handleLongTermChange(userRecord, containerRecord, event.target.checked)}
-                  >
-                    长期
-                  </Checkbox>
+                  <div className="fuxi-nested-child-disk-actions">
+                    {hasPermission('container:manage') && (
+                      <Button
+                        size="small"
+                        icon={<UnlockOutlined />}
+                        disabled={String(containerRecord.container_status || '').toLowerCase() !== 'paused' || !!containerActionMap[`unpause-${String(containerRecord.key)}`]}
+                        loading={!!containerActionMap[`unpause-${String(containerRecord.key)}`]}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openModal('unpauseContainer', { userRecord, containerRecord });
+                        }}
+                      >
+                        解冻
+                      </Button>
+                    )}
+                    <Checkbox
+                      checked={containerRecord.is_long_term === true}
+                      disabled={!!longTermUpdatingMap[String(containerRecord.key)] || (!containerRecord.is_long_term && containerRecord.long_term_container_can_enable === false)}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => handleLongTermChange(userRecord, containerRecord, event.target.checked)}
+                    >
+                      长期
+                    </Checkbox>
+                  </div>
                 ))}
                 <div className="fuxi-nested-child-card-actions">
                   {(() => {
@@ -1350,7 +1351,7 @@ const ManageUser = () => {
                           loading={!!containerActionMap[`start-${cid}`]}
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleStartContainer(userRecord, containerRecord);
+                            openModal('startContainer', { userRecord, containerRecord });
                           }}
                         >
                           启动
@@ -1378,19 +1379,6 @@ const ManageUser = () => {
                         >
                           重启
                         </Button>
-                        {hasPermission('container:manage') && (
-                          <Button
-                            size="small"
-                            disabled={status !== 'paused' || !!containerActionMap[`unpause-${cid}`]}
-                            loading={!!containerActionMap[`unpause-${cid}`]}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleUnpauseUserContainer(userRecord, containerRecord);
-                            }}
-                          >
-                            解冻
-                          </Button>
-                        )}
                       </>
                     );
                   })()}

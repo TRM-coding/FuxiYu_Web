@@ -1,3 +1,46 @@
+.mm-danger-box {
+  background: #fff2f0;
+  padding: 16px;
+  border-radius: 4px;
+  border: 1px solid #ffccc7;
+}
+
+.mm-ml-8 {
+  margin-left: 8px;
+}
+
+.mm-danger-text {
+  display: block;
+  margin-top: 12px;
+}
+
+.mm-delete-headline {
+  font-size: 16px;
+  font-weight: 700;
+  color: #262626;
+  margin-bottom: 2px;
+}
+
+.mm-delete-headline-type {
+  color: #cf1322;
+  font-weight: 800;
+  border-bottom: 2px solid #cf1322;
+  padding: 0 2px;
+}
+
+.mm-action-verb {
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  padding: 0 2px;
+}
+
+.mm-delete-name {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
 .detail-page {
   min-height: 100vh;
   background: #f4f7fb;
@@ -110,6 +153,25 @@
 
 .container-operations-actions .ant-btn {
   justify-content: center;
+}
+
+.container-secondary-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.container-secondary-actions .ant-checkbox-wrapper {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.container-secondary-actions .ant-btn {
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding-inline: 8px;
 }
 
 .container-people-card {

@@ -65,6 +65,7 @@ export default function CreateImage() {
   const navigate = useNavigate();
   const [currentUserId, setCurrentUserId] = useState(null);
   const [permissions, setPermissions] = useState([]);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [images, setImages] = useState([]);
   const [keyword, setKeyword] = useState('');
   const [mineOnly, setMineOnly] = useState(false);
@@ -147,7 +148,10 @@ export default function CreateImage() {
     (async () => {
       try {
         const list = await getUserPermissions();
-        if (mounted) setPermissions(Array.isArray(list) ? list : []);
+        if (mounted) {
+          setPermissions(Array.isArray(list) ? list : []);
+          setPermissionsLoaded(true);
+        }
       } catch (err) {
         if (err?.status === 401) handleAuthError(401, navigate);
       }
@@ -248,6 +252,22 @@ export default function CreateImage() {
       onOk: doRemoveImage,
     });
   };
+
+  if (!permissionsLoaded) {
+    return (
+      <div className="ci-page ci-denied" style={{ padding: 48, textAlign: 'center' }}>
+        <Spin />
+      </div>
+    );
+  }
+  if (!canEdit) {
+    return (
+      <div className="ci-page ci-denied" style={{ padding: 48, textAlign: 'center' }}>
+        <Typography.Title level={4}>无权限</Typography.Title>
+        <Typography.Text type="secondary">环境模板为编辑管理页，需要 image:edit 权限（教师/管理员），请联系管理员。</Typography.Text>
+      </div>
+    );
+  }
 
   return (
     <div className="ci-page">

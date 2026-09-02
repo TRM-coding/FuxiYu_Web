@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Avatar, Button, Checkbox, Modal, Select, Space, Spin, Tag, Typography, message } from 'antd';
-import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons';
+import { Avatar, Button, Checkbox, Select, Space, Spin, Tag, Typography, message } from 'antd';
+import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, TeamOutlined, UnlockOutlined } from '@ant-design/icons';
 import {
   addCollaborator,
   deleteContainer,
@@ -18,6 +18,7 @@ import {
 } from '../api/container_api';
 import { listAllUserBrefInformation } from '../api/user_api';
 import CopyChip from '../components/CopyChip';
+import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import RuntimeTrendChart from '../components/RuntimeTrendChart';
 import showErrorModal from '../utils/showErrorModal';
 import { formatNumber, formatSnapshotTime } from '../utils/detailFormat';
@@ -126,6 +127,7 @@ const ContainerDetailPage = () => {
   const [selectedRole, setSelectedRole] = useState(ROLE.COLLABORATOR);
   const [peopleSaving, setPeopleSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState(null); // 'start' | 'stop' | 'restart' | 'unpause' | 'delete' | null
+  const [containerActionConfirm, setContainerActionConfirm] = useState({ visible: false, action: '' });
   const { hasPermission } = usePermission();
 
   const loadDetail = async ({ silent = false } = {}) => {
@@ -229,25 +231,44 @@ const ContainerDetailPage = () => {
     }
   };
   const handleDeleteContainer = () => {
-    Modal.confirm({
-      title: '删除容器',
-      content: `确定删除容器「${container?.container_name || ''}」吗？该操作会移除容器及其数据，不可恢复。`,
-      okText: '删除',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: async () => {
-        setActionLoading('delete');
-        try {
-          await deleteContainer(Number(containerId));
-          message.success('容器已删除');
-          navigate('/index');
-        } catch (err) {
-          await showErrorModal({ message: err?.body || err || '删除失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-        } finally {
-          setActionLoading(null);
-        }
-      },
-    });
+    setContainerActionConfirm({ visible: true, action: 'delete' });
+  };
+  const handleConfirmDeleteContainer = async () => {
+    setActionLoading('delete');
+    try {
+      await deleteContainer(Number(containerId));
+      message.success('容器已删除');
+      setContainerActionConfirm({ visible: false, action: '' });
+      navigate('/index');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '删除失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+  const openContainerActionConfirm = action => {
+    setContainerActionConfirm({ visible: true, action });
+  };
+  const closeContainerActionConfirm = () => {
+    if (actionLoading) return;
+    setContainerActionConfirm({ visible: false, action: '' });
+  };
+  const handleConfirmContainerAction = async () => {
+    const action = containerActionConfirm.action;
+    if (action === 'delete') {
+      await handleConfirmDeleteContainer();
+      return;
+    }
+    const actions = {
+      start: { fn: startContainer, label: '启动' },
+      stop: { fn: stopContainer, label: '停止' },
+      restart: { fn: restartContainer, label: '重启' },
+      unpause: { fn: unpauseContainer, label: '解冻' },
+    };
+    const selected = actions[action];
+    if (!selected) return;
+    await runAction(selected.fn, selected.label);
+    setContainerActionConfirm({ visible: false, action: '' });
   };
 
   const status = String(container?.display_status || container?.container_status || 'unknown').toLowerCase();
@@ -410,26 +431,19 @@ const ContainerDetailPage = () => {
                     type="primary"
                     disabled={!actionState.canStart}
                     loading={actionLoading === '启动'}
-                    onClick={() => runAction(startContainer, '启动')}
+                    onClick={() => openContainerActionConfirm('start')}
                   >启动</Button>
                   <Button
                     danger
                     disabled={!actionState.canStop}
                     loading={actionLoading === '停止'}
-                    onClick={() => runAction(stopContainer, '停止')}
+                    onClick={() => openContainerActionConfirm('stop')}
                   >停止</Button>
                   <Button
                     disabled={!actionState.canRestart}
                     loading={actionLoading === '重启'}
-                    onClick={() => runAction(restartContainer, '重启')}
+                    onClick={() => openContainerActionConfirm('restart')}
                   >重启</Button>
-                  {hasPermission('container:manage') && (
-                    <Button
-                      disabled={!actionState.canUnpause}
-                      loading={actionLoading === '解冻'}
-                      onClick={() => runAction(unpauseContainer, '解冻')}
-                    >解冻</Button>
-                  )}
                   <Button
                     danger
                     icon={<DeleteOutlined />}
@@ -438,11 +452,22 @@ const ContainerDetailPage = () => {
                     onClick={handleDeleteContainer}
                   >删除</Button>
                 </div>
-                <Checkbox
-                  checked={container?.is_long_term === true}
-                  disabled={longTermSaving || (container?.is_long_term !== true && container?.long_term_container_can_enable === false)}
-                  onChange={e => handleLongTermToggle(e.target.checked)}
-                >长期容器（不参与清理倒计时）</Checkbox>
+                <div className="container-secondary-actions">
+                  <Checkbox
+                    checked={container?.is_long_term === true}
+                    disabled={longTermSaving || (container?.is_long_term !== true && container?.long_term_container_can_enable === false)}
+                    onChange={e => handleLongTermToggle(e.target.checked)}
+                  >长期容器（不参与清理倒计时）</Checkbox>
+                  {hasPermission('container:manage') && (
+                    <Button
+                      size="small"
+                      icon={<UnlockOutlined />}
+                      disabled={!actionState.canUnpause}
+                      loading={actionLoading === '解冻'}
+                      onClick={() => openContainerActionConfirm('unpause')}
+                    >解冻</Button>
+                  )}
+                </div>
                 <Typography.Text type="secondary">操作结果即时生效，状态由平台实时采集</Typography.Text>
               </div>
               </div>
@@ -602,6 +627,15 @@ const ContainerDetailPage = () => {
                 ) : <Typography.Text type="secondary">暂无操作记录</Typography.Text>}
               </div>
             </section>
+
+            <ContainerActionConfirmModal
+              visible={containerActionConfirm.visible}
+              action={containerActionConfirm.action}
+              container={container}
+              loading={Boolean(actionLoading)}
+              onConfirm={handleConfirmContainerAction}
+              onCancel={closeContainerActionConfirm}
+            />
           </>
         )}
       </div>

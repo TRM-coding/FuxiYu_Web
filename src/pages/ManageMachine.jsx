@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, getMachineStatus, registerMachine, removeMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
-import { ReloadOutlined, UserOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined } from '@ant-design/icons';
+import { ReloadOutlined, UserOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined, UnlockOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Slider, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
+import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 import { handleAuthError } from '../utils/authHelpers';
@@ -280,12 +281,16 @@ const ManageMachine = () => {
     setActionModal(prev => ({ ...prev, loading: true }));
     try {
       const { type, data } = actionModal;
-      if (type === 'stop') {
+      if (type === 'start') {
+        await handleStartContainer(data.record || data);
+      } else if (type === 'stop') {
         await handleStopContainer(data.record || data);
         message.success(`容器 ${data.record?.container_name || ''} 停止请求已发送`);
       } else if (type === 'restart') {
         await handleRestartContainer(data.record || data);
         message.success(`容器 ${data.record?.container_name || ''} 重启请求已发送`);
+      } else if (type === 'unpause') {
+        await handleUnpauseContainer(data.record || data);
       }
     } catch (err) {
       console.error('action confirm failed', err);
@@ -293,37 +298,6 @@ const ManageMachine = () => {
     } finally {
       setActionModal({ visible: false, type: '', loading: false, data: null });
     }
-  };
-
-  const getActionModalConfig = () => {
-    const { type, data } = actionModal;
-    const configs = {
-      stop: {
-        title: '确认停止容器',
-        message: `确定要停止容器 ${data?.record?.container_name || ''} 吗？`,
-        content: (
-          <div className="home-modal-danger">
-            <Typography.Text type="danger">停止容器是高风险操作，可能导致服务中断或数据不可用。</Typography.Text>
-          </div>
-        ),
-        danger: true,
-        iconColor: '#ff4d4f',
-        confirmText: '确认停止'
-      },
-      restart: {
-        title: '确认重启容器',
-        message: `确定要重启容器 ${data?.record?.container_name || ''} 吗？`,
-        content: (
-          <div className="home-modal-danger">
-            <Typography.Text type="danger">重启容器是高风险操作，可能会中断正在运行的任务。</Typography.Text>
-          </div>
-        ),
-        danger: true,
-        iconColor: '#ff4d4f',
-        confirmText: '确认重启'
-      }
-    };
-    return configs[type] || {};
   };
 
   //加载机器列表（machine_search 走后端过滤）
@@ -1140,20 +1114,36 @@ const ManageMachine = () => {
     const total = containerRecord?.disk_total_gb;
     const limit = containerRecord?.disk_limit_gb;
     const pct = Number(containerRecord?.disk_usage_percent || 0);
+    const actionState = getContainerActionState(containerRecord?.container_status, containerRecord?.display_status);
     return (
       <div className="mm-container-disk-line">
         <span>{total == null ? '磁盘 -' : `磁盘 ${total}G / ${limit != null ? `${limit}G` : '-'}`}</span>
-        <Checkbox
-          checked={containerRecord?.is_long_term === true}
-          disabled={
-            !!longTermUpdatingMap[String(containerRecord?.key)] ||
-            (containerRecord?.is_long_term !== true && containerRecord?.long_term_container_can_enable === false)
-          }
-          onChange={e => handleLongTermChange(containerRecord, e.target.checked)}
-          onClick={e => e.stopPropagation()}
-        >
-          长期
-        </Checkbox>
+        <div className="mm-container-disk-actions">
+          {hasPermission('container:manage') && (
+            <Button
+              size="small"
+              icon={<UnlockOutlined />}
+              disabled={!actionState.canUnpause}
+              onClick={(event) => {
+                event.stopPropagation();
+                openActionConfirm('unpause', { record: containerRecord });
+              }}
+            >
+              解冻
+            </Button>
+          )}
+          <Checkbox
+            checked={containerRecord?.is_long_term === true}
+            disabled={
+              !!longTermUpdatingMap[String(containerRecord?.key)] ||
+              (containerRecord?.is_long_term !== true && containerRecord?.long_term_container_can_enable === false)
+            }
+            onChange={e => handleLongTermChange(containerRecord, e.target.checked)}
+            onClick={e => e.stopPropagation()}
+          >
+            长期
+          </Checkbox>
+        </div>
         <div className="mm-container-disk-track">
           <div
             className={pct >= 90 ? 'mm-container-disk-fill danger' : pct >= 75 ? 'mm-container-disk-fill warn' : 'mm-container-disk-fill'}
@@ -1174,7 +1164,6 @@ const ManageMachine = () => {
     }
 
     const status = String(containerRecord?.container_status || '').toLowerCase();
-    const actionState = getContainerActionState(containerRecord?.container_status, containerRecord?.display_status);
     const startDisabled = status !== 'offline';
     const restartDisabled = status !== 'online';
     const stopDisabled = status !== 'online';
@@ -1201,14 +1190,9 @@ const ManageMachine = () => {
         </div>
         {renderDiskUsage(containerRecord)}
         <div className="mm-container-card-actions">
-          <Button size="small" type="primary" disabled={startDisabled} onClick={() => handleStartContainer(containerRecord)}>
+          <Button size="small" type="primary" disabled={startDisabled} onClick={() => openActionConfirm('start', { record: containerRecord })}>
             启动
           </Button>
-          {hasPermission('container:manage') && (
-            <Button size="small" disabled={!actionState.canUnpause} onClick={() => handleUnpauseContainer(containerRecord)}>
-              解冻
-            </Button>
-          )}
           <Button size="small" danger disabled={stopDisabled} onClick={() => openActionConfirm('stop', { record: containerRecord })}>
             停止
           </Button>
@@ -1329,14 +1313,10 @@ const ManageMachine = () => {
 
   return (
     <>
-      <ConfirmModal
+      <ContainerActionConfirmModal
         visible={actionModal.visible}
-        title={getActionModalConfig().title}
-        message={getActionModalConfig().message}
-        content={getActionModalConfig().content}
-        danger={getActionModalConfig().danger}
-        iconColor={getActionModalConfig().iconColor}
-        confirmText={getActionModalConfig().confirmText}
+        action={actionModal.type}
+        container={actionModal.data?.record || actionModal.data}
         onConfirm={handleActionConfirm}
         onCancel={closeActionModal}
         loading={actionModal.loading}
@@ -1416,11 +1396,11 @@ const ManageMachine = () => {
       {/* 删除宿主机 - 二次确认（敏感行为） */}
       <ConfirmModal
         visible={deleteConfirmVisible}
-        title="删除宿主机"
+        title="确认删除宿主机"
         icon={<DesktopOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />}
         message={deleteTargetMachine ? (
           <div>
-            <div className="mm-delete-headline">你即将删除的是：<span className="mm-delete-headline-type">机器</span></div>
+            <div className="mm-delete-headline">你即将<span className="mm-action-verb">删除</span>的是：<span className="mm-delete-headline-type">机器</span></div>
             <div className="mm-delete-name">名称：{deleteTargetMachine.machine_name || deleteTargetMachine.key}</div>
           </div>
         ) : '确认删除该宿主机？'}
@@ -1463,44 +1443,13 @@ const ManageMachine = () => {
       />
 
       {/* 删除容器 - 二次确认 */}
-      <ConfirmModal
+      <ContainerActionConfirmModal
         visible={containerDeleteConfirmVisible}
-        title="确认删除容器"
-        icon={<ContainerOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />}
-        message={deleteTargetContainer ? (
-          <div>
-            <div className="mm-delete-headline">你即将删除的是：<span className="mm-delete-headline-type">容器</span></div>
-            <div className="mm-delete-name">名称：{deleteTargetContainer.container_name || deleteTargetContainer.key}</div>
-          </div>
-        ) : '确认删除该容器？'}
-        content={
-          deleteTargetContainer ? (
-            <div className="mm-danger-box">
-              <Row gutter={[0, 8]}>
-                <Col span={24}>
-                  <Typography.Text type="secondary">容器ID：</Typography.Text>
-                  <Typography.Text className="mm-ml-8">{deleteTargetContainer.key || deleteTargetContainer.container_id}</Typography.Text>
-                </Col>
-                <Col span={24}>
-                  <Typography.Text type="secondary">容器名：</Typography.Text>
-                  <Typography.Text className="mm-ml-8">{deleteTargetContainer.container_name}</Typography.Text>
-                </Col>
-                <Col span={24}>
-                  <Typography.Text type="secondary">所属机器：</Typography.Text>
-                  <Typography.Text className="mm-ml-8">{deleteTargetContainer.machine_id || deleteTargetContainer.machine_ip}</Typography.Text>
-                </Col>
-              </Row>
-              <Typography.Text type="danger" className="mm-danger-text">
-                此操作不可恢复！此操作将永久删除该容器。             </Typography.Text>
-            </div>
-          ) : null
-        }
-        danger
-        iconColor="#ff4d4f"
+        action="delete"
+        container={deleteTargetContainer}
         onConfirm={handleDeleteContainerConfirm}
         onCancel={() => { setContainerDeleteConfirmVisible(false); setDeleteTargetContainer(null); setDetailModalVisible(true); }}
         loading={containerDeleteLoading}
-        confirmText="删除"
       />
 
       {/* 容器详情弹窗 */}
