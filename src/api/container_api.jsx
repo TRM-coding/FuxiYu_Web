@@ -320,6 +320,29 @@ export const cleanDeletedContainerMount = async (mount_cleanup_id = 0, timeout =
 	}
 };
 
+export const resurrectDeletedContainer = async (deleted_id = 0, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_RESURRECT_DELETED, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ deleted_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Resurrect deleted container');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Resurrect deleted container request timed out');
+		throw err;
+	}
+};
+
 export const startContainer = async (container_id = 0, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
@@ -479,6 +502,7 @@ export default {
 	listAllContainerBrefInformation,
 	listDeletedContainers,
 	cleanDeletedContainerMount,
+	resurrectDeletedContainer,
 	startContainer,
 	stopContainer,
 	restartContainer,

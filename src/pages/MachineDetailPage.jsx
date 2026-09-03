@@ -126,7 +126,6 @@ const MachineDetailPage = () => {
           ...prev,
           machine_status: has('machine_status') ? data.machine_status : prev.machine_status,
           is_maintenance: has('is_maintenance') ? data.is_maintenance : prev.is_maintenance,
-          display_status: has('display_status') ? data.display_status : prev.display_status,
           runtime_snapshot: has('runtime_snapshot') ? data.runtime_snapshot : prev.runtime_snapshot,
         };
       });
@@ -163,7 +162,7 @@ const MachineDetailPage = () => {
   }, [machine]);
 
   const snapshot = machine?.runtime_snapshot || {};
-  const status = String(machine?.display_status || machine?.machine_status || 'offline').toLowerCase();
+  const status = String(machine?.is_maintenance ? 'maintenance' : (machine?.machine_status || 'offline')).toLowerCase();
   const statusDisplay = getMachineStatusDisplay(status);
   const gpus = Array.isArray(snapshot.gpu) ? snapshot.gpu : [];
   const gpuTotal = gpus.length || machine?.gpu_number || 0;
@@ -273,6 +272,39 @@ const MachineDetailPage = () => {
     { key: 'disk', label: '磁盘', color: '#7c3aed', fill: 'rgba(124, 58, 237, 0.08)', value: point => point.disk },
   ];
 
+  // 掉卡审查（纯前端集合比对）：许可卡号 − 运行快照卡号 = 差集；
+  // 连续 GPU_ABSENT_TICKS 次轮询仍缺席才标 warning（nvidia-smi 偶发闪断不误报）
+  const GPU_ABSENT_TICKS = 3;
+  const [absentTicks, setAbsentTicks] = useState({});
+
+  useEffect(() => {
+    if (!machine) return;
+    const online = !machine.is_maintenance && String(machine.machine_status || '').toLowerCase() === 'online';
+    if (!online) {
+      setAbsentTicks({});
+      return;
+    }
+    const liveIdx = new Set(
+      (snapshot?.gpu || []).map(g => Number(g?.index)).filter(Number.isInteger),
+    );
+    const allowArr = (Array.isArray(machine?.gpu_allow_list) && machine.gpu_allow_list.length)
+      ? machine.gpu_allow_list.map(Number).filter(Number.isInteger)
+      : Array.from({ length: gpus.length || machine?.gpu_number || 0 }, (_, i) => i);
+    setAbsentTicks(prev => {
+      const next = {};
+      for (const idx of allowArr) {
+        next[idx] = liveIdx.has(idx) ? 0 : (prev[idx] ?? 0) + 1;
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [machine, snapshot?.gpu]);
+
+  const gpuMissing = (Array.isArray(machine?.gpu_allow_list) && machine.gpu_allow_list.length
+    ? machine.gpu_allow_list.map(Number)
+    : Array.from({ length: gpus.length || machine?.gpu_number || 0 }, (_, i) => i))
+    .filter(idx => (absentTicks[idx] ?? 0) >= GPU_ABSENT_TICKS);
+
   const gpuSeries = gpus.map((gpu, idx) => ({
     key: `gpu-${gpu?.index ?? idx}`,
     label: `GPU ${gpu?.index ?? idx}`,
@@ -377,7 +409,14 @@ const MachineDetailPage = () => {
               </div>
 
               <div className="detail-card detail-chart-card">
-                <h2>GPU 使用趋势</h2>
+                <div className="detail-chart-card-head">
+                  <h2>GPU 使用趋势</h2>
+                  {gpuMissing.length > 0 && (
+                    <span className="gpu-absent-warn">
+                      ⚠ 许可 GPU {gpuMissing.join('、')} 已连续缺席运行快照（疑似掉卡，许可未自动调整）
+                    </span>
+                  )}
+                </div>
                 <RuntimeTrendChart history={history} series={gpuSeries} emptyText="暂无 GPU 运行快照" ariaLabel="GPU 使用趋势" />
               </div>
 

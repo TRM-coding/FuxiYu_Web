@@ -77,9 +77,9 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
 
   // 使用 user_id 精确判断当前用户是否为 ROOT（避免 username 修改导致匹配失败）
   const isRoot = forceSystemAdmin || (container.accounts || []).some(acc => acc.role === ROLE.ROOT && String(acc.user_id) === String(currentUserId));
-  const canManagePeople = !readOnly && isRoot && typeof onEdit === 'function' && container.container_status === 'online';
+  const canManagePeople = !readOnly && isRoot && typeof onEdit === 'function' && container.effective_status === 'online';
 
-  const isHostOffline = container.display_status === 'host_offline';
+  const isHostOffline = container.effective_status === 'host_offline';
   const runtime = container.runtime_metrics || {};
   const diskUsage = container.disk_usage || {};
   const gpuDevices = runtime.gpu?.devices || [];
@@ -88,53 +88,59 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
   const diskPercent = formatPercent(diskUsage.usage_percent ?? container.disk_usage_percent);
   const statusColor = isHostOffline
     ? 'default'
-    : container.container_status === 'online'
+    : container.effective_status === 'online'
     ? 'green'
-    : container.container_status === 'offline'
+    : container.effective_status === 'offline'
       ? 'volcano'
-      : container.container_status === 'building'
+      : container.effective_status === 'building'
         ? 'geekblue'
-      : container.container_status === 'creating'
+      : container.effective_status === 'creating'
         ? 'blue'
-        : container.container_status === 'starting'
+        : container.effective_status === 'starting'
           ? 'cyan'
-          : container.container_status === 'restarting'
+          : container.effective_status === 'restarting'
             ? 'purple'
-            : container.container_status === 'stopping'
+            : container.effective_status === 'stopping'
               ? 'orange'
-              : container.container_status === 'paused'
+              : container.effective_status === 'paused'
                 ? 'volcano'
-                : container.container_status === 'failed'
+                : container.effective_status === 'failed'
                   ? 'red'
                   : 'default';
    const statusText = isHostOffline
     ? '宿主机离线'
-    : container.container_status === 'online'
+    : container.effective_status === 'online'
     ? '运行中'
-    : container.container_status === 'offline'
+    : container.effective_status === 'offline'
       ? '已停止'
-      : container.container_status === 'building'
+      : container.effective_status === 'building'
         ? '构建中'
-      : container.container_status === 'creating'
+      : container.effective_status === 'creating'
         ? '创建中'
-        : container.container_status === 'starting'
+        : container.effective_status === 'starting'
           ? '启动中'
-          : container.container_status === 'restarting'
+          : container.effective_status === 'restarting'
             ? '重启中'
-          : container.container_status === 'stopping'
+          : container.effective_status === 'stopping'
             ? '停止中'
-            : container.container_status === 'paused'
+            : container.effective_status === 'paused'
               ? '磁盘已冻结'
-              : container.container_status === 'failed'
+              : container.effective_status === 'failed'
                 ? '异常'
-                : container.container_status;
+                : container.effective_status === 'status_unknown'
+                  ? '状态未知'
+                  : container.effective_status === 'host_maintenance'
+                    ? '宿主机维护'
+                    : container.effective_status === 'host_offline'
+                      ? '宿主机离线'
+                      : container.effective_status;
 
   return (
     <Modal title="容器详细信息" open={visible} onCancel={onClose} width="min(750px, calc(100vw - 24px))" className="cdm-modal" footer={[
-      !readOnly && container.container_status === 'paused' && onUnpause ? (
+      !readOnly && container.effective_status === 'paused' && onUnpause ? (
         <Button key="unpause" type="primary" icon={<PlayCircleOutlined />} onClick={() => onUnpause(container)}>解冻容器</Button>
       ) : null,
-      !readOnly && container.container_status === 'paused' && !onUnpause ? (
+      !readOnly && container.effective_status === 'paused' && !onUnpause ? (
         <Typography.Text key="frozen-hint" type="secondary" style={{ marginRight: 12, alignSelf: 'center', fontSize: 12 }}>
           磁盘已冻结，请联系管理员解冻
         </Typography.Text>
@@ -143,7 +149,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
       !readOnly && (isRoot ? (
         <Button key="deleteContainer" danger icon={<DeleteOutlined />} onClick={() => onDelete && onDelete(container)}>删除容器</Button>
       ) : (
-        <Button key="leave" icon={<DeleteOutlined />} disabled={container.container_status !== 'online'} onClick={() => onLeave && onLeave(container)}>解除关联</Button>
+        <Button key="leave" icon={<DeleteOutlined />} disabled={container.effective_status !== 'online'} onClick={() => onLeave && onLeave(container)}>解除关联</Button>
       ))
     ]}>
       <div className="cdm-body">

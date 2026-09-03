@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { listAllMachineBrefInformation, getDetailInformation, getMachineStatus, registerMachine, removeMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
+import { listAllMachineBrefInformation, getDetailInformation, registerMachine, removeMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
 import { ReloadOutlined, UserOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined, UnlockOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Slider, Checkbox } from 'antd';
@@ -16,10 +16,11 @@ import { useNavigate } from 'react-router-dom';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import CopyChip from '../components/CopyChip';
 import EntitySearchBar from '../components/EntitySearchBar';
-import { createContainerStatusTransition, deriveContainerDisplayStatus, getContainerActionState } from '../utils/containerActions';
+import { createContainerStatusTransition, deriveContainerEffectiveStatus, getContainerActionState } from '../utils/containerActions';
+import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint, machineListFingerprint } from '../utils/listRefresh';
 const { Option } = Select;
 
-import { startContainerStatusHeartbeat, startMachineStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
+import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
 
 
@@ -71,13 +72,22 @@ const ManageMachine = () => {
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   const [sshRefreshingMap, setSshRefreshingMap] = useState({});
   const pendingContainerTransitionRef = useRef(new Map());
+  const machineListFingerprintRef = useRef('');
+  const containerListFingerprintRef = useRef({});
+  const searchMachineRef = useRef(searchMachine);
+  const searchContainerNameRef = useRef(searchContainerName);
+  const containerMapRef = useRef(containerMap);
 
-  const applyContainerDisplayStatus = (container) => {
+  searchMachineRef.current = searchMachine;
+  searchContainerNameRef.current = searchContainerName;
+  containerMapRef.current = containerMap;
+
+  const applyContainerEffectiveStatus = (container) => {
     const cid = container?.key || container?.container_id;
     if (!cid) return container;
     const key = String(cid);
-    const result = deriveContainerDisplayStatus(
-      container.container_status,
+    const result = deriveContainerEffectiveStatus(
+      container.effective_status,
       pendingContainerTransitionRef.current.get(key),
     );
     if (result.pendingTransition) {
@@ -85,7 +95,7 @@ const ManageMachine = () => {
     } else if (result.cleared) {
       pendingContainerTransitionRef.current.delete(key);
     }
-    return { ...container, container_status: result.status };
+    return { ...container, effective_status: result.status };
   };
 
   const markContainerTransition = (container, transitionStatus, targetStatus) => {
@@ -93,7 +103,7 @@ const ManageMachine = () => {
     if (!cid) return;
     pendingContainerTransitionRef.current.set(
       String(cid),
-      createContainerStatusTransition(container?.container_status, transitionStatus, { targetStatus }),
+      createContainerStatusTransition(container?.effective_status, transitionStatus, { targetStatus }),
     );
   };
 
@@ -110,7 +120,7 @@ const ManageMachine = () => {
           ...copy[key],
           data: copy[key].data.map(c => (
             String(c.key) === String(cid)
-              ? applyContainerDisplayStatus({ ...c, container_status: status })
+              ? applyContainerEffectiveStatus({ ...c, effective_status: status })
               : c
           )),
         };
@@ -126,7 +136,7 @@ const ManageMachine = () => {
     const current = ingWatcherRef.current;
     for (const entry of Object.values(containerMap)) {
       for (const c of (entry?.data || [])) {
-        const st = (c.container_status || '').toLowerCase();
+        const st = (c.effective_status || '').toLowerCase();
         const cid = c.key ? String(c.key) : (c.container_id ? String(c.container_id) : null);
         // 数字 container_id + machine_id 齐备才看护（key 回退形如 <mid>-<page>-<idx> 时跳过）
         if (!cid || !c.machine_id || !/^\d+$/.test(cid)) continue;
@@ -141,7 +151,7 @@ const ManageMachine = () => {
           container_id: cid,
           container_name: c.container_name,
           onProgress: (data) => {
-            const st = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+            const st = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!st) return;
             setContainerMap(prev => {
               const next = { ...prev };
@@ -150,7 +160,7 @@ const ManageMachine = () => {
                   ...next[mid],
                   data: (next[mid]?.data || []).map(x => (
                     String(x.key) === String(cid)
-                      ? applyContainerDisplayStatus({ ...x, container_status: st })
+                      ? applyContainerEffectiveStatus({ ...x, effective_status: st })
                       : x
                   )),
                 };
@@ -159,7 +169,7 @@ const ManageMachine = () => {
             });
           },
           onTerminal: (data) => {
-            const finalSt = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+            const finalSt = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!finalSt) return;
             current.delete(cid);
             setContainerMap(prev => {
@@ -169,7 +179,7 @@ const ManageMachine = () => {
                   ...next[mid],
                   data: (next[mid]?.data || []).map(x => (
                     String(x.key) === String(cid)
-                      ? applyContainerDisplayStatus({ ...x, container_status: finalSt })
+                      ? applyContainerEffectiveStatus({ ...x, effective_status: finalSt })
                       : x
                   )),
                 };
@@ -329,7 +339,7 @@ const ManageMachine = () => {
         gpu_number: null,
         gpu_type: null,
         disk_size_gb: null,
-        runtime_snapshot: null,
+        runtime_snapshot: m.runtime_snapshot ?? null,
         machine_description: ''
       }));
 
@@ -384,22 +394,52 @@ const ManageMachine = () => {
     return () => { mounted = false; };
   }, []);
 
-  // 机器实时数据轮询（runtime_snapshot 常新，与详情页同频 5s；无快照跳过）
-  const machinesRef = useRef(machines);
-  machinesRef.current = machines;
-  useEffect(() => {
-    if (!machinesRef.current.length) return undefined;
-    let mounted = true;
-    const timer = setInterval(async () => {
-      const ids = machinesRef.current.map(m => Number(m.machine_id ?? m.key));
-      const results = await Promise.allSettled(ids.map(id => getMachineStatus(id)));
-      if (!mounted) return;
-      setMachines(prev => prev.map((m, idx) => {
-        const r = results[idx];
-        if (r.status !== 'fulfilled' || !r.value?.runtime_snapshot) return m;
-        return { ...m, runtime_snapshot: r.value.runtime_snapshot };
+  const refreshMachinesBref = async () => {
+    const res = await listAllMachineBrefInformation({
+      page_number: 0,
+      page_size: defaultPageSize,
+      machine_search: searchMachineRef.current || undefined,
+    });
+    const items = (res && res.machines) || [];
+    const mapped = items.map((m, idx) => ({
+      key: String(m.machine_id || idx + 1),
+      machine_id: m.machine_id,
+      machine_name: m.machine_name || '',
+      machine_ip: m.machine_ip || '',
+      machine_type: (m.machine_type || '').toUpperCase(),
+      machine_status: (m.machine_status || '').toLowerCase(),
+      is_maintenance: m.is_maintenance === true,
+      runtime_snapshot: m.runtime_snapshot ?? null,
+    }));
+    const fingerprint = machineListFingerprint(mapped, {
+      machine_search: String(searchMachineRef.current || '').trim(),
+      total_pages: res?.total_pages ?? null,
+    });
+    if (fingerprint === machineListFingerprintRef.current) return;
+    machineListFingerprintRef.current = fingerprint;
+    setMachines(prev => {
+      const prevMap = new Map(prev.map(machine => [String(machine.machine_id ?? machine.key), machine]));
+      return mapped.map(machine => ({
+        ...(prevMap.get(String(machine.machine_id ?? machine.key)) || {}),
+        ...machine,
       }));
-    }, 5000);
+    });
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    let refreshing = false;
+    const timer = setInterval(async () => {
+      if (!mounted || refreshing || !canRunListRefresh()) return;
+      refreshing = true;
+      try {
+        await refreshMachinesBref();
+      } catch (err) {
+        console.warn('refresh machines bref failed', err);
+      } finally {
+        refreshing = false;
+      }
+    }, LIST_REFRESH_INTERVAL_MS);
     return () => { mounted = false; clearInterval(timer); };
   }, []);
 
@@ -434,14 +474,17 @@ const ManageMachine = () => {
     return () => { mounted = false; };
   }, []);
 
-  const fetchContainersForMachine = async (machineId, pageNumber = 0, containerName = searchContainerName) => {
+  const fetchContainersForMachine = async (machineId, pageNumber = 0, containerName = searchContainerName, options = {}) => {
+    const { silent = false } = options;
     // avoid duplicate fetch
     if (!machineId) return;
     const mid = String(machineId);
     // if same page already loaded, skip
     //if (containerMap[mid]?.loading || (containerMap[mid]?.data && containerMap[mid]?.page === pageNumber)) return;
     // mark loading
-    setContainerMap(prev => ({ ...prev, [mid]: { ...(prev[mid] || {}), loading: true, data: [], page: pageNumber, total_page: prev[mid]?.total_page || 1 } }));
+    if (!silent) {
+      setContainerMap(prev => ({ ...prev, [mid]: { ...(prev[mid] || {}), loading: true, data: [], page: pageNumber, total_page: prev[mid]?.total_page || 1 } }));
+    }
     try {
       const pageSize = 4;
       const res = await listAllContainerBrefInformation({
@@ -453,12 +496,15 @@ const ManageMachine = () => {
       const items = (res && (res.containers_info || res.containers)) || [];
       const total_page = (res && (res.total_page || res.totalPages || res.total_pages)) || 1;
       const total_number = Number(res && (res.total_number ?? res.totalNumber ?? res.total)) || items.length;
-      const mapped = items.map((c, idx) => applyContainerDisplayStatus({
+      const mapped = items.map((c, idx) => applyContainerEffectiveStatus({
         key: c.container_id ? String(c.container_id) : `${mid}-${pageNumber}-${idx}`,
+        container_id: c.container_id ?? null,
         container_name: c.container_name || c.name || `container-${idx}`,
         container_image: c.container_image || '',
         port: c.port ? String(c.port) : (c.port_str || ''),
-        container_status: (c.container_status || '').toLowerCase(),
+        effective_status: (c.effective_status || '').toLowerCase(),
+        failed_reason: c.failed_reason ?? null,
+        failed_detail: c.failed_detail ?? null,
         machine_id: mid,
         machine_ip: c.machine_ip || '',
         owners: c.owners || [],
@@ -475,7 +521,21 @@ const ManageMachine = () => {
         disk_total_gb: c.disk_total_gb ?? null,
         disk_limit_gb: c.disk_limit_gb ?? null,
         disk_usage_percent: c.disk_usage_percent ?? null,
+        runtime_metrics: c.runtime_metrics ?? null,
       }));
+      const fingerprint = containerListFingerprint(mapped, {
+        machine_id: mid,
+        page: pageNumber,
+        page_size: pageSize,
+        total_page,
+        total_number,
+        container_name: String(containerName || '').trim(),
+      });
+      if (silent && fingerprint === containerListFingerprintRef.current[mid]) return;
+      containerListFingerprintRef.current = {
+        ...containerListFingerprintRef.current,
+        [mid]: fingerprint,
+      };
       setContainerMap(prev => ({
         ...prev,
         [mid]: {
@@ -491,9 +551,46 @@ const ManageMachine = () => {
     } catch (err) {
       console.error('fetchContainersForMachine failed', machineId, err);
       // fallback: keep loading false but no data so UI will use local mock
-      setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: [], page: pageNumber, total_page: 1 } }));
+      if (!silent) {
+        setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: [], page: pageNumber, total_page: 1 } }));
+      }
     }
   };
+
+  useEffect(() => {
+    let mounted = true;
+    let refreshing = false;
+    const refreshLoadedContainers = async () => {
+      if (!mounted || refreshing || !canRunListRefresh()) return;
+      const entries = Object.entries(containerMapRef.current)
+        .filter(([, entry]) => Array.isArray(entry?.data) && !entry.loading);
+      if (!entries.length) return;
+      refreshing = true;
+      try {
+        await Promise.allSettled(entries.map(([machineId, entry]) => (
+          fetchContainersForMachine(
+            machineId,
+            entry.page ?? 0,
+            entry.container_name ?? searchContainerNameRef.current,
+            { silent: true },
+          )
+        )));
+      } finally {
+        refreshing = false;
+      }
+    };
+    const timer = setInterval(refreshLoadedContainers, LIST_REFRESH_INTERVAL_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', refreshLoadedContainers);
+    }
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', refreshLoadedContainers);
+      }
+    };
+  }, []);
 
   const handleLongTermChange = async (containerRecord, checked) => {
     const cid = containerRecord?.key || containerRecord?.container_id;
@@ -603,7 +700,7 @@ const ManageMachine = () => {
   });
 
   const renderStatusTag = (status, record = null) => {
-    const displayStatus = record?.display_status || (record?.is_maintenance ? 'maintenance' : status);
+    const displayStatus = record?.is_maintenance ? 'maintenance' : status;
     const normalized = String(displayStatus || status || '').toLowerCase();
     const mid = String(record?.machine_id || record?.key || '');
     if (mid && machineStatusLoadingMap[mid]) return <Tag color="processing">澶勭悊涓</Tag>;
@@ -614,7 +711,7 @@ const ManageMachine = () => {
   const renderContainerStatus = (status) => {
     const normalized = String(status || '').toLowerCase();
     const color = normalized === 'online' ? 'green' : normalized === 'offline' ? 'volcano' : normalized === 'paused' ? 'volcano' : normalized === 'building' ? 'geekblue' : normalized === 'creating' ? 'blue' : normalized === 'starting' ? 'cyan' : normalized === 'restarting' ? 'purple' : normalized === 'stopping' ? 'orange' : normalized === 'failed' ? 'red' : 'default';
-    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', building: '构建中', creating: '创建中', starting: '启动中', restarting: '重启中', stopping: '停止中', pausing: '冻结中', unpausing: '解冻中', failed: '异常', unknown: '未知' };
+    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', building: '构建中', creating: '创建中', starting: '启动中', restarting: '重启中', stopping: '停止中', pausing: '冻结中', unpausing: '解冻中', failed: '异常', unknown: '未知', status_unknown: '状态未知', host_offline: '宿主机离线', host_maintenance: '宿主机维护' };
     return <Tag color={color}>{labelMap[normalized] || status}</Tag>;
   };
 
@@ -650,7 +747,7 @@ const ManageMachine = () => {
         container_name: detail.container_name || detail.name || container.container_name || '',
         container_image: detail.container_image || detail.image || container.container_image || '',
         port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
-        container_status: (detail.container_status || detail.status || '').toLowerCase(),
+        effective_status: (detail.effective_status || '').toLowerCase(),
         machine_ip: detail.machine_ip || container.machine_ip || '',
         machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
         cpu_number: detail.cpu_number ?? container.cpu_number ?? null,
@@ -977,7 +1074,7 @@ const ManageMachine = () => {
           container_id: container.key ?? container.container_id,
           terminalState: 'online',
           onTerminal: (data) => {
-            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
             if (st === 'failed') {
               clearContainerTransition(cid);
               patchMachineContainerStatus(mid, cid, 'failed');
@@ -1019,7 +1116,7 @@ const ManageMachine = () => {
           container_id: container.key ?? container.container_id,
           terminalState: 'offline',
           onTerminal: (data) => {
-            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
             if (st === 'failed') {
               clearContainerTransition(cid);
               patchMachineContainerStatus(mid, cid, 'failed');
@@ -1062,13 +1159,13 @@ const ManageMachine = () => {
           terminalState: 'online',
           requiredProgressState: 'restarting',
           onProgress: (data) => {
-            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
             if (st && st !== 'online' && st !== 'failed') {
               patchMachineContainerStatus(mid, cid, st);
             }
           },
           onTerminal: (data) => {
-            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
             if (st === 'failed') {
               clearContainerTransition(cid);
               patchMachineContainerStatus(mid, cid, 'failed');
@@ -1114,7 +1211,7 @@ const ManageMachine = () => {
     const total = containerRecord?.disk_total_gb;
     const limit = containerRecord?.disk_limit_gb;
     const pct = Number(containerRecord?.disk_usage_percent || 0);
-    const actionState = getContainerActionState(containerRecord?.container_status, containerRecord?.display_status);
+    const actionState = getContainerActionState(containerRecord?.effective_status);
     return (
       <div className="mm-container-disk-line">
         <span>{total == null ? '磁盘 -' : `磁盘 ${total}G / ${limit != null ? `${limit}G` : '-'}`}</span>
@@ -1163,7 +1260,7 @@ const ManageMachine = () => {
       );
     }
 
-    const status = String(containerRecord?.container_status || '').toLowerCase();
+    const status = String(containerRecord?.effective_status || '').toLowerCase();
     const startDisabled = status !== 'offline';
     const restartDisabled = status !== 'online';
     const stopDisabled = status !== 'online';
@@ -1277,7 +1374,7 @@ const ManageMachine = () => {
               <Button size="small" icon={<PlusOutlined />} onClick={(e) => { e.stopPropagation(); navigate('/index/create', { state: { machineId: record.machine_id ?? record.key } }); }}>
                 添加容器
               </Button>
-              <Button size="small" icon={<ReloadOutlined />} onClick={(e) => { e.stopPropagation(); fetchContainersForMachine(record.key); }} />
+              <Button size="small" icon={<ReloadOutlined />} onClick={(e) => { e.stopPropagation(); fetchContainersForMachine(record.key, (containerMap[String(record.key)] || {}).page ?? 0); }} />
             </Space>
           </div>
           <div className="mm-container-card-grid">

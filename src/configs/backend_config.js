@@ -57,6 +57,7 @@ export const API_ROUTES = {
 	CONTAINERS_SET_LONG_TERM: '/api/containers/set_long_term_container',
 	CONTAINERS_LIST_DELETED: '/api/containers/list_deleted_containers',
 	CONTAINERS_CLEAN_DELETED_MOUNT: '/api/containers/clean_deleted_container_mount',
+	CONTAINERS_RESURRECT_DELETED: '/api/containers/resurrect_container',
 
 	// Image routes
 	IMAGES_CREATE: '/api/images/create_image',

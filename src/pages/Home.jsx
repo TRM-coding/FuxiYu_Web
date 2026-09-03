@@ -1,21 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SearchOutlined } from '@ant-design/icons';
+import { SearchOutlined, UnlockOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Tag, message, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 import ConfirmModal from '../components/ConfirmModal';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import EditUserModal from '../components/EditUserModal';
-import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer, unpauseContainer } from '../api/container_api';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
-import { CONTAINER_TERMINAL_STATES, createContainerStatusTransition, deriveContainerDisplayStatus, getContainerActionState, getRoleActionSet } from '../utils/containerActions';
+import { CONTAINER_TERMINAL_STATES, createContainerStatusTransition, deriveContainerEffectiveStatus, getContainerActionState, getRoleActionSet } from '../utils/containerActions';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
+import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint } from '../utils/listRefresh';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
+import { usePermission } from '../contexts/PermissionContext';
 import CopyChip from '../components/CopyChip';
 import './Home.css';
 
@@ -84,14 +86,17 @@ const Home = () => {
   const [longTermRemaining, setLongTermRemaining] = useState(null);
   const [longTermLimit, setLongTermLimit] = useState(null);
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
+  const [unpauseMap, setUnpauseMap] = useState({});
+  const { hasPermission } = usePermission();
   const pendingContainerTransitionRef = useRef(new Map());
+  const containerListFingerprintRef = useRef('');
 
-  const applyContainerDisplayStatus = (container) => {
+  const applyContainerEffectiveStatus = (container) => {
     const cid = container?.key || container?.container_id;
     if (!cid) return container;
     const key = String(cid);
-    const result = deriveContainerDisplayStatus(
-      container.container_status,
+    const result = deriveContainerEffectiveStatus(
+      container.effective_status,
       pendingContainerTransitionRef.current.get(key),
     );
     if (result.pendingTransition) {
@@ -99,7 +104,7 @@ const Home = () => {
     } else if (result.cleared) {
       pendingContainerTransitionRef.current.delete(key);
     }
-    return { ...container, container_status: result.status };
+    return { ...container, effective_status: result.status };
   };
 
   const markContainerTransition = (container, transitionStatus, targetStatus) => {
@@ -107,7 +112,7 @@ const Home = () => {
     if (!cid) return;
     pendingContainerTransitionRef.current.set(
       String(cid),
-      createContainerStatusTransition(container?.container_status, transitionStatus, { targetStatus }),
+      createContainerStatusTransition(container?.effective_status, transitionStatus, { targetStatus }),
     );
   };
 
@@ -118,7 +123,7 @@ const Home = () => {
   const patchContainerStatus = (cid, status) => {
     setContainers(prev => prev.map(c => (
       String(c.key) === String(cid)
-        ? applyContainerDisplayStatus({ ...c, container_status: status })
+        ? applyContainerEffectiveStatus({ ...c, effective_status: status })
         : c
     )));
   };
@@ -174,19 +179,25 @@ const Home = () => {
   useEffect(() => {
     if (!currentUserId) return; // wait until we have the id
     let mounted = true;
-    const load = async () => {
-      setLoadingContainers(true);
+    let refreshing = false;
+    const load = async ({ silent = false, refreshSsh = false } = {}) => {
+      if (refreshing) return;
+      refreshing = true;
+      if (!silent) setLoadingContainers(true);
       try {
         // machine_id should be null for this global list request
         // pagination: backend expects pages starting from 0
         const res = await listAllContainerBrefInformation({ machine_id: null, user_id: Number(currentUserId), page_number: 0, page_size: 100 });
         const items = (res && (res.containers_info || res.containers)) || [];
-        const mapped = items.map((c, idx) => applyContainerDisplayStatus({
+        const mapped = items.map((c, idx) => applyContainerEffectiveStatus({
           key: c.container_id ? String(c.container_id) : `c-${idx}`,
+          container_id: c.container_id ?? null,
           container_name: c.container_name || c.name || `container-${idx}`,
           container_image: c.container_image || '',
           port: c.port ? String(c.port) : (c.port_str || ''),
-          container_status: (c.container_status || '').toLowerCase(),
+          effective_status: (c.effective_status || '').toLowerCase(),
+          failed_reason: c.failed_reason ?? null,
+          failed_detail: c.failed_detail ?? null,
           machine_id: c.machine_id ? String(c.machine_id) : null,
           machine_ip: c.machine_ip || '',
           accounts: c.accounts || [],
@@ -206,23 +217,49 @@ const Home = () => {
           freeze_days_frozen: c.freeze_days_frozen ?? null,
           freeze_escalation_days: c.freeze_escalation_days ?? null,
         }));
-        if (Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_remaining')) {
-          setLongTermRemaining(Number(res.long_term_container_remaining));
+        const nextRemaining = Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_remaining')
+          ? Number(res.long_term_container_remaining)
+          : longTermRemaining;
+        const nextLimit = Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_limit')
+          ? Number(res.long_term_container_limit)
+          : longTermLimit;
+        const fingerprint = containerListFingerprint(mapped, {
+          long_term_container_remaining: nextRemaining,
+          long_term_container_limit: nextLimit,
+        });
+        if (!mounted) return;
+        if (!silent || fingerprint !== containerListFingerprintRef.current) {
+          containerListFingerprintRef.current = fingerprint;
+          setContainers(mapped);
+          setLongTermRemaining(nextRemaining);
+          setLongTermLimit(nextLimit);
         }
-        if (Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_limit')) {
-          setLongTermLimit(Number(res.long_term_container_limit));
-        }
-        if (mounted) setContainers(mapped);
-        if (mounted) await refreshSshTimeForAllContainers(mapped);
+        if (refreshSsh) await refreshSshTimeForAllContainers(mapped);
       } catch (err) {
         console.error('load containers failed', err);
-        await showErrorModal({ message: err?.body || err || '加载容器列表失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        if (!silent) {
+          await showErrorModal({ message: err?.body || err || '加载容器列表失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        }
       } finally {
-        if (mounted) setLoadingContainers(false);
+        refreshing = false;
+        if (mounted && !silent) setLoadingContainers(false);
       }
     };
-    load();
-    return () => { mounted = false; };
+    const refreshIfVisible = () => {
+      if (canRunListRefresh()) load({ silent: true });
+    };
+    load({ refreshSsh: true });
+    const timer = setInterval(refreshIfVisible, LIST_REFRESH_INTERVAL_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', refreshIfVisible);
+    }
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', refreshIfVisible);
+      }
+    };
   }, [currentUserId]);
 
   // 渲染侧 ing 看护（状态驱动，补手动刷新/他人操作后进页的缺口）：
@@ -231,7 +268,7 @@ const Home = () => {
   useEffect(() => {
     const current = ingWatcherRef.current;
     for (const c of containers) {
-      const st = (c.container_status || '').toLowerCase();
+      const st = (c.effective_status || '').toLowerCase();
       const cid = c.key ? String(c.key) : (c.container_id ? String(c.container_id) : null);
       // 数字 container_id + machine_id 齐备才看护（key 回退形如 c-<idx> 时跳过）
       if (!cid || !c.machine_id || !/^\d+$/.test(cid)) continue;
@@ -246,11 +283,11 @@ const Home = () => {
         container_id: cid,
         container_name: c.container_name,
         onProgress: (data) => {
-          const st = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+          const st = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
           if (st) patchContainerStatus(cid, st);
         },
         onTerminal: (data) => {
-          const finalSt = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+          const finalSt = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
           if (!finalSt) return;
           current.delete(cid);
           patchContainerStatus(cid, finalSt);
@@ -268,6 +305,22 @@ const Home = () => {
       current.clear();
     };
   }, []);
+
+  const handleUnpause = async (record) => {
+    const cid = record?.key || record?.container_id;
+    if (!cid) return;
+    const key = String(cid);
+    setUnpauseMap(prev => ({ ...prev, [key]: true }));
+    try {
+      await unpauseContainer(Number(cid));
+      message.success('解冻指令已发送');
+      patchContainerStatus(cid, 'unpausing');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '解冻失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setUnpauseMap(prev => ({ ...prev, [key]: false }));
+    }
+  };
 
   const handleLongTermChange = async (record, checked) => {
     const cid = record?.key || record?.container_id;
@@ -315,14 +368,14 @@ const Home = () => {
     );
     if (!matched) return;
     applyHeartbeatStartedRef.current = true;
-    const matchedStatus = String(matched.container_status || '').toLowerCase();
+    const matchedStatus = String(matched.effective_status || '').toLowerCase();
     if (CONTAINER_TERMINAL_STATES.has(matchedStatus)) {
       clearContainerTransition(matched.key);
       patchContainerStatus(matched.key, matchedStatus);
       return;
     }
     // 两轮三态（building → creating → online）：轮 1 从 building 起步等 creating，
-    // 中间态由 onProgress 喂入 deriveContainerDisplayStatus 推进轮 2
+    // 中间态由 onProgress 喂入 deriveContainerEffectiveStatus 推进轮 2
     markContainerTransition(matched, 'building', 'creating');
     patchContainerStatus(matched.key, 'building');
     try {
@@ -331,18 +384,18 @@ const Home = () => {
         container_name: req.container_name,
         container_id: matched.key,
         onProgress: (data) => {
-          const st = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+          const st = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
           if (st) patchContainerStatus(matched.key, st);
         },
         onRunning: async (data) => {
-          // heartbeat may return a payload with container_status; handle 'failed' explicitly
-          const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+          // heartbeat may return a payload with effective_status; handle 'failed' explicitly
+          const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
           if (st === 'failed') {
             message.error('容器创建失败');
             try {
               setContainers(prev => prev.map(c => {
                 if (String(c.machine_id) === String(req.machine_id) && (c.container_name === req.container_name || c.container_name === req.container_name)) {
-                  return { ...c, container_status: 'failed' };
+                  return { ...c, effective_status: 'failed' };
                 }
                 return c;
               }));
@@ -356,7 +409,7 @@ const Home = () => {
           try {
             setContainers(prev => prev.map(c => {
               if (String(c.machine_id) === String(req.machine_id) && (c.container_name === req.container_name || c.container_name === req.container_name)) {
-                return { ...c, container_status: 'online' };
+                return { ...c, effective_status: 'online' };
               }
               return c;
             }));
@@ -440,7 +493,7 @@ const Home = () => {
   // 这里 start/stop/restart 的实现都只是前端模拟，实际应该调用对应的 API 来操作容器，并根据结果来更新状态和提示用户
   const handleStartContainer = async (record) => {
     const cid = record?.key;
-    if ((record?.container_status || '').toLowerCase() !== 'offline') return;
+    if ((record?.effective_status || '').toLowerCase() !== 'offline') return;
     try {
       // optimistic UI
       markContainerTransition(record, 'starting', 'online');
@@ -455,7 +508,7 @@ const Home = () => {
           container_id: cid,
           terminalState: 'online',
           onTerminal: (data) => {
-            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
             if (st === 'failed') {
               clearContainerTransition(cid);
               patchContainerStatus(cid, 'failed');
@@ -482,7 +535,7 @@ const Home = () => {
 
   const handleStopContainer = async (record) => {
     const cid = record?.key;
-    if ((record?.container_status || '').toLowerCase() !== 'online') return;
+    if ((record?.effective_status || '').toLowerCase() !== 'online') return;
     try {
       markContainerTransition(record, 'stopping', 'offline');
       patchContainerStatus(cid, 'stopping');
@@ -495,7 +548,7 @@ const Home = () => {
           container_id: cid,
           terminalState: 'offline',
           onTerminal: (data) => {
-            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
             if (st === 'failed') {
               clearContainerTransition(cid);
               patchContainerStatus(cid, 'failed');
@@ -522,7 +575,7 @@ const Home = () => {
 
   const handleRestartContainer = async (record) => {
     const cid = record?.key;
-    if ((record?.container_status || '').toLowerCase() !== 'online') return;
+    if ((record?.effective_status || '').toLowerCase() !== 'online') return;
     try {
       markContainerTransition(record, 'restarting', 'online');
       patchContainerStatus(cid, 'restarting');
@@ -536,13 +589,13 @@ const Home = () => {
           terminalState: 'online',
           requiredProgressState: 'restarting',
           onProgress: (data) => {
-            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
             if (st && st !== 'online' && st !== 'failed') {
               patchContainerStatus(cid, st);
             }
           },
           onTerminal: (data) => {
-            const st = (data && data.container_status) ? String(data.container_status).toLowerCase() : null;
+            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
             if (st === 'failed') {
               clearContainerTransition(cid);
               patchContainerStatus(cid, 'failed');
@@ -689,7 +742,7 @@ const Home = () => {
         container_name: detail.container_name || detail.name || container.container_name || '',
         container_image: detail.container_image || detail.image || container.container_image || '',
         port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
-        container_status: (detail.container_status || detail.status || '').toLowerCase(),
+        effective_status: (detail.effective_status || '').toLowerCase(),
         machine_ip: detail.machine_ip || container.machine_ip || '',
         machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
         cpu_number: detail.cpu_number || container.cpu_number || 0,
@@ -809,7 +862,7 @@ const Home = () => {
   };
 
   const renderContainerCard = (record) => {
-    const status = (record?.container_status || '').toLowerCase();
+    const status = (record?.effective_status || '').toLowerCase();
     const statusLabelMap = {
       online: '运行中',
       offline: '已停止',
@@ -823,6 +876,9 @@ const Home = () => {
       unpausing: '解冻中',
       failed: '异常',
       unknown: '未知',
+      status_unknown: '状态未知',
+      host_offline: '宿主机离线',
+      host_maintenance: '宿主机维护',
     };
     const color = status === 'online'
       ? 'green'
@@ -844,9 +900,8 @@ const Home = () => {
                     ? 'red'
                     : 'default';
     const myRole = getRoleForUser(record.accounts, currentUserName, currentUserId);
-    const sshText = formatLastSshTime(record?.last_ssh_login_time);
     const cleanupText = formatCleanupCountdown(record?.last_ssh_login_time, record);
-    const actionState = getContainerActionState(record.container_status, record.display_status);
+    const actionState = getContainerActionState(record.effective_status);
     const roleColor = myRole === 'ROOT' ? 'purple' : myRole === 'ADMIN' ? 'volcano' : myRole === 'COLLABORATOR' ? 'green' : 'default';
     // 磁盘使用情况（进度条为主）：容量检测是本系统核心机制，卡片优先展示它
     const diskTotal = record?.disk_total_gb;
@@ -872,10 +927,19 @@ const Home = () => {
           <Tag color={roleColor}>{myRole || '未授权'}</Tag>
           <span>{record.is_long_term ? '长期容器' : `清理倒计时 ${cleanupText}`}</span>
         </div>
-        <div className="home-container-card-dynamic">
-          <span title={sshText}>上次SSH {sshText}</span>
-          <span className="home-container-disk-label">
-            <span className="home-container-disk-label-text" title={diskText}>{diskText}</span>
+        {/* 磁盘行（2026-09 对齐 ManageUser/ManageMachine）：文本 + 操作（解冻/长期）+ 进度条；动态 SSH 格移除 */}
+        <div className="home-container-disk-line">
+          <span title={diskText}>{diskText}</span>
+          <div className="home-container-disk-actions">
+            {hasPermission('container:manage') && (
+              <Button
+                size="small"
+                icon={<UnlockOutlined />}
+                disabled={!actionState.canUnpause}
+                loading={!!unpauseMap[String(record.key)]}
+                onClick={(e) => { e.stopPropagation(); handleUnpause(record); }}
+              >解冻</Button>
+            )}
             <Checkbox
               checked={record.is_long_term === true}
               disabled={
@@ -885,9 +949,7 @@ const Home = () => {
               onChange={e => handleLongTermChange(record, e.target.checked)}
               onClick={e => e.stopPropagation()}
             >长期</Checkbox>
-          </span>
-        </div>
-        <div className="home-container-disk-line">
+          </div>
           <div className="home-container-disk-track">
             <div className={diskFillClass} style={{ width: `${Math.min(diskPct, 100)}%` }} />
           </div>
@@ -963,19 +1025,19 @@ const Home = () => {
             <Col xs={12} sm={12} md={5}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">运行中</Typography.Text>
-                <Typography.Title level={2} className="home-stat-number home-green">{containers.filter(c => c.container_status === 'online').length}</Typography.Title>
+                <Typography.Title level={2} className="home-stat-number home-green">{containers.filter(c => c.effective_status === 'online').length}</Typography.Title>
               </div>
             </Col>
             <Col xs={12} sm={12} md={4}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">异常</Typography.Text>
-                <Typography.Title level={2} className="home-stat-number home-warning">{containers.filter(c => c.container_status === 'failed').length}</Typography.Title>
+                <Typography.Title level={2} className="home-stat-number home-warning">{containers.filter(c => c.effective_status === 'failed').length}</Typography.Title>
               </div>
             </Col>
             <Col xs={12} sm={12} md={5}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">离线</Typography.Text>
-                <Typography.Title level={2} className="home-stat-number home-red">{containers.filter(c => c.container_status === 'offline').length}</Typography.Title>
+                <Typography.Title level={2} className="home-stat-number home-red">{containers.filter(c => c.effective_status === 'offline').length}</Typography.Title>
               </div>
             </Col>
             <Col xs={12} sm={12} md={5}>

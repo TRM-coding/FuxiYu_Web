@@ -46,28 +46,32 @@ vi.mock('../api/container_api', () => ({
   createContainer: vi.fn().mockResolvedValue({ success: 1 }),
 }));
 
-vi.mock('../api/image_api', () => ({
-  listImageBrefInformation: vi.fn().mockResolvedValue({
-    images: [
-      {
-        image_id: 7,
-        name: 'PyTorch 2.x + CUDA 12.1',
-        description: 'GPU 训练环境',
-        base_image: 'ubuntu:22.04',
-        status: 'ready',
-      },
-    ],
-  }),
-  getImageDetailInformation: vi.fn().mockResolvedValue({
-    image: {
+const makeMockImageListResponse = () => ({
+  images: [
+    {
       image_id: 7,
       name: 'PyTorch 2.x + CUDA 12.1',
-      description: 'GPU 训练环境',
+      description: 'GPU training image',
       base_image: 'ubuntu:22.04',
       status: 'ready',
-      dockerfile_body: 'RUN echo torch',
     },
-  }),
+  ],
+});
+
+const makeMockImageDetailResponse = () => ({
+  image: {
+    image_id: 7,
+    name: 'PyTorch 2.x + CUDA 12.1',
+    description: 'GPU training image',
+    base_image: 'ubuntu:22.04',
+    status: 'ready',
+    dockerfile_body: 'RUN echo torch',
+  },
+});
+
+vi.mock('../api/image_api', () => ({
+  listImageBrefInformation: vi.fn(),
+  getImageDetailInformation: vi.fn(),
 }));
 
 import { getUserPermissions } from '../api/user_api';
@@ -84,15 +88,17 @@ const selectMachine = async () => {
   await userEvent.click(await screen.findByRole('button', { name: /gpu-01/ }));
 };
 
-describe('CreateContainer 代建门禁（container:manage 分类显示）', () => {
+describe.sequential('CreateContainer 代建门禁（container:manage 分类显示）', () => {
   beforeEach(() => {
     localStorage.setItem('currentUserName', 'operator1');
     localStorage.setItem('currentUserId', '1');
     getUserPermissions.mockReset();
     createContainer.mockClear();
     listMachinePermissions.mockClear();
-    listImageBrefInformation.mockClear();
-    getImageDetailInformation.mockClear();
+    listImageBrefInformation.mockReset();
+    listImageBrefInformation.mockResolvedValue(makeMockImageListResponse());
+    getImageDetailInformation.mockReset();
+    getImageDetailInformation.mockResolvedValue(makeMockImageDetailResponse());
   });
 
   it('普通用户（无 container:manage）不显示 ROOT 用户选择器', async () => {
@@ -113,7 +119,7 @@ describe('CreateContainer 代建门禁（container:manage 分类显示）', () =
     await selectImage();
     await selectMachine();
     // 容器名必填（不再自动生成），先填名再提交
-    await userEvent.type(screen.getByLabelText(/容器名/), 'test-container');
+    await userEvent.type(screen.getByLabelText(/容器名/), 'test_container');
     await userEvent.click(screen.getByRole('button', { name: '创建容器' }));
 
     await waitFor(() => expect(createContainer).toHaveBeenCalled());
@@ -121,7 +127,7 @@ describe('CreateContainer 代建门禁（container:manage 分类显示）', () =
     const payload = createContainer.mock.calls[0][0];
     expect(payload.owner_user_id).toBeUndefined();
     expect(payload.image_id).toBe(7);
-    expect(payload.container.NAME).toBe('test-container');
+    expect(payload.container.NAME).toBe('test_container');
   });
 
   it('代建者显示 ROOT 用户选择器；未选机器时禁用，选机器后默认当前用户', async () => {
@@ -148,12 +154,12 @@ describe('CreateContainer 代建门禁（container:manage 分类显示）', () =
     await selectMachine();
     await screen.findByText('运维一号');
     // 容器名必填（不再自动生成），先填名再提交
-    await userEvent.type(screen.getByLabelText(/容器名/), 'test-container');
+    await userEvent.type(screen.getByLabelText(/容器名/), 'test_container');
     await userEvent.click(screen.getByRole('button', { name: '创建容器' }));
 
     await waitFor(() => expect(createContainer).toHaveBeenCalled());
     const payload = createContainer.mock.calls[0][0];
     expect(payload.owner_user_id).toBe(1);
-    expect(payload.container.NAME).toBe('test-container');
+    expect(payload.container.NAME).toBe('test_container');
   });
 });

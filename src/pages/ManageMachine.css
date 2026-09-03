@@ -75,7 +75,7 @@
 }
 .mm-machine-card {
   min-width: 0;
-  height: 408px;
+  height: auto;
   display: grid;
   grid-template-columns: 136px minmax(0, 1fr);
   border: 1px solid #d8e0ea;

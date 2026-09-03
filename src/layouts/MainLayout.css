@@ -130,3 +130,21 @@
     padding-top: 68px;
   }
 }
+
+/* 侧边栏响应式收窄（2026-09）：桌面中宽区间 icon-only 让位主内容区 */
+@media (min-width: 769px) and (max-width: 1200px) {
+  .main-sidebar {
+    width: 76px;
+    flex: 0 0 76px;
+    padding: 18px 8px;
+  }
+
+  .main-brand {
+    justify-content: center;
+    padding: 10px 0;
+  }
+
+  .main-brand-copy {
+    display: none;
+  }
+}

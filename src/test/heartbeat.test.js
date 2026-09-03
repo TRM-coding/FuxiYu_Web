@@ -15,11 +15,11 @@ describe('startContainerStatusHeartbeat', () => {
     global.fetch = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ container_status: 'restarting' }),
+        json: async () => ({ effective_status: 'restarting' }),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ container_status: 'online' }),
+        json: async () => ({ effective_status: 'online' }),
       });
 
     startContainerStatusHeartbeat({
@@ -27,8 +27,8 @@ describe('startContainerStatusHeartbeat', () => {
       container_name: 'c1',
       terminalState: 'online',
       interval: 100,
-      onProgress: data => progress.push(data.container_status),
-      onTerminal: data => terminal.push(data.container_status),
+      onProgress: data => progress.push(data.effective_status),
+      onTerminal: data => terminal.push(data.effective_status),
     });
 
     await vi.runOnlyPendingTimersAsync();
@@ -46,15 +46,15 @@ describe('startContainerStatusHeartbeat', () => {
     global.fetch = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ container_status: 'online' }),
+        json: async () => ({ effective_status: 'online' }),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ container_status: 'restarting' }),
+        json: async () => ({ effective_status: 'restarting' }),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ container_status: 'online' }),
+        json: async () => ({ effective_status: 'online' }),
       });
 
     startContainerStatusHeartbeat({
@@ -63,8 +63,8 @@ describe('startContainerStatusHeartbeat', () => {
       terminalState: 'online',
       requiredProgressState: 'restarting',
       interval: 100,
-      onProgress: data => progress.push(data.container_status),
-      onTerminal: data => terminal.push(data.container_status),
+      onProgress: data => progress.push(data.effective_status),
+      onTerminal: data => terminal.push(data.effective_status),
     });
 
     await Promise.resolve();
@@ -92,17 +92,17 @@ describe('watchIngContainerUntilTerminal', () => {
     const terminal = [];
 
     global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ container_status: 'building' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ container_status: 'creating' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ container_status: 'online' }) });
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ effective_status: 'building' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ effective_status: 'creating' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ effective_status: 'online' }) });
 
     watchIngContainerUntilTerminal({
       machine_id: 1,
       container_id: 2,
       container_name: 'c1',
       interval: 100,
-      onProgress: data => progress.push(data.container_status),
-      onTerminal: data => terminal.push(data.container_status),
+      onProgress: data => progress.push(data.effective_status),
+      onTerminal: data => terminal.push(data.effective_status),
     });
 
     // 首次 doCheck 立即执行：building（ing，仅 onProgress）
@@ -120,7 +120,7 @@ describe('watchIngContainerUntilTerminal', () => {
 
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ container_status: 'online' }),
+      json: async () => ({ effective_status: 'online' }),
     });
 
     watchIngContainerUntilTerminal({
@@ -128,8 +128,8 @@ describe('watchIngContainerUntilTerminal', () => {
       container_id: 2,
       container_name: 'c1',
       interval: 100,
-      onProgress: data => progress.push(data.container_status),
-      onTerminal: data => terminal.push(data.container_status),
+      onProgress: data => progress.push(data.effective_status),
+      onTerminal: data => terminal.push(data.effective_status),
     });
 
     await vi.runOnlyPendingTimersAsync();

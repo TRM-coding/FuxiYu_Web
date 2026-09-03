@@ -59,12 +59,14 @@
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+  flex-wrap: wrap;
 }
 
 .detail-topbar-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .detail-title-wrap {
@@ -75,6 +77,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  row-gap: 6px;
   margin: 6px 0 4px;
 }
 
@@ -103,16 +107,12 @@
   margin-top: 18px;
 }
 
-.machine-detail-layout {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 18px;
-}
-
+/* 通用自适应（auto-fit 自然塌缩，无需逐档媒体查询）：
+   整卡 ≥460 一列需要，同质小卡 ≥150-190 一列需要 */
+.machine-detail-layout,
 .container-detail-layout {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
   gap: 16px;
   margin-top: 18px;
 }
@@ -128,10 +128,8 @@
   flex: 1 1 auto;   /* 吃剩余宽度：与操作区合计占满整行（与下方卡片对齐），内部不等分 */
   min-width: 0;
 }
-
-.container-runtime-card .detail-metric-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));   /* 一行横排 4 个指标 */
-}
+/* 运行指标 4 个横排由 .detail-metric-grid 的 auto-fit(minmax(150px,1fr)) 自然达成，
+   窄到放不下 4 个时按序降为 3/2/1 列，不再逐档写断点 */
 
 .container-top-row .container-operations-card {
   flex: 0 0 auto;   /* 操作区按内容收缩，不等长 */
@@ -277,15 +275,12 @@
   order: 8;   /* 与镜像信息（order 7）并排 */
 }
 
-.machine-detail-summary-row {
+.machine-detail-summary-row,
+.machine-detail-summary-row-wide {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 12px;
-}
-
-.machine-detail-summary-row-wide {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .machine-detail-wide-card {
@@ -327,7 +322,7 @@
 
 .detail-metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
 }
 
@@ -482,7 +477,7 @@
 
 .detail-runtime-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 10px;
 }
 
@@ -522,6 +517,29 @@
 
 .detail-chart-card {
   min-height: 258px;
+}
+
+/* 图卡头行：标题 + 掉卡 warning（掉卡审查 2026-09，N 帧确认后常驻提示） */
+.detail-chart-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.detail-chart-card-head h2 {
+  margin: 0;
+}
+
+.gpu-absent-warn {
+  font-size: 12px;
+  color: #d46b08;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 4px;
+  padding: 2px 8px;
 }
 
 .machine-gpu-grid {
@@ -578,13 +596,9 @@
 }
 
 @media (max-width: 980px) {
+  /* auto-fit 系列（machine/container-detail-layout、metric-grid、summary-row、
+     runtime-list）已按自身内容自然塌缩，不需要在此列 1fr */
   .detail-grid,
-  .machine-detail-layout,
-  .container-detail-layout,
-  .detail-metric-grid,
-  .machine-detail-summary-row,
-  .machine-detail-summary-row-wide,
-  .detail-runtime-list,
   .machine-gpu-grid,
   .detail-container-list {
     grid-template-columns: 1fr;
@@ -609,18 +623,33 @@
   }
 }
 
-@media (min-width: 981px) {
-  /* 运行指标卡 metric 一行 4 个由 .container-runtime-card 规则控制，
-     此处不再覆盖（旧 repeat(2) 会造成田字布局） */
-}
-
 @media (max-width: 560px) {
+  /* 手机整宽白卡布局：去掉页面自身灰底与左右灰边，背景交给视口，
+     卡片从布局 12px 内边距起左右完全对称（避免背景/卡片视觉错位） */
   .detail-page {
-    padding: 14px;
+    padding: 0 0 16px;
+    background: transparent;
   }
 
   .detail-field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .detail-card {
+    padding: 12px;
+  }
+
+  .detail-title h1 {
+    font-size: 20px;
+  }
+
+  /* op-log 行窄屏换行：时间列整行降为第二行 */
+  .container-oplog-item {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .container-oplog-time {
+    flex: 1 1 100%;
   }
 }
 
@@ -645,6 +674,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
 }
 

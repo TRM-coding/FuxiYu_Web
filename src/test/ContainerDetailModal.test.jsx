@@ -16,7 +16,7 @@ describe('ContainerDetailModal', () => {
           container_name: 'train-a',
           container_image: 'fuxi/image-1:20260829',
           machine_ip: '127.0.0.1',
-          container_status: 'failed',
+          effective_status: 'failed',
           failed_reason: 'create_failed',
           failed_detail: 'could not select device driver nvidia',
           cpu_number: 2,
@@ -102,7 +102,7 @@ describe('ContainerDetailModal', () => {
           container_name: 'train-b',
           container_image: 'fuxi/image-1:20260829',
           machine_ip: '127.0.0.1',
-          container_status: 'online',
+          effective_status: 'online',
           port: 1025,
           accounts: [
             { user_id: 1, username: 'root_user', role: 'ROOT' },

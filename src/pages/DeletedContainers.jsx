@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Empty, Popconfirm, Spin, Table, Tag, Typography, message } from 'antd';
-import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DeleteOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { cleanDeletedContainerMount, listDeletedContainers } from '../api/container_api';
+import { cleanDeletedContainerMount, listDeletedContainers, resurrectDeletedContainer } from '../api/container_api';
 import { usePermission } from '../contexts/PermissionContext';
 import { handleAuthError } from '../utils/authHelpers';
 import showErrorModal from '../utils/showErrorModal';
@@ -28,6 +28,7 @@ export default function DeletedContainers() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cleaningId, setCleaningId] = useState(null);
+  const [resurrectingId, setResurrectingId] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
@@ -89,6 +90,29 @@ export default function DeletedContainers() {
     }
   };
 
+  const resurrectContainer = async (record) => {
+    if (!record?.deleted_id || String(record.deleted_id).startsWith('mount-')) return;
+    setResurrectingId(record.deleted_id);
+    try {
+      await resurrectDeletedContainer(record.deleted_id);
+      message.success('容器恢复请求已发送');
+      await loadRecords();
+    } catch (err) {
+      if (err?.status === 401 || err?.status === 403) {
+        handleAuthError(err.status, navigate);
+        return;
+      }
+      showErrorModal({
+        title: '恢复容器失败',
+        message: err?.body?.message || err?.message || '无法恢复容器',
+        status: err?.status,
+        route: err?.route,
+      });
+    } finally {
+      setResurrectingId(null);
+    }
+  };
+
   const columns = useMemo(() => [
     {
       title: '容器',
@@ -139,31 +163,56 @@ export default function DeletedContainers() {
     {
       title: '操作',
       key: 'actions',
-      width: 140,
+      width: 230,
       render: (_, record) => {
-        const disabled = !record.mount_cleanup_id || Boolean(record.cleaned_at);
+        const cleanDisabled = !record.mount_cleanup_id || Boolean(record.cleaned_at);
+        const restoreDisabled = !record.data_recoverable || !record.snapshot || String(record.deleted_id).startsWith('mount-');
+        // 灰按钮原因提示：无挂载/已清理的行 hover 时不至于一脸懵
+        const restoreTitle = restoreDisabled ? (record.cleaned_at ? 'mount 已清理，数据不可恢复' : '无可用 mount/快照数据，无法恢复') : undefined;
+        const cleanTitle = cleanDisabled ? (record.cleaned_at ? 'mount 已清理' : '该容器无 mount 清理记录') : undefined;
         return (
-          <Popconfirm
-            title="确认清理该 mount？"
-            description="清理后原目录数据不可再用于恢复。"
-            okText="清理"
-            cancelText="取消"
-            disabled={disabled}
-            onConfirm={() => cleanMount(record)}
-          >
-            <Button
-              danger
-              size="small"
-              disabled={disabled}
-              loading={cleaningId === record.mount_cleanup_id}
+          <div className="deleted-container-actions">
+            <Popconfirm
+              title="确认恢复该容器？"
+              description="恢复会复用保留的 mount 目录，并重新创建容器与用户绑定。"
+              okText="恢复"
+              cancelText="取消"
+              disabled={restoreDisabled}
+              onConfirm={() => resurrectContainer(record)}
             >
-              清理 mount
-            </Button>
-          </Popconfirm>
+              <Button
+                size="small"
+                icon={<RollbackOutlined />}
+                title={restoreTitle}
+                disabled={restoreDisabled}
+                loading={resurrectingId != null && resurrectingId === record.deleted_id}
+              >
+                恢复
+              </Button>
+            </Popconfirm>
+            <Popconfirm
+              title="确认清理该 mount？"
+              description="清理后原目录数据不可再用于恢复。"
+              okText="清理"
+              cancelText="取消"
+              disabled={cleanDisabled}
+              onConfirm={() => cleanMount(record)}
+            >
+              <Button
+                danger
+                size="small"
+                title={cleanTitle}
+                disabled={cleanDisabled}
+                loading={cleaningId != null && cleaningId === record.mount_cleanup_id}
+              >
+                清理 mount
+              </Button>
+            </Popconfirm>
+          </div>
         );
       },
     },
-  ], [cleaningId]);
+  ], [cleaningId, resurrectingId]);
 
   const expandedRowRender = (record) => {
     const snapshot = record.snapshot || {};
@@ -210,7 +259,7 @@ export default function DeletedContainers() {
           </Typography.Title>
           <Typography.Text type="secondary">查看已删除容器的 mount 保留状态，并手动清理残留目录。</Typography.Text>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={loadRecords} disabled={loading || cleaningId !== null}>
+        <Button icon={<ReloadOutlined />} onClick={loadRecords} disabled={loading || cleaningId !== null || resurrectingId !== null}>
           刷新
         </Button>
       </div>

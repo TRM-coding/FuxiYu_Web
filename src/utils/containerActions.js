@@ -2,16 +2,16 @@
  *  从 Home.jsx 的条件判断抽出，便于单测与统一维护。 */
 
 /** 由"容器 DB 状态 + 派生展示态"计算按钮可用性 */
-export function getContainerActionState(containerStatus, displayStatus = null) {
-  const status = String(containerStatus || '').toLowerCase();
-  const hostOffline = String(displayStatus || '') === 'host_offline';
+export function getContainerActionState(effectiveStatus) {
+  const status = String(effectiveStatus || '').toLowerCase();
+  const hostOffline = status === 'host_offline';
+  const blockedByHost = hostOffline || status === 'host_maintenance' || status === 'status_unknown';
   return {
     hostOffline,
-    // 宿主机离线时一切操作不可用（后端也会拦，这里只是 UI 诚实）
-    canStart: !hostOffline && status === 'offline',
-    canStop: !hostOffline && status === 'online',
-    canRestart: !hostOffline && status === 'online',
-    canUnpause: !hostOffline && status === 'paused',
+    canStart: !blockedByHost && status === 'offline',
+    canStop: !blockedByHost && status === 'online',
+    canRestart: !blockedByHost && status === 'online',
+    canUnpause: !blockedByHost && status === 'paused',
   };
 }
 
@@ -75,7 +75,7 @@ export function createContainerStatusTransition(fromStatus, transitionStatus, op
   };
 }
 
-export function deriveContainerDisplayStatus(rawStatus, pendingTransition, now = Date.now()) {
+export function deriveContainerEffectiveStatus(rawStatus, pendingTransition, now = Date.now()) {
   const incoming = normalizeContainerStatus(rawStatus);
   if (!pendingTransition || !pendingTransition.transition) {
     return { status: incoming, pendingTransition: null, cleared: false };

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   createContainerStatusTransition,
-  deriveContainerDisplayStatus,
+  deriveContainerEffectiveStatus,
   getContainerActionState,
   getRoleActionSet,
 } from '../utils/containerActions';
@@ -32,7 +32,7 @@ describe('getContainerActionState', () => {
   });
 
   it('宿主机离线时即使 online 也全部禁用', () => {
-    const s = getContainerActionState('online', 'host_offline');
+    const s = getContainerActionState('host_offline');
     expect(s.hostOffline).toBe(true);
     expect(s.canStart).toBe(false);
     expect(s.canStop).toBe(false);
@@ -42,7 +42,7 @@ describe('getContainerActionState', () => {
   it('大小写与空值鲁棒', () => {
     expect(getContainerActionState('ONLINE').canStop).toBe(true);
     expect(getContainerActionState(undefined).canStart).toBe(false);
-    expect(getContainerActionState(null, 'host_offline').hostOffline).toBe(true);
+    expect(getContainerActionState('host_offline').hostOffline).toBe(true);
   });
 });
 
@@ -72,7 +72,7 @@ describe('getRoleActionSet', () => {
   });
 });
 
-describe('deriveContainerDisplayStatus', () => {
+describe('deriveContainerEffectiveStatus', () => {
   it('keeps restarting when a stale online snapshot arrives before restart progress', () => {
     const pending = createContainerStatusTransition('online', 'restarting', {
       targetStatus: 'online',
@@ -80,7 +80,7 @@ describe('deriveContainerDisplayStatus', () => {
       timeoutMs: 60000,
     });
 
-    const result = deriveContainerDisplayStatus('online', pending, 2000);
+    const result = deriveContainerEffectiveStatus('online', pending, 2000);
 
     expect(result.status).toBe('restarting');
     expect(result.pendingTransition).toEqual(pending);
@@ -94,8 +94,8 @@ describe('deriveContainerDisplayStatus', () => {
       timeoutMs: 60000,
     });
 
-    const progress = deriveContainerDisplayStatus('restarting', pending, 2000);
-    const terminal = deriveContainerDisplayStatus('online', progress.pendingTransition, 3000);
+    const progress = deriveContainerEffectiveStatus('restarting', pending, 2000);
+    const terminal = deriveContainerEffectiveStatus('online', progress.pendingTransition, 3000);
 
     expect(progress.status).toBe('restarting');
     expect(progress.pendingTransition.reachedTransition).toBe(true);
@@ -111,7 +111,7 @@ describe('deriveContainerDisplayStatus', () => {
       timeoutMs: 60000,
     });
 
-    const result = deriveContainerDisplayStatus('offline', pending, 2000);
+    const result = deriveContainerEffectiveStatus('offline', pending, 2000);
 
     expect(result.status).toBe('starting');
     expect(result.pendingTransition).toEqual(pending);
@@ -124,9 +124,9 @@ describe('deriveContainerDisplayStatus', () => {
       timeoutMs: 60000,
     });
 
-    const stale = deriveContainerDisplayStatus('', pending, 2000);
-    const creating = deriveContainerDisplayStatus('creating', stale.pendingTransition, 3000);
-    const online = deriveContainerDisplayStatus('online', creating.pendingTransition, 4000);
+    const stale = deriveContainerEffectiveStatus('', pending, 2000);
+    const creating = deriveContainerEffectiveStatus('creating', stale.pendingTransition, 3000);
+    const online = deriveContainerEffectiveStatus('online', creating.pendingTransition, 4000);
 
     expect(stale.status).toBe('building');
     expect(stale.pendingTransition).toEqual(pending);
@@ -150,7 +150,7 @@ describe('deriveContainerDisplayStatus', () => {
       timeoutMs: 60000,
     });
 
-    const result = deriveContainerDisplayStatus('online', pending, 2000);
+    const result = deriveContainerEffectiveStatus('online', pending, 2000);
 
     expect(result.status).toBe('online');
     expect(result.pendingTransition).toBe(null);
@@ -164,12 +164,12 @@ describe('deriveContainerDisplayStatus', () => {
       timeoutMs: 1000,
     });
 
-    expect(deriveContainerDisplayStatus('failed', pending, 1500)).toMatchObject({
+    expect(deriveContainerEffectiveStatus('failed', pending, 1500)).toMatchObject({
       status: 'failed',
       pendingTransition: null,
       cleared: true,
     });
-    expect(deriveContainerDisplayStatus('online', pending, 2501)).toMatchObject({
+    expect(deriveContainerEffectiveStatus('online', pending, 2501)).toMatchObject({
       status: 'online',
       pendingTransition: null,
       cleared: true,

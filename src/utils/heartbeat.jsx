@@ -32,7 +32,7 @@ export function startContainerStatusHeartbeat({ machine_id, container_name, cont
       clearTimeout(to);
       if (res.ok) {
         const data = await res.json().catch(() => null);
-        const st = data && data.container_status;
+        const st = data && data.effective_status;
         const normalizedStatus = String(st || '').toLowerCase();
         if (st && typeof onProgress === 'function') {
           onProgress(data);
@@ -120,6 +120,8 @@ export function startMachineStatusHeartbeat({ machine_id, onTerminal, terminalSt
 // 客户端给 60 分钟安全上限防止异常服务器下无限轮询。
 export const ING_CONTAINER_STATES = new Set([
   'building', 'creating', 'starting', 'stopping', 'restarting', 'pausing', 'unpausing',
+  // 容器轴复核（node 重启后 cold_start_verify 波）：ing 语义，自动轮询至终态
+  'status_unknown',
 ]);
 
 export function watchIngContainerUntilTerminal({ machine_id, container_id, container_name, onTerminal, onProgress, timeout = 3600000, interval = 3000 }) {
@@ -148,7 +150,7 @@ export function watchIngContainerUntilTerminal({ machine_id, container_id, conta
       clearTimeout(to);
       if (res.ok) {
         const data = await res.json().catch(() => null);
-        const st = data && data.container_status ? String(data.container_status).toLowerCase() : '';
+        const st = data && data.effective_status ? String(data.effective_status).toLowerCase() : '';
         // 中间态也回调：列表渲染侧借 onProgress 实时 patch，避免 UI 停留在加载时的旧 ing 态
         if (st && typeof onProgress === 'function') {
           onProgress(data);

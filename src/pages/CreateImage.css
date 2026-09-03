@@ -307,4 +307,15 @@
   .ci-form-grid {
     grid-template-columns: 1fr;
   }
+
+  /* 窄屏收边距；Dockerfile 的 FROM 行若文字过长允许折行 */
+  .ci-list-panel {
+    padding: 10px;
+  }
+  .ci-editor-panel {
+    padding: 12px;
+  }
+  .ci-code-from-row {
+    flex-wrap: wrap;
+  }
 }

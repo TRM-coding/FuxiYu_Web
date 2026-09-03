@@ -167,7 +167,7 @@ const ContainerDetailPage = () => {
         const has = key => Object.prototype.hasOwnProperty.call(data || {}, key);
         return {
           ...prev,
-          container_status: has('container_status') ? data.container_status : prev.container_status,
+          effective_status: has('effective_status') ? data.effective_status : prev.effective_status,
           failed_reason: has('failed_reason') ? data.failed_reason : prev.failed_reason,
           failed_detail: has('failed_detail') ? data.failed_detail : prev.failed_detail,
           runtime_metrics: has('runtime_metrics') ? data.runtime_metrics : prev.runtime_metrics,
@@ -186,6 +186,30 @@ const ContainerDetailPage = () => {
     return () => clearInterval(timer);
   }, [containerId]);
 
+  // 容器级掉卡审查（与机器页同款 N 帧语义）：分配锁定的卡（device_ids，静态）
+  // 持续缺席于每轮 live 切片（devices）→ 该容器实际已无此卡可用
+  const GPU_ABSENT_TICKS = 3;
+  const [absentTicks, setAbsentTicks] = useState({});
+
+  useEffect(() => {
+    const gpu = container?.runtime_metrics?.gpu;
+    if (!gpu || !Array.isArray(gpu.device_ids) || gpu.device_ids.length === 0) {
+      setAbsentTicks({});
+      return;
+    }
+    const liveIdx = new Set(
+      (Array.isArray(gpu.devices) ? gpu.devices : [])
+        .map(d => Number(d?.index)).filter(Number.isInteger),
+    );
+    const ids = gpu.device_ids.map(Number).filter(Number.isInteger);
+    setAbsentTicks(prev => {
+      const next = {};
+      for (const idx of ids) next[idx] = liveIdx.has(idx) ? 0 : (prev[idx] ?? 0) + 1;
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [container?.runtime_metrics?.gpu]);
+
   // 操作历史（op-log）：能看容器的即可看其事件；进入时拉一次
   useEffect(() => {
     if (!containerId) return;
@@ -202,7 +226,7 @@ const ContainerDetailPage = () => {
   }, [containerId]);
 
   // 容器操作（详情页直连 API；状态由 5s 轮询 loadStatus 兜底刷新）
-  const actionState = getContainerActionState(container?.container_status, container?.display_status);
+  const actionState = getContainerActionState(container?.effective_status);
   const runAction = async (action, label) => {
     if (!containerId) return;
     setActionLoading(label);
@@ -271,7 +295,7 @@ const ContainerDetailPage = () => {
     setContainerActionConfirm({ visible: false, action: '' });
   };
 
-  const status = String(container?.display_status || container?.container_status || 'unknown').toLowerCase();
+  const status = String(container?.effective_status || 'unknown').toLowerCase();
   const statusDisplay = getContainerStatusDisplay(status);
   const metrics = container?.runtime_metrics || {};
   const diskUsage = container?.disk_usage || {};
@@ -279,6 +303,10 @@ const ContainerDetailPage = () => {
   const collectedAt = latestHistoryPoint?.collectedAt || metrics?.collected_at || metrics?.cache_updated_at;
   const gpuDevices = metrics?.gpu?.device_ids || [];
   const gpuRuntimeDevices = Array.isArray(metrics?.gpu?.devices) ? metrics.gpu.devices : [];
+  // 容器级掉卡：分配的物理卡（device_ids）连续缺席 live 切片 → 提示
+  const gpuMissing = gpuDevices
+    .map(Number).filter(Number.isInteger)
+    .filter(idx => (absentTicks[idx] ?? 0) >= GPU_ABSENT_TICKS);
   const diskIoTotal = sumNumbers([metrics.block_read_mb, metrics.block_write_mb]);
   const networkTotal = sumNumbers([metrics.network_rx_mb, metrics.network_tx_mb]);
   const memoryLimitValue = firstFinite([metrics.memory_limit_mb]);
@@ -581,7 +609,14 @@ const ContainerDetailPage = () => {
               </div>
 
               <div className="detail-card detail-chart-card container-gpu-chart-card">
-                <h2>GPU 使用趋势</h2>
+                <div className="detail-chart-card-head">
+                  <h2>GPU 使用趋势</h2>
+                  {gpuMissing.length > 0 && (
+                    <span className="gpu-absent-warn">
+                      ⚠ 分配 GPU {gpuMissing.join('、')} 已连续缺席运行快照（疑似掉卡，本容器实际无此卡可用）
+                    </span>
+                  )}
+                </div>
                 <RuntimeTrendChart history={history} series={gpuSeries} emptyText="暂无 GPU 运行快照" ariaLabel="容器 GPU 趋势" />
                 {gpuRuntimeDevices.length ? (
                   <div className="detail-runtime-list detail-runtime-list-after-chart">

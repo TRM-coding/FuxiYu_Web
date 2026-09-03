@@ -10,6 +10,7 @@ import {
 import { Menu, Typography } from 'antd';
 import UserAvatar from '../components/UserAvatar';
 import { usePermission } from '../contexts/PermissionContext';
+import useResponsiveCollapse from '../utils/useResponsiveCollapse';
 import './MainLayout.css';
 
 const userMenuItems = [
@@ -44,6 +45,7 @@ export default function MainLayout() {
   // 菜单按权限过滤：环境模板页需 image:edit（2026-09 决策）；
   // manage 隐含 edit 是后端语义，前端实体列表不含推导——此处显式兼容 manage。
   const { hasPermission } = usePermission();
+  const sidebarCollapsed = useResponsiveCollapse();
   const visibleMenuItems = useMemo(() => {
     const items = userMenuItems.filter(item => {
       if (!item.requiredPermission) return true;
@@ -102,6 +104,7 @@ export default function MainLayout() {
         <Menu
           className="main-side-menu"
           mode="inline"
+          inlineCollapsed={sidebarCollapsed}
           selectedKeys={selectedKeys}
           items={visibleMenuItems}
           onClick={(e) => navigate(e.key)}

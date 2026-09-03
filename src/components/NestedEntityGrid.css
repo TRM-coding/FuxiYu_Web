@@ -18,7 +18,7 @@
 
 .fuxi-nested-entity-card {
   min-width: 0;
-  height: var(--fuxi-nested-card-height, 408px);
+  height: auto;
   display: grid;
   grid-template-columns: var(--fuxi-nested-rail-width, 136px) minmax(0, 1fr);
   border: 1px solid #d8e0ea;
@@ -227,6 +227,16 @@
   min-height: 0;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fuxi-nested-pager {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 @media (max-width: 768px) {

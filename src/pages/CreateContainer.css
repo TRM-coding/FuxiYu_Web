@@ -305,6 +305,16 @@
   color: #595959;
 }
 
+/* 容器名规则提示：常驻于红 * 之后，输错时变红（不弹窗） */
+.cc-name-rule {
+  margin-left: 6px;
+  font-weight: 400;
+  color: #8c8c8c;
+}
+.cc-name-rule.is-error {
+  color: #ff4d4f;
+}
+
 /* ── 资源配额：滑条为主、输入框为辅 ── */
 
 .cc-quota-card.is-locked {
@@ -400,4 +410,47 @@
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-weight: 500;
   color: #262626;
+}
+
+/* ── 窄屏：整页按“选镜像(01) → 选机器(02) → 配置/配额 → 提交”从上到下时序单列排布 ── */
+
+@media (max-width: 900px) {
+  .cc-page {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  /* 表单分组卡与配额滑条行降为单列 */
+  .cc-form-groups,
+  .cc-quota-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* 镜像/机器选择列表保持页内可滚（40vh），避免长列表把提交按钮顶出屏 */
+  .cc-image-list,
+  .cc-machine-grid {
+    max-height: 40vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .cc-page {
+    padding: 8px 0;
+  }
+
+  /* 提交行：汇总信息在上、按钮整行在下 */
+  .cc-submit-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .cc-submit-row .ant-btn {
+    align-self: stretch;
+  }
+
+  /* 机器卡单列全宽时取消钉死高度，内容随卡伸缩 */
+  .cc-machine-card {
+    height: auto;
+    min-height: 150px;
+  }
 }

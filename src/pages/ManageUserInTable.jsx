@@ -87,7 +87,7 @@ const ManageUserInTable = ({
                     <Column title="容器名称" dataIndex="container_name" key="container_name" />
                     <Column title="容器镜像" dataIndex="container_image" key="container_image" />
                     <Column title="端口" dataIndex="port" key="port" />
-                    <Column title="容器状态" dataIndex="container_status" key="container_status" render={renderContainerStatus} />
+                    <Column title="容器状态" dataIndex="effective_status" key="effective_status" render={renderContainerStatus} />
                     <Column title="用户角色" dataIndex="userRole" key="userRole" render={renderContainerRoleTag} />
                     <Column
                       title="长期容器"

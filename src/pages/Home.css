@@ -80,7 +80,7 @@
 }
 .home-container-card {
   min-width: 0;
-  height: 188px;
+  min-height: 188px;   /* 内容自适应：磁盘行（文本+解冻/长期）可换行不溢出 */
   padding: 12px;
   border: 1px solid #edf0f3;
   border-radius: 8px;
@@ -127,47 +127,49 @@
   border-radius: 6px;
   background: #ffffff;
 }
-.home-container-card-dynamic {
+.home-container-disk-line {
   min-width: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  position: relative;
+  padding-bottom: 8px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
   color: #64748b;
   font-size: 12px;
 }
-.home-container-card-dynamic span {
+.home-container-disk-line > span {
   min-width: 0;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: #fff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.home-container-disk-label {
-  display: flex !important;
+.home-container-disk-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  overflow: visible !important;
+  gap: 8px;
 }
-.home-container-disk-label-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.home-container-disk-label .ant-checkbox-wrapper {
+.home-container-disk-actions .ant-btn {
   flex: 0 0 auto;
   font-size: 12px;
+  padding-inline: 8px;
 }
-.home-container-disk-line {
-  margin-top: 8px;
-  padding: 0 2px;
+.home-container-disk-actions .ant-checkbox-wrapper {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: #334155;
 }
 .home-container-disk-track {
-  height: 6px;
-  border-radius: 3px;
-  background: #eef2f6;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: #e5eaf1;
   overflow: hidden;
 }
 .home-container-disk-fill {
@@ -281,9 +283,6 @@
   .home-container-card {
     height: auto;
     min-height: 188px;
-  }
-  .home-container-card-dynamic {
-    grid-template-columns: 1fr;
   }
 }
 

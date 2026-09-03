@@ -17,8 +17,9 @@ import ManageUserInTable from './ManageUserInTable';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import EntitySearchBar from '../components/EntitySearchBar';
-import { createContainerStatusTransition, deriveContainerDisplayStatus } from '../utils/containerActions';
+import { createContainerStatusTransition, deriveContainerEffectiveStatus } from '../utils/containerActions';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
+import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint, userListFingerprint } from '../utils/listRefresh';
 
 // users and containers will be fetched from backend
 const initialUsers = [];
@@ -119,13 +120,22 @@ const ManageUser = () => {
   // container cache per user id: { [userId]: { loading, data } }
   const [containerMap, setContainerMap] = useState({});
   const pendingContainerTransitionRef = useRef(new Map());
+  const userListFingerprintRef = useRef('');
+  const containerListFingerprintRef = useRef({});
+  const usersRef = useRef(users);
+  const containerMapRef = useRef(containerMap);
+  const searchContainerNameRef = useRef(searchContainerName);
 
-  const applyContainerDisplayStatus = (container) => {
+  usersRef.current = users;
+  containerMapRef.current = containerMap;
+  searchContainerNameRef.current = searchContainerName;
+
+  const applyContainerEffectiveStatus = (container) => {
     const cid = container?.key || container?.container_id;
     if (!cid) return container;
     const key = String(cid);
-    const result = deriveContainerDisplayStatus(
-      container.container_status,
+    const result = deriveContainerEffectiveStatus(
+      container.effective_status,
       pendingContainerTransitionRef.current.get(key),
     );
     if (result.pendingTransition) {
@@ -133,7 +143,7 @@ const ManageUser = () => {
     } else if (result.cleared) {
       pendingContainerTransitionRef.current.delete(key);
     }
-    return { ...container, container_status: result.status };
+    return { ...container, effective_status: result.status };
   };
 
   const markContainerTransition = (container, transitionStatus, targetStatus) => {
@@ -141,7 +151,7 @@ const ManageUser = () => {
     if (!cid) return;
     pendingContainerTransitionRef.current.set(
       String(cid),
-      createContainerStatusTransition(container?.container_status, transitionStatus, { targetStatus }),
+      createContainerStatusTransition(container?.effective_status, transitionStatus, { targetStatus }),
     );
   };
 
@@ -156,7 +166,7 @@ const ManageUser = () => {
     const current = ingWatcherRef.current;
     for (const entry of Object.values(containerMap)) {
       for (const c of (entry?.data || [])) {
-        const st = (c.container_status || '').toLowerCase();
+        const st = (c.effective_status || '').toLowerCase();
         const cid = c.key ? String(c.key) : (c.container_id ? String(c.container_id) : null);
         if (!cid || !c.machine_id || !/^\d+$/.test(cid)) continue;
         if (!ING_CONTAINER_STATES.has(st)) {
@@ -170,14 +180,14 @@ const ManageUser = () => {
           container_id: cid,
           container_name: c.container_name,
           onProgress: (data) => {
-            const st = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+            const st = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!st) return;
             setContainerMap(prev => {
               const next = { ...prev };
               for (const uid of Object.keys(next)) {
                 next[uid] = { ...next[uid], data: (next[uid]?.data || []).map(x => (
                   String(x.key) === String(cid)
-                    ? applyContainerDisplayStatus({ ...x, container_status: st })
+                    ? applyContainerEffectiveStatus({ ...x, effective_status: st })
                     : x
                 )) };
               }
@@ -185,7 +195,7 @@ const ManageUser = () => {
             });
           },
           onTerminal: (data) => {
-            const finalSt = data && data.container_status ? String(data.container_status).toLowerCase() : null;
+            const finalSt = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!finalSt) return;
             current.delete(cid);
             setContainerMap(prev => {
@@ -193,7 +203,7 @@ const ManageUser = () => {
               for (const uid of Object.keys(next)) {
                 next[uid] = { ...next[uid], data: (next[uid]?.data || []).map(x => (
                   String(x.key) === String(cid)
-                    ? applyContainerDisplayStatus({ ...x, container_status: finalSt })
+                    ? applyContainerEffectiveStatus({ ...x, effective_status: finalSt })
                     : x
                 )) };
               }
@@ -258,11 +268,13 @@ const ManageUser = () => {
     }
   }, [navigate, permLoaded, hasPermission]);
 
-  // load users on mount
   React.useEffect(() => {
     let mounted = true;
-    const load = async () => {
-      setUsersLoading(true);
+    let refreshing = false;
+    const load = async ({ silent = false } = {}) => {
+      if (refreshing) return;
+      refreshing = true;
+      if (!silent) setUsersLoading(true);
       try {
         const res = await listAllUserBrefInformation({ page_number: 1, page_size: 200 });
         const items = (res && (res.users || res.items || res.data)) || [];
@@ -271,30 +283,47 @@ const ManageUser = () => {
           username: u.username || u.name || u.display_name || String(u.user_id || u.id || u.userId || ''),
           email: u.email || '',
           graduation_year: u.graduation_year || u.year || '',
-          // preserve backend-provided container counts for statistics when row is not expanded
           amount_of_container: u.amount_of_container ?? u.amount_of_containers ?? 0,
           amount_of_functional_container: u.amount_of_functional_container ?? 0,
           amount_of_managed_container: u.amount_of_managed_container ?? 0,
           amount_of_long_term_container: u.amount_of_long_term_container ?? 0,
         }));
-        if (mounted) setUsers(mapped);
+        const fingerprint = userListFingerprint(mapped, { page_number: 1, page_size: 200 });
+        if (mounted && (!silent || fingerprint !== userListFingerprintRef.current)) {
+          userListFingerprintRef.current = fingerprint;
+          setUsers(mapped);
+        }
       } catch (err) {
         console.error('load users failed', err);
-        // if authentication error, clear auth and redirect to login
         const msg = err && err.message ? String(err.message) : '';
         if (msg.toLowerCase().includes('invalid or missing token') || msg.includes('401')) {
-          // 401: clear auth and navigate to login
           handleAuthError(401, navigate);
           return;
         }
-        await showErrorModal({ message: err?.body || err || (msg ? `加载用户列表失败: ${msg}` : '加载用户列表失败'), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        if (!silent) {
+          await showErrorModal({ message: err?.body || err || (msg ? `加载用户列表失败: ${msg}` : '加载用户列表失败'), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+        }
       } finally {
-        if (mounted) setUsersLoading(false);
+        refreshing = false;
+        if (mounted && !silent) setUsersLoading(false);
       }
     };
+    const refreshIfVisible = () => {
+      if (canRunListRefresh()) load({ silent: true });
+    };
     load();
-    return () => { mounted = false; };
-  }, []);
+    const timer = setInterval(refreshIfVisible, LIST_REFRESH_INTERVAL_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', refreshIfVisible);
+    }
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', refreshIfVisible);
+      }
+    };
+  }, [navigate]);
 
   // 通用弹窗状态
   const [modal, setModal] = useState({
@@ -465,6 +494,9 @@ const ManageUser = () => {
       unpausing: '解冻中',
       failed: '异常',
       unknown: '未知',
+      status_unknown: '状态未知',
+      host_offline: '宿主机离线',
+      host_maintenance: '宿主机维护',
     };
     return <Tag color={color}>{labelMap[normalized] || status || '未知'}</Tag>;
   };
@@ -505,28 +537,53 @@ const ManageUser = () => {
   };
 
   // 获取用户的所有容器（带角色信息）
-  const fetchContainersForUser = async (userId) => {
+  const fetchContainersForUser = async (userId, pageNumber = 0, containerName = searchContainerName, options = {}) => {
+    const { silent = false } = options;
     if (!userId) return;
     const id = String(userId);
     // avoid duplicate fetch
     //if (containerMap[id]?.loading || containerMap[id]?.data) return;
-    setContainerMap(prev => ({ ...prev, [id]: { ...(prev[id] || {}), loading: true, data: [] } }));
+    if (!silent) {
+      setContainerMap(prev => ({
+        ...prev,
+        [id]: {
+          ...(prev[id] || {}),
+          loading: true,
+          data: [],
+          page: pageNumber,
+          total_page: prev[id]?.total_page || 1,
+        },
+      }));
+    }
     try {
-      const res = await listAllContainerBrefInformation({ machine_id: null, user_id: Number(userId), page_number: 0, page_size: 200 });
+      const pageSize = 4;
+      const res = await listAllContainerBrefInformation({
+        machine_id: null,
+        user_id: Number(userId),
+        container_search: containerName,
+        page_number: pageNumber,
+        page_size: pageSize,
+      });
       const items = (res && (res.containers_info || res.containers)) || [];
+      const total_page = (res && (res.total_page || res.totalPages || res.total_pages)) || 1;
+      const total_number = Number(res && (res.total_number ?? res.totalNumber ?? res.total)) || items.length;
       const longTermRemaining = Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_remaining')
         ? Number(res.long_term_container_remaining)
         : null;
       const longTermLimit = Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_limit')
         ? Number(res.long_term_container_limit)
         : null;
-      const mapped = items.map((c, idx) => applyContainerDisplayStatus({
+      const mapped = items.map((c, idx) => applyContainerEffectiveStatus({
         key: c.container_id ? String(c.container_id) : `c-${idx}`,
+        container_id: c.container_id ?? null,
         container_name: c.container_name || c.name || `container-${idx}`,
         container_image: c.container_image || '',
         port: c.port ? String(c.port) : (c.port_str || ''),
-        container_status: (c.container_status || '').toLowerCase(),
+        effective_status: (c.effective_status || '').toLowerCase(),
+        failed_reason: c.failed_reason ?? null,
+        failed_detail: c.failed_detail ?? null,
         machine_id: c.machine_id ? String(c.machine_id) : null,
+        machine_ip: c.machine_ip || '',
         accounts: c.accounts || [],
         is_long_term: c.is_long_term === true,
         long_term_container_can_enable: c.long_term_container_can_enable !== false,
@@ -540,58 +597,97 @@ const ManageUser = () => {
         disk_total_gb: c.disk_total_gb ?? null,
         disk_limit_gb: c.disk_limit_gb ?? null,
         disk_usage_percent: c.disk_usage_percent ?? null,
+        runtime_metrics: c.runtime_metrics ?? null,
       }));
-      // fetch detail per container to enrich with image and account role info for this user
-      const userObj = users.find(u => String(u.key) === String(userId));
+      // bref 已含卡片所需全部字段（image/machine_ip/accounts/资源/磁盘/长期态），
+      // 不再逐容器拉 detail；userRole 按当前查看用户从 accounts 直接判定
+      const userObj = usersRef.current.find(u => String(u.key) === String(userId));
       const username = userObj?.username;
-      const detailed = await Promise.all(mapped.map(async (c) => {
-        try {
-          const detRes = await getContainerDetailInformation(Number(c.key));
-          const det = (detRes && (detRes.container_info || detRes.container || detRes.data || detRes.container_detail)) || detRes || null;
-          const image = (det && (det.container_image || det.image)) || c.container_image;
-          const accounts = det?.accounts || c.accounts || [];
-          // accounts expected to be objects with `user_id`/`username`/`role`; map user's role by matching username or user_id
-          let userRole = null;
-          if (username && accounts && Array.isArray(accounts)) {
-            const found = accounts.find(a => {
-              if (!a) return false;
-              if (typeof a === 'object') {
-                return a.username === username || String(a.user_id) === String(userId) || String(a.user_id) === String(userObj?.key);
-              }
-              return false;
-            });
-            if (found) userRole = found.role ?? null;
-          }
-          return {
-            ...c,
-            container_image: image,
-            accounts,
-            userRole,
-            machine_ip: det?.machine_ip ? det.machine_ip : c.machine_ip,
-            machine_id: det?.machine_id ? String(det.machine_id) : c.machine_id,
-            cpu_number: det?.cpu_number ?? c.cpu_number ?? null,
-            gpu_number: det?.gpu_number ?? c.gpu_number ?? 0,
-            memory_gb: det?.memory_gb ?? c.memory_gb ?? null,
-            shared_gb: det?.shared_gb ?? c.shared_gb ?? null,
-            disk_total_gb: det?.disk_total_gb ?? c.disk_total_gb ?? null,
-            disk_limit_gb: det?.disk_limit_gb ?? c.disk_limit_gb ?? null,
-            disk_usage_percent: det?.disk_usage_percent ?? c.disk_usage_percent ?? null,
-            is_long_term: det?.is_long_term === true || c.is_long_term === true,
-            long_term_container_can_enable: det?.long_term_container_can_enable !== false && c.long_term_container_can_enable !== false,
-            long_term_container_blocked_user_ids: det?.long_term_container_blocked_user_ids || c.long_term_container_blocked_user_ids || [],
-            long_term_container_remaining_by_user: det?.long_term_container_remaining_by_user || c.long_term_container_remaining_by_user || {},
-          };
-        } catch (e) {
-          // if detail fetch fails, do not attempt old fallback — keep bref info but no userRole
-          return { ...c, accounts: c.accounts || [], userRole: null };
+      const data = mapped.map(c => {
+        const accounts = c.accounts || [];
+        let userRole = null;
+        if (username) {
+          const found = accounts.find(a => {
+            if (!a || typeof a !== 'object') return false;
+            return a.username === username
+              || String(a.user_id) === String(userId)
+              || String(a.user_id) === String(userObj?.key);
+          });
+          if (found) userRole = found.role ?? null;
         }
+        return { ...c, accounts, userRole };
+      });
+      const fingerprint = containerListFingerprint(data, {
+        user_id: id,
+        page: pageNumber,
+        page_size: pageSize,
+        total_page,
+        total_number,
+        container_name: String(containerName || '').trim(),
+        long_term_container_remaining: longTermRemaining,
+        long_term_container_limit: longTermLimit,
+      });
+      if (silent && fingerprint === containerListFingerprintRef.current[id]) return;
+      containerListFingerprintRef.current = {
+        ...containerListFingerprintRef.current,
+        [id]: fingerprint,
+      };
+      setContainerMap(prev => ({
+        ...prev,
+        [id]: {
+          loading: false,
+          data: data.map(applyContainerEffectiveStatus),
+          page: pageNumber,
+          total_page,
+          total_number,
+          page_size: pageSize,
+          container_name: String(containerName || '').trim(),
+          long_term_container_remaining: longTermRemaining,
+          long_term_container_limit: longTermLimit,
+        },
       }));
-      setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: detailed.map(applyContainerDisplayStatus), long_term_container_remaining: longTermRemaining, long_term_container_limit: longTermLimit } }));
     } catch (err) {
       console.error('fetchContainersForUser failed', userId, err);
-      setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: [] } }));
+      if (!silent) {
+        setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: [], page: pageNumber, total_page: 1 } }));
+      }
     }
   };
+
+  React.useEffect(() => {
+    let mounted = true;
+    let refreshing = false;
+    const refreshLoadedContainers = async () => {
+      if (!mounted || refreshing || !canRunListRefresh()) return;
+      const entries = Object.entries(containerMapRef.current)
+        .filter(([, entry]) => Array.isArray(entry?.data) && !entry.loading);
+      if (!entries.length) return;
+      refreshing = true;
+      try {
+        await Promise.allSettled(entries.map(([userId, entry]) => (
+          fetchContainersForUser(
+            userId,
+            entry.page ?? 0,
+            entry.container_name ?? searchContainerNameRef.current,
+            { silent: true },
+          )
+        )));
+      } finally {
+        refreshing = false;
+      }
+    };
+    const timer = setInterval(refreshLoadedContainers, LIST_REFRESH_INTERVAL_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', refreshLoadedContainers);
+    }
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', refreshLoadedContainers);
+      }
+    };
+  }, []);
 
   const getUserContainers = (username) => {
     const user = users.find(u => u.username === username);
@@ -622,7 +718,7 @@ const ManageUser = () => {
         container_name: detail.container_name || detail.name || container.container_name || '',
         container_image: detail.container_image || detail.image || container.container_image || '',
         port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
-        container_status: (detail.container_status || detail.status || container.container_status || '').toLowerCase(),
+        effective_status: (detail.effective_status || '').toLowerCase(),
         machine_ip: detail.machine_ip || container.machine_ip || '',
         machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
         cpu_number: detail.cpu_number ?? container.cpu_number ?? null,
@@ -701,7 +797,7 @@ const ManageUser = () => {
           ...entry,
           data: (entry.data || []).map(c => (
             String(c.key) === String(containerId)
-              ? applyContainerDisplayStatus({ ...c, ...patch })
+              ? applyContainerEffectiveStatus({ ...c, ...patch })
               : c
           )),
         },
@@ -718,16 +814,16 @@ const ManageUser = () => {
       terminalState,
       requiredProgressState,
       onProgress: (data) => {
-        const st = data?.container_status ? String(data.container_status).toLowerCase() : null;
+        const st = data?.effective_status ? String(data.effective_status).toLowerCase() : null;
         if (st && st !== terminalState && st !== 'failed') {
-          patchUserContainer(userRecord.key, containerRecord.key, { container_status: st });
+          patchUserContainer(userRecord.key, containerRecord.key, { effective_status: st });
         }
       },
       onTerminal: (data) => {
-        const st = data?.container_status ? String(data.container_status).toLowerCase() : terminalState;
+        const st = data?.effective_status ? String(data.effective_status).toLowerCase() : terminalState;
         const nextStatus = st === 'failed' ? 'failed' : terminalState;
         clearContainerTransition(containerRecord.key);
-        patchUserContainer(userRecord.key, containerRecord.key, { container_status: nextStatus });
+        patchUserContainer(userRecord.key, containerRecord.key, { effective_status: nextStatus });
         setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
         if (nextStatus === 'failed') {
           message.error(`容器 ${containerRecord.container_name} 状态异常`);
@@ -744,7 +840,7 @@ const ManageUser = () => {
     const actionKey = `unpause-${cid}`;
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
     markContainerTransition(containerRecord, 'unpausing', 'online');
-    patchUserContainer(userRecord.key, cid, { container_status: 'unpausing' });
+    patchUserContainer(userRecord.key, cid, { effective_status: 'unpausing' });
     try {
       message.loading({ content: `正在解冻 ${containerRecord.container_name}...`, key: actionKey });
       await unpauseContainer(Number(cid));
@@ -753,7 +849,7 @@ const ManageUser = () => {
       message.success({ content: '解冻指令已发送', key: actionKey, duration: 2 });
     } catch (err) {
       setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
-      patchUserContainer(userRecord.key, cid, { container_status: 'paused' });
+      patchUserContainer(userRecord.key, cid, { effective_status: 'paused' });
       await showErrorModal({ message: err?.body || err || '解冻失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
     }
   };
@@ -764,7 +860,7 @@ const ManageUser = () => {
     const actionKey = `start-${cid}`;
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
     markContainerTransition(containerRecord, 'starting', 'online');
-    patchUserContainer(userRecord.key, cid, { container_status: 'starting' });
+    patchUserContainer(userRecord.key, cid, { effective_status: 'starting' });
     try {
       message.loading({ content: `正在启动 ${containerRecord.container_name}...`, key: actionKey });
       await startContainer(Number(cid));
@@ -773,7 +869,7 @@ const ManageUser = () => {
       message.success({ content: '启动指令已发送', key: actionKey, duration: 2 });
     } catch (err) {
       clearContainerTransition(cid);
-      patchUserContainer(userRecord.key, cid, { container_status: 'offline' });
+      patchUserContainer(userRecord.key, cid, { effective_status: 'offline' });
       setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
       await showErrorModal({ message: err?.body || err || '启动失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
     }
@@ -785,7 +881,7 @@ const ManageUser = () => {
     const actionKey = `stop-${cid}`;
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
     markContainerTransition(containerRecord, 'stopping', 'offline');
-    patchUserContainer(userRecord.key, cid, { container_status: 'stopping' });
+    patchUserContainer(userRecord.key, cid, { effective_status: 'stopping' });
     try {
       message.loading({ content: `正在停止 ${containerRecord.container_name}...`, key: actionKey });
       await stopContainer(Number(cid));
@@ -794,7 +890,7 @@ const ManageUser = () => {
       message.success({ content: '停止指令已发送', key: actionKey, duration: 2 });
     } catch (err) {
       clearContainerTransition(cid);
-      patchUserContainer(userRecord.key, cid, { container_status: 'online' });
+      patchUserContainer(userRecord.key, cid, { effective_status: 'online' });
       setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
       await showErrorModal({ message: err?.body || err || '停止失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
     }
@@ -806,7 +902,7 @@ const ManageUser = () => {
     const actionKey = `restart-${cid}`;
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
     markContainerTransition(containerRecord, 'restarting', 'online');
-    patchUserContainer(userRecord.key, cid, { container_status: 'restarting' });
+    patchUserContainer(userRecord.key, cid, { effective_status: 'restarting' });
     try {
       message.loading({ content: `正在重启 ${containerRecord.container_name}...`, key: actionKey });
       await restartContainer(Number(cid));
@@ -815,7 +911,7 @@ const ManageUser = () => {
       message.success({ content: '重启指令已发送', key: actionKey, duration: 2 });
     } catch (err) {
       clearContainerTransition(cid);
-      patchUserContainer(userRecord.key, cid, { container_status: 'online' });
+      patchUserContainer(userRecord.key, cid, { effective_status: 'online' });
       setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
       await showErrorModal({ message: err?.body || err || '重启失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
     }
@@ -1280,7 +1376,7 @@ const ManageUser = () => {
                       icon={<ReloadOutlined />}
                       onClick={(event) => {
                         event.stopPropagation();
-                        fetchContainersForUser(record.key);
+                        fetchContainersForUser(record.key, (containerMap[String(record.key)] || {}).page ?? 0);
                       }}
                     />
                   </Space>
@@ -1302,7 +1398,7 @@ const ManageUser = () => {
                     {containerRecord.container_name || '未命名容器'}
                   </button>
                   <Space size={6} className="fuxi-nested-child-card-tags">
-                    {renderContainerStatus(containerRecord.container_status)}
+                    {renderContainerStatus(containerRecord.effective_status)}
                     {renderContainerRoleTag(containerRecord.userRole)}
                   </Space>
                 </div>
@@ -1318,7 +1414,7 @@ const ManageUser = () => {
                       <Button
                         size="small"
                         icon={<UnlockOutlined />}
-                        disabled={String(containerRecord.container_status || '').toLowerCase() !== 'paused' || !!containerActionMap[`unpause-${String(containerRecord.key)}`]}
+                        disabled={String(containerRecord.effective_status || '').toLowerCase() !== 'paused' || !!containerActionMap[`unpause-${String(containerRecord.key)}`]}
                         loading={!!containerActionMap[`unpause-${String(containerRecord.key)}`]}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -1340,7 +1436,7 @@ const ManageUser = () => {
                 ))}
                 <div className="fuxi-nested-child-card-actions">
                   {(() => {
-                    const status = String(containerRecord.container_status || '').toLowerCase();
+                    const status = String(containerRecord.effective_status || '').toLowerCase();
                     const cid = String(containerRecord.key);
                     return (
                       <>
@@ -1409,10 +1505,38 @@ const ManageUser = () => {
               );
             }}
             renderFooter={(record) => {
+              const entry = containerMap[String(record.key)] || {};
               return (
-                <Typography.Text type="secondary">
+                <>
+                  <Typography.Text type="secondary">
                   切换表格视图可编辑用户与长期容器
-                </Typography.Text>
+                  </Typography.Text>
+                  <div className="fuxi-nested-pager">
+                    <Button
+                      size="small"
+                      disabled={entry.loading || (entry.page ?? 0) <= 0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        fetchContainersForUser(record.key, (entry.page || 0) - 1);
+                      }}
+                    >
+                      上一页
+                    </Button>
+                    <Typography.Text type="secondary">
+                      {(entry.page ?? 0) + 1} / {entry.total_page || 1}
+                    </Typography.Text>
+                    <Button
+                      size="small"
+                      disabled={entry.loading || (entry.page ?? 0) + 1 >= (entry.total_page || 1)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        fetchContainersForUser(record.key, (entry.page || 0) + 1);
+                      }}
+                    >
+                      下一页
+                    </Button>
+                  </div>
+                </>
               );
             }}
           />

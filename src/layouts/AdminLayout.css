@@ -144,3 +144,19 @@
     padding: 12px;
   }
 }
+
+/* 侧边栏响应式收窄（2026-09）：桌面中宽区间 icon-only 让位主内容区 */
+@media (min-width: 769px) and (max-width: 1200px) {
+  .admin-shell {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .admin-brand {
+    justify-content: center;
+    padding: 10px 0 18px;
+  }
+
+  .admin-brand-copy {
+    display: none;
+  }
+}

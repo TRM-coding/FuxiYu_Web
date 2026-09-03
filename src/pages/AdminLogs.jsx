@@ -145,7 +145,6 @@ const UserInfoModal = ({ visible, info, onClose }) => (
         <Descriptions.Item label="用户名">{info.username || '-'}</Descriptions.Item>
         <Descriptions.Item label="邮箱">{info.email || '-'}</Descriptions.Item>
         <Descriptions.Item label="毕业年份">{info.graduation_year ?? '-'}</Descriptions.Item>
-        <Descriptions.Item label="权限">{info.permission === 'operator' ? '操作员 (operator)' : (info.permission || '-')}</Descriptions.Item>
         <Descriptions.Item label="容器总数">{info.amount_of_container ?? 0}</Descriptions.Item>
         <Descriptions.Item label="运行中">{info.amount_of_functional_container ?? 0}</Descriptions.Item>
         <Descriptions.Item label="管理中的容器">{info.amount_of_managed_container ?? 0}</Descriptions.Item>
@@ -456,8 +455,7 @@ export default function AdminLogs() {
             container_image: detail.container_image || '',
             machine_ip: detail.machine_ip || '',
             port: detail.port != null ? String(detail.port) : '',
-            container_status: (detail.container_status || '').toLowerCase(),
-            display_status: detail.display_status || null,
+            effective_status: (detail.effective_status || '').toLowerCase(),
             cpu_number: detail.cpu_number ?? 0,
             gpu_number: detail.gpu_number ?? 0,
             memory_gb: detail.memory_gb ?? 0,

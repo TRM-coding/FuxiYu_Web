@@ -85,13 +85,13 @@ describe('DetailPages snapshot polling', () => {
     vi.restoreAllMocks();
   });
 
-  it('container detail initializes with detail API and polls container_status cache only', async () => {
+  it('container detail initializes with detail API and polls effective_status cache only', async () => {
     getContainerDetailInformation.mockResolvedValue({
       success: 1,
       container_info: {
         container_id: 12,
         container_name: 'train-a',
-        container_status: 'creating',
+        effective_status: 'creating',
         machine_ip: '10.0.0.8',
         port: 1024,
         cpu_number: 2,
@@ -120,7 +120,7 @@ describe('DetailPages snapshot polling', () => {
       ],
     });
     getContainerStatus.mockResolvedValue({
-      container_status: 'online',
+      effective_status: 'online',
       failed_reason: null,
       failed_detail: null,
       runtime_metrics: {
@@ -170,7 +170,7 @@ describe('DetailPages snapshot polling', () => {
       container_info: {
         container_id: 12,
         container_name: 'train-a',
-        container_status: 'online',
+        effective_status: 'online',
         machine_ip: '10.0.0.8',
         port: 1024,
         cpu_number: 2,
@@ -217,7 +217,7 @@ describe('DetailPages snapshot polling', () => {
       container_info: {
         container_id: 12,
         container_name: 'train-a',
-        container_status: status,
+        effective_status: status,
         machine_ip: '10.0.0.8',
         port: 1024,
         cpu_number: 2,
@@ -265,7 +265,7 @@ describe('DetailPages snapshot polling', () => {
       container_info: {
         container_id: 12,
         container_name: 'train-a',
-        container_status: 'offline',
+        effective_status: 'offline',
         machine_ip: '10.0.0.8',
         port: 1024,
         cpu_number: 2,
@@ -305,7 +305,7 @@ describe('DetailPages snapshot polling', () => {
       machine_ip: '10.0.0.9',
       machine_type: 'GPU',
       machine_status: 'online',
-      display_status: 'online',
+      effective_status: 'online',
       cpu_core_number: 16,
       memory_size_gb: 128,
       gpu_number: 2,
@@ -325,7 +325,7 @@ describe('DetailPages snapshot polling', () => {
     });
     getMachineStatus.mockResolvedValue({
       machine_status: 'offline',
-      display_status: 'offline',
+      effective_status: 'offline',
       is_maintenance: false,
       runtime_snapshot: {
         collected_at: '2026-08-29T12:00:05',
@@ -369,7 +369,7 @@ describe('DetailPages snapshot polling', () => {
       machine_ip: '10.0.0.9',
       machine_type: 'GPU',
       machine_status: 'online',
-      display_status: 'online',
+      effective_status: 'online',
       cpu_core_number: 16,
       memory_size_gb: 128,
       gpu_number: 2,

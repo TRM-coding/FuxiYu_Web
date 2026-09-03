@@ -13,6 +13,7 @@ import {
 import { Menu, Typography } from 'antd';
 import AdminAvatar from '../components/AdminAvatar';
 import { usePermission } from '../contexts/PermissionContext';
+import useResponsiveCollapse from '../utils/useResponsiveCollapse';
 import './AdminLayout.css';
 
 // 管理导航项：每项声明所需 manage 权限，无权限则隐藏
@@ -30,6 +31,7 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { hasPermission, loaded } = usePermission();
+  const sidebarCollapsed = useResponsiveCollapse();
   // 按权限过滤菜单（无对应 manage 的项不显示）
   const visibleMenuItems = adminMenuItems
     .filter(item => hasPermission(item.requiredPermission))
@@ -115,6 +117,7 @@ export default function AdminLayout() {
         <Menu
           className="admin-side-menu"
           mode="inline"
+          inlineCollapsed={sidebarCollapsed}
           selectedKeys={selectedKeys}
           items={visibleMenuItems}
           onClick={(e) => navigate(e.key)}

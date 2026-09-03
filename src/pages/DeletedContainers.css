@@ -25,6 +25,13 @@
   gap: 2px;
 }
 
+.deleted-container-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .deleted-container-detail {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -110,6 +110,7 @@ const CreateContainer = () => {
 
   // 容器指标表单
   const [name, setName] = useState('');
+  const [nameInvalid, setNameInvalid] = useState(false);
   const [remark, setRemark] = useState('');
   const [gpuCount, setGpuCount] = useState(null);
   const [cpuCount, setCpuCount] = useState(null);
@@ -352,6 +353,12 @@ const CreateContainer = () => {
       message.warning('请填写容器名');
       return;
     }
+    // 与后端同规则：2-115 位字母/数字/下划线（docker 拒绝单字符名字）。
+    // 不弹窗打断：输入框红框 + 标签红字要求提示即可，改内容即消红
+    if (!/^[A-Za-z0-9_]{2,}$/.test(name.trim()) || name.trim().length > 115) {
+      setNameInvalid(true);
+      return;
+    }
     const machineId = selectedMachine.machine_id ?? selectedMachine.id;
     const gpuList = gpuCount > 0 ? Array.from({ length: gpuCount }, (_, i) => i) : [];
     const payload = {
@@ -516,8 +523,18 @@ const CreateContainer = () => {
                 </div>
               )}
               <div className="cc-field">
-                <label className="cc-field-label" htmlFor="cc-name">容器名 <span className="cc-required">*</span></label>
-                <Input id="cc-name" value={name} onChange={e => setName(e.target.value)} placeholder="必填，仅字母、数字、下划线" />
+                <label className="cc-field-label" htmlFor="cc-name">容器名 <span className="cc-required">*</span><span className={nameInvalid ? 'cc-name-rule is-error' : 'cc-name-rule'}>2-115 位，仅字母/数字/下划线</span></label>
+                <Input
+                  id="cc-name"
+                  value={name}
+                  status={nameInvalid ? 'error' : undefined}
+                  onChange={e => {
+                    setName(e.target.value);
+                    if (nameInvalid) setNameInvalid(false);
+                  }}
+                  onFocus={() => { if (nameInvalid) setNameInvalid(false); }}
+                  placeholder="必填，2-115 位，仅字母、数字、下划线"
+                />
               </div>
               <div className="cc-field">
                 <label className="cc-field-label" htmlFor="cc-remark">备注</label>
