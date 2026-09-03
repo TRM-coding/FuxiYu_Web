@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { listAllMachineBrefInformation, getDetailInformation, registerMachine, removeMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
+import { listAllMachineBrefInformation, getDetailInformation, registerMachine, removeMachine, addMachinePermission, removeMachinePermission, listMachinePermissions } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
 import { ReloadOutlined, UserOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined, UnlockOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Slider, Checkbox } from 'antd';
@@ -9,7 +9,7 @@ import ContainerActionConfirmModal from '../components/ContainerActionConfirmMod
 import EditUserModal from '../components/EditUserModal';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 import { handleAuthError } from '../utils/authHelpers';
-import { listAllUserBrefInformation } from '../api/user_api';
+import { listAllUserBrefInformation, getUserDetailInformation } from '../api/user_api';
 import { usePermission } from '../contexts/PermissionContext';
 import { isAbortError } from '../utils/requestManager';
 import { useNavigate } from 'react-router-dom';
@@ -226,6 +226,10 @@ const ManageMachine = () => {
   const [permissionUsersSelected, setPermissionUsersSelected] = useState([]);
   const [permissionUsersLoadingMore, setPermissionUsersLoadingMore] = useState(false);
   const [permissionAssignedUserIds, setPermissionAssignedUserIds] = useState([]);
+  // 已授权用户的 id → username 映射（授权用户可能不在用户列表第一页，打开弹窗时兜底补齐）
+  const [permissionAssignedNames, setPermissionAssignedNames] = useState({});
+  // 正在收回权限的 user_id（收回期间防并发/展示加载态）
+  const [permissionRemovingId, setPermissionRemovingId] = useState(null);
   const navigate = useNavigate();
   const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
 
@@ -773,6 +777,7 @@ const ManageMachine = () => {
   };
 
   const loadPermissionUsers = async (page = 1, append = false) => {
+    let mapped = [];
     if (!append) {
       setPermissionModalLoading(true);
       setPermissionUsers([]);
@@ -785,7 +790,7 @@ const ManageMachine = () => {
     try {
       const res = await listAllUserBrefInformation({ page_number: page, page_size: userPermissionPageSize });
       const items = (res && (res.users || res.users_info || res.data || res.users_list)) || [];
-      const mapped = items.map(u => ({
+      mapped = items.map(u => ({
         id: Number(u.user_id || u.id || u.uid || u.userId),
         username: u.username || u.name || String(u.user_id || u.id || u.uid || u.userId || ''),
         email: u.email || '',
@@ -805,24 +810,42 @@ const ManageMachine = () => {
       setPermissionModalLoading(false);
       setPermissionUsersLoadingMore(false);
     }
+    return mapped;
   };
 
   const openPermissionModal = async (machine) => {
     if (!machine) return;
     setPermissionMachine(machine);
     setPermissionModalVisible(true);
+    setPermissionRemovingId(null);
+    setPermissionAssignedNames({});
     try {
       setPermissionModalLoading(true);
       const res = await listMachinePermissions(Number(machine.machine_id || machine.key));
       const assigned = Array.isArray(res?.user_ids) ? res.user_ids.map(v => Number(v)).filter(Boolean) : [];
       setPermissionAssignedUserIds(assigned);
+      // 先等用户列表就绪，再兜底补齐授权用户名（授权用户可能不在第一页里）
+      const pageUsers = (await loadPermissionUsers(1, false)) || [];
+      const nameMap = {};
+      pageUsers.forEach(u => { nameMap[u.id] = u.username; });
+      const missingIds = assigned.filter(uid => !(uid in nameMap));
+      await Promise.all(missingIds.map(async (uid) => {
+        try {
+          const detail = await getUserDetailInformation(uid);
+          const info = (detail && (detail.user_info || detail.user || detail.data)) || null;
+          if (info && info.username) nameMap[uid] = info.username;
+        } catch (e) {
+          console.warn('resolve machine-permission username failed for uid', uid, e);
+        }
+      }));
+      setPermissionAssignedNames(nameMap);
     } catch (err) {
       console.error('listMachinePermissions failed', err);
       setPermissionAssignedUserIds([]);
+      setPermissionAssignedNames({});
     } finally {
       setPermissionModalLoading(false);
     }
-    await loadPermissionUsers(1, false);
   };
 
   const loadMorePermissionUsers = async () => {
@@ -852,6 +875,26 @@ const ManageMachine = () => {
       await showErrorModal({ message: err?.body || err?.message || '添加机器权限失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
     } finally {
       setPermissionModalSubmitting(false);
+    }
+  };
+
+  const handleRevokeMachinePermission = async (uid) => {
+    if (!permissionMachine || permissionRemovingId != null) return;
+    setPermissionRemovingId(uid);
+    try {
+      const machineId = Number(permissionMachine.machine_id || permissionMachine.key);
+      await removeMachinePermission({ machine_id: machineId, user_id: uid });
+      setPermissionAssignedUserIds(prev => prev.filter(v => v !== uid));
+      setPermissionAssignedNames(prev => {
+        const next = { ...prev };
+        delete next[uid];
+        return next;
+      });
+      message.success('已收回该用户的机器权限');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err?.message || '收回机器权限失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setPermissionRemovingId(null);
     }
   };
 
@@ -1576,7 +1619,7 @@ const ManageMachine = () => {
         destroyOnClose
       >
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          <Typography.Text type="secondary">为这台机器分配可访问的用户。下拉列表支持继续加载更多用户。</Typography.Text>
+          <Typography.Text type="secondary">为这台机器分配/收回可访问的用户：下拉选择后点「添加权限」；已授权用户点标签上的 × 即可收回。</Typography.Text>
           <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
             <Select
               mode="multiple"
@@ -1629,7 +1672,22 @@ const ManageMachine = () => {
                 <Space wrap>
                   {permissionAssignedUserIds.map(uid => {
                     const user = permissionUsers.find(u => u.id === uid);
-                    return <Tag key={uid} color="blue">{user ? user.username : '用户 #' + uid}</Tag>;
+                    const name = permissionAssignedNames[uid] || (user && user.username) || ('用户 #' + uid);
+                    // 收回中：该标签转加载态；收回完成即从列表消失
+                    if (permissionRemovingId === uid) {
+                      return <Tag key={uid} color="blue" icon={<LoadingOutlined />}>{name}</Tag>;
+                    }
+                    return (
+                      <Tag
+                        key={uid}
+                        color="blue"
+                        closable
+                        onClose={(e) => { e.preventDefault(); handleRevokeMachinePermission(uid); }}
+                        title="收回该用户的机器权限"
+                      >
+                        {name}
+                      </Tag>
+                    );
                   })}
                 </Space>
               ) : (

@@ -1,10 +1,11 @@
 // src/pages/User.jsx
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Form, Input, DatePicker, Button, Row, Col, Space, message, InputNumber, Typography, Statistic } from 'antd';
+import { Card, Form, Input, DatePicker, Button, Row, Col, Space, message, InputNumber, Typography, Statistic, Tooltip } from 'antd';
+import { LogoutOutlined } from '@ant-design/icons';
 import showErrorModal from '../utils/showErrorModal';
-import { handleAuthError } from '../utils/authHelpers';
-import { getUserDetailInformation, updateUser, changePasswordUser } from '../api/user_api';
+import { clearAuth, handleAuthError } from '../utils/authHelpers';
+import { getUserDetailInformation, updateUser, changePasswordUser, logoutUser } from '../api/user_api';
 import { usePermission } from '../contexts/PermissionContext';
 import './User.css';
 
@@ -164,6 +165,32 @@ const User = () => {
     if (s === null || s === undefined) return false;
     try { return /^[A-Za-z0-9_]+$/.test(String(s)); } catch (e) { return false; }
   };
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser(5000);
+    } catch (err) {
+      console.warn('Logout request failed:', err);
+    } finally {
+      clearAuth();
+      window.location.assign('/');
+    }
+  };
+
+  const cardExtra = (
+    <Space size={8}>
+      {hasAnyManage() ? <Button type="primary" onClick={() => navigate('/admin/users')}>管理后台</Button> : null}
+      <Tooltip title="登出">
+        <Button
+          className="user-logout-button"
+          icon={<LogoutOutlined />}
+          onClick={handleLogout}
+          aria-label="登出"
+        />
+      </Tooltip>
+    </Space>
+  );
+
   return (
     <Row 
       justify="center" 
@@ -175,7 +202,7 @@ const User = () => {
         <Card
           title="用户信息"
           bordered
-          extra={hasAnyManage() ? <Button type="primary" onClick={() => navigate('/admin/users')}>管理后台</Button> : null}
+          extra={cardExtra}
           className="user-card"
         >
           <Row gutter={[16, 12]} className="user-stats-row">

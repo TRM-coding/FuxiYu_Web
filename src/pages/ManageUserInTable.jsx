@@ -20,6 +20,8 @@ const ManageUserInTable = ({
   handleRemoveUserFromContainer,
   handleDeleteUser,
   handleResetPassword,
+  showUserGroupsAction,
+  handleOpenUserGroups,
   toggleExpand,
   renderContainerStatus,
   renderContainerRoleTag,
@@ -165,6 +167,11 @@ const ManageUserInTable = ({
               <Button onClick={() => handleResetPassword(record)}>
                 <a className="manage-user-action-reset">重置密码</a>
               </Button>
+              {showUserGroupsAction && (
+                <Button onClick={() => handleOpenUserGroups(record)}>
+                  <a className="manage-user-action-groups">权限组</a>
+                </Button>
+              )}
             </Space>
           );
         }}

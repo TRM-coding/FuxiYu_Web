@@ -6,7 +6,7 @@ import {
   DatabaseOutlined, DeleteOutlined, EditOutlined, SafetyOutlined, SwapOutlined,
   ContainerOutlined, PlayCircleOutlined, PoweroffOutlined, PauseCircleOutlined,
   ClockCircleOutlined, TeamOutlined, UserAddOutlined, KeyOutlined, BellOutlined,
-  FileTextOutlined,
+  SafetyCertificateOutlined, FileImageOutlined, FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -51,6 +51,15 @@ const OPERATION_TEXT = {
   change_password: '修改密码',
   delete_user: '删除用户',
   reset_password: '重置密码',
+  // RBAC 权限组
+  create_group: '创建权限组',
+  update_group_entities: '变更权限组权限',
+  update_user_groups: '变更用户权限组',
+  // 镜像
+  create_image: '创建镜像',
+  update_image: '更新镜像',
+  delete_image: '删除镜像',
+  // 定时任务 / 系统事件
   send_cleanup_reminder: '发送清理提醒',
   pause_container: '冻结容器（磁盘超限）',
   machine_status_transition: '机器状态变更',
@@ -83,11 +92,19 @@ const OPERATION_META = {
   change_password: { color: 'green', icon: <KeyOutlined /> },
   delete_user: { color: 'red', icon: <DeleteOutlined /> },
   reset_password: { color: 'green', icon: <KeyOutlined /> },
+  // RBAC 权限组
+  create_group: { color: 'purple', icon: <TeamOutlined /> },
+  update_group_entities: { color: 'purple', icon: <SafetyCertificateOutlined /> },
+  update_user_groups: { color: 'orange', icon: <TeamOutlined /> },
+  // 镜像
+  create_image: { color: 'cyan', icon: <FileImageOutlined /> },
+  update_image: { color: 'orange', icon: <FileImageOutlined /> },
+  delete_image: { color: 'red', icon: <DeleteOutlined /> },
   // 系统任务
   send_cleanup_reminder: { color: 'gold', icon: <BellOutlined /> },
 };
 
-const TARGET_TEXT = { machine: '机器', container: '容器', user: '用户' };
+const TARGET_TEXT = { machine: '机器', container: '容器', user: '用户', rbac_group: '权限组', image: '镜像' };
 
 /** detail 字段名 → 可读中文（未知字段显示原文） */
 const FIELD_TEXT = {
@@ -122,6 +139,13 @@ const FIELD_TEXT = {
   reason: '原因',
   usage: '用量',
   days_frozen: '冻结天数',
+  // RBAC 权限组 / 镜像日志 detail
+  description: '描述',
+  entities: '权限点',
+  locked_entities: '锁定权限点',
+  requested_entities: '请求的权限点',
+  group_id: '权限组ID',
+  why: '失败原因',
 };
 
 /** 状态值 → 可读中文 */
@@ -691,6 +715,8 @@ export default function AdminLogs() {
                 { value: 'machine', label: '机器' },
                 { value: 'container', label: '容器' },
                 { value: 'user', label: '用户' },
+                { value: 'rbac_group', label: '权限组' },
+                { value: 'image', label: '镜像' },
               ]}
             />
           </Col>
@@ -785,9 +811,10 @@ export default function AdminLogs() {
               if (r.target_type === 'container' && r.root_owner) {
                 label = `${label} · 超管 ${r.root_owner}`;
               }
-              // 容器且无名称 = 上一代容器日志（后端身份校验后 target_name=None）：
-              // 只显示 #id，不渲染超链接、不做错误导航。
-              if (r.target_type === 'container' && !r.target_name) {
+              // 仅机器/容器/用户三类目标可跳详情；权限组/镜像等审计目标
+              // （无对应详情页）以及上一代容器日志只展示、不做错误导航。
+              const LINKABLE_TYPES = ['machine', 'container', 'user'];
+              if ((r.target_type === 'container' && !r.target_name) || !LINKABLE_TYPES.includes(r.target_type)) {
                 return <span>{prefix}{label}</span>;
               }
               return <a onClick={() => openTargetDetail(r)}>{prefix}{label}</a>;

@@ -6,6 +6,17 @@
 .user-msg-success { color: #14532d; }
 .user-msg-error { color: #a8071a; }
 .user-stats-row { margin-bottom: 20px; }
+.user-logout-button {
+	width: 34px;
+	height: 34px;
+	border-radius: 8px;
+	color: #5f6b7a;
+}
+.user-logout-button:hover {
+	color: #ff4d4f !important;
+	border-color: #ffccc7 !important;
+	background: #fff2f0 !important;
+}
 
 @media (max-width: 768px) {
 	.user-root-row {

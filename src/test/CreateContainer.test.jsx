@@ -58,26 +58,14 @@ const makeMockImageListResponse = () => ({
   ],
 });
 
-const makeMockImageDetailResponse = () => ({
-  image: {
-    image_id: 7,
-    name: 'PyTorch 2.x + CUDA 12.1',
-    description: 'GPU training image',
-    base_image: 'ubuntu:22.04',
-    status: 'ready',
-    dockerfile_body: 'RUN echo torch',
-  },
-});
-
 vi.mock('../api/image_api', () => ({
   listImageBrefInformation: vi.fn(),
-  getImageDetailInformation: vi.fn(),
 }));
 
 import { getUserPermissions } from '../api/user_api';
 import { createContainer } from '../api/container_api';
 import { listMachinePermissions } from '../api/machine_api';
-import { listImageBrefInformation, getImageDetailInformation } from '../api/image_api';
+import { listImageBrefInformation } from '../api/image_api';
 import CreateContainer from '../pages/CreateContainer';
 
 const selectImage = async () => {
@@ -97,8 +85,6 @@ describe.sequential('CreateContainer 代建门禁（container:manage 分类显�
     listMachinePermissions.mockClear();
     listImageBrefInformation.mockReset();
     listImageBrefInformation.mockResolvedValue(makeMockImageListResponse());
-    getImageDetailInformation.mockReset();
-    getImageDetailInformation.mockResolvedValue(makeMockImageDetailResponse());
   });
 
   it('普通用户（无 container:manage）不显示 ROOT 用户选择器', async () => {
@@ -123,7 +109,6 @@ describe.sequential('CreateContainer 代建门禁（container:manage 分类显�
     await userEvent.click(screen.getByRole('button', { name: '创建容器' }));
 
     await waitFor(() => expect(createContainer).toHaveBeenCalled());
-    expect(getImageDetailInformation).toHaveBeenCalledWith(7);
     const payload = createContainer.mock.calls[0][0];
     expect(payload.owner_user_id).toBeUndefined();
     expect(payload.image_id).toBe(7);

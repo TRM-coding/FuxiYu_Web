@@ -64,6 +64,30 @@ export const loginUser = async ({ username, password, remember }, timeout = null
   }
 };
 
+export const logoutUser = async (timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.LOGOUT, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      credentials: CREDENTIALS
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Logout');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') {
+      throw new Error('Logout request timed out');
+    }
+    throw err;
+  }
+};
+
 export const requestRegisterCode = async ({ email }, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
@@ -271,6 +295,7 @@ export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 
 
 export default {
   loginUser,
+  logoutUser,
   registerUser,
   changePasswordUser,
   deleteUser,

@@ -266,6 +266,31 @@ export const addMachinePermission = async ({ machine_id, user_id } = {}, timeout
   }
 };
 
+export const removeMachinePermission = async ({ machine_id, user_id } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.MACHINES_REMOVE_PERMISSION, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type' : 'application/json',
+      },
+      body: JSON.stringify({ machine_id, user_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Remove machine permission');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Remove machine permission request timed out');
+    throw err;
+  }
+};
+
 export const listMachinePermissions = async (machine_id = 0, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {

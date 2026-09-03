@@ -18,6 +18,7 @@ export const CREDENTIALS = 'include'; // 携带 cookies
 export const API_ROUTES = {
 	// User routes
 	LOGIN: '/api/login',
+	LOGOUT: '/api/logout',
 	REGISTER: '/api/register',
 	REQUEST_REGISTER_CODE: '/api/request_register_code',
 	USERS_CHANGE_PASSWORD: '/api/users/change_password',
@@ -37,6 +38,7 @@ export const API_ROUTES = {
 	MACHINES_STATUS: '/api/machines/machine_status',
 	MACHINES_LIST: '/api/machines/list_all_machine_bref_information',
 	MACHINES_ADD_PERMISSION: '/api/machines/add_machine_permission',
+	MACHINES_REMOVE_PERMISSION: '/api/machines/remove_machine_permission',
 	MACHINES_LIST_PERMISSION: '/api/machines/list_machine_permissions',
 
 	// Container routes
@@ -74,6 +76,7 @@ export const API_ROUTES = {
 	RBAC_MATRIX: '/api/rbac/matrix',
 	RBAC_GROUPS: '/api/rbac/groups',
 	RBAC_UPDATE_GROUP_ENTITIES: (groupId) => `/api/rbac/groups/${groupId}/entities`,
+	RBAC_USER_GROUPS: (userId) => `/api/rbac/users/${userId}/groups`,
 
 	// Announcement routes
 	ANNOUNCEMENTS_TEMPLATES: '/api/announcements/templates',

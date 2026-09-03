@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckOutlined, ReloadOutlined, UnlockOutlined } from '@ant-design/icons';
-import { Flex, Typography, Row, Col, Button, Input, Space, Form, Tag, message, InputNumber, Segmented, Checkbox } from 'antd';
+import { CheckOutlined, ReloadOutlined, UnlockOutlined, TeamOutlined } from '@ant-design/icons';
+import { Flex, Typography, Row, Col, Button, Input, Space, Form, Tag, message, InputNumber, Segmented, Checkbox, Modal } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { listAllUserBrefInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
+import { getRbacMatrix, getUserRbacGroups, setUserRbacGroups } from '../api/rbac_api';
 import { usePermission } from '../contexts/PermissionContext';
 import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator, setLongTermContainer, startContainer, stopContainer, restartContainer, unpauseContainer } from '../api/container_api';
 import './ManageUser.css';
@@ -236,6 +237,15 @@ const ManageUser = () => {
 
   // auth + operator 门禁（PermissionContext 通配判定，替代旧 is_operator 字段猜测）
   const { hasPermission, loaded: permLoaded } = usePermission();
+  // 用户 ↔ 权限组 弹窗（生效权限 = 各组并集；入口仅 rbac:manage 可见）
+  const [userGroupModal, setUserGroupModal] = useState({
+    visible: false,
+    user: null,
+    allGroups: [],
+    selectedIds: [],
+    loading: false,
+    saving: false,
+  });
   React.useEffect(() => {
     const name = localStorage.getItem('currentUserName');
     const id = localStorage.getItem('currentUserId');
@@ -442,6 +452,59 @@ const ManageUser = () => {
     } finally {
       setModal({ visible: false, type: '', loading: false, data: null });
     }
+  };
+
+  // 打开"权限组"弹窗：拉取全量权限组 + 该用户当前绑定
+  const openUserGroupsModal = async (record) => {
+    if (!record) return;
+    setUserGroupModal(prev => ({ ...prev, visible: true, user: record, selectedIds: [], allGroups: [], loading: true }));
+    try {
+      const [matrix, mine] = await Promise.all([
+        getRbacMatrix(),
+        getUserRbacGroups(Number(record.key)),
+      ]);
+      const groups = Array.isArray(matrix?.groups) ? matrix.groups : [];
+      const bound = Array.isArray(mine?.group_ids) ? mine.group_ids.map(Number) : [];
+      setUserGroupModal(prev => ({
+        ...prev,
+        allGroups: groups.map(g => ({
+          id: Number(g.id),
+          name: g.name,
+          description: g.description || '',
+          entityCount: Array.isArray(g.entity_codes) ? g.entity_codes.length : 0,
+        })),
+        selectedIds: groups.map(g => Number(g.id)).filter(gid => bound.includes(gid)),
+        loading: false,
+      }));
+    } catch (err) {
+      console.error('load rbac groups failed', err);
+      message.error(err?.body?.message || '加载权限组失败');
+      setUserGroupModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  // 保存整组替换（后端自锁护栏：不能移除自己持有的 rbac:manage 组）
+  const handleSaveUserGroups = async () => {
+    const { user, selectedIds } = userGroupModal;
+    if (!user) return;
+    setUserGroupModal(prev => ({ ...prev, saving: true }));
+    try {
+      await setUserRbacGroups(Number(user.key), selectedIds);
+      message.success(`已更新用户 ${user.username || ('#' + user.key)} 的权限组`);
+      setUserGroupModal(prev => ({ ...prev, visible: false, user: null, saving: false }));
+    } catch (err) {
+      const reason = err?.body?.error_reason || '';
+      const friendly = reason === 'cannot_remove_own_manage'
+        ? '不能移除自己持有的 rbac:manage 权限组（会把自己锁死）'
+        : (err?.body?.message || '更新权限组失败');
+      message.error(friendly);
+      setUserGroupModal(prev => ({ ...prev, saving: false }));
+    }
+  };
+
+  const closeUserGroupsModal = () => {
+    if (userGroupModal.saving) return;
+    setUserGroupModal(prev => ({ ...prev, visible: false, user: null }));
   };
 
   // 处理删除用户
@@ -1339,6 +1402,18 @@ const ManageUser = () => {
                     >
                       保存
                     </Button>
+                    {hasPermission('rbac:manage') && (
+                      <Button
+                        size="small"
+                        icon={<TeamOutlined />}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openUserGroupsModal(record);
+                        }}
+                      >
+                        权限组
+                      </Button>
+                    )}
                     <Button
                       size="small"
                       onClick={(event) => {
@@ -1560,6 +1635,8 @@ const ManageUser = () => {
               handleRemoveUserFromContainer={handleRemoveUserFromContainer}
               handleDeleteUser={handleDeleteUser}
               handleResetPassword={handleResetPassword}
+              showUserGroupsAction={hasPermission('rbac:manage')}
+              handleOpenUserGroups={openUserGroupsModal}
               toggleExpand={toggleExpand}
               renderContainerStatus={renderContainerStatus}
               renderContainerRoleTag={renderContainerRoleTag}
@@ -1567,6 +1644,50 @@ const ManageUser = () => {
             />
           )}
         </section>
+
+        {/* 用户 ↔ 权限组（生效权限 = 各组权限点并集；入口仅 rbac:manage 可见） */}
+        <Modal
+          title={userGroupModal.user ? `权限组 - ${userGroupModal.user.username || ('#' + userGroupModal.user.key)}` : '权限组'}
+          open={userGroupModal.visible}
+          onCancel={closeUserGroupsModal}
+          width={520}
+          footer={
+            <Space>
+              <Button onClick={closeUserGroupsModal} disabled={userGroupModal.saving}>取消</Button>
+              <Button type="primary" loading={userGroupModal.saving} onClick={handleSaveUserGroups}>保存</Button>
+            </Space>
+          }
+        >
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Typography.Text type="secondary">
+              用户生效权限 = 所选权限组权限点的并集；不勾选任何组 = 收回全部组权限（后端会拦截对自己 rbac:manage 的自锁操作）。
+            </Typography.Text>
+            {userGroupModal.loading ? (
+              <Typography.Text type="secondary">加载中…</Typography.Text>
+            ) : userGroupModal.allGroups.length === 0 ? (
+              <Typography.Text type="secondary">暂无权限组</Typography.Text>
+            ) : (
+              <Checkbox.Group
+                style={{ width: '100%' }}
+                value={userGroupModal.selectedIds}
+                onChange={(values) => setUserGroupModal(prev => ({ ...prev, selectedIds: values }))}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {userGroupModal.allGroups.map(g => (
+                    <div key={g.id} style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: '8px 12px', background: '#fafafa' }}>
+                      <Checkbox value={g.id}>
+                        <Typography.Text strong>{g.name}</Typography.Text>
+                      </Checkbox>
+                      <Typography.Text type="secondary" style={{ display: 'block', marginLeft: 24 }}>
+                        {g.description ? `${g.description} · ` : ''}{g.entityCount} 个权限点
+                      </Typography.Text>
+                    </div>
+                  ))}
+                </div>
+              </Checkbox.Group>
+            )}
+          </Space>
+        </Modal>
       </div>
     </>
   );

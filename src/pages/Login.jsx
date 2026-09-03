@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button, Checkbox, Form, Input, message } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { loginUser } from '../api/user_api';
@@ -12,6 +12,13 @@ const LoginBlock = () => {
 	const [confirmMessage, setConfirmMessage] = useState('');
 	const [confirmContent, setConfirmContent] = useState(null);
 	const navigate = useNavigate();
+
+	useEffect(() => {
+		const currentUserId = localStorage.getItem('currentUserId');
+		if (currentUserId) {
+			navigate('/index', { replace: true });
+		}
+	}, [navigate]);
 
 	const onFinish = async values => {
 		try {

@@ -7,10 +7,10 @@ import { handleAuthError } from '../utils/authHelpers';
 import { listAllMachineBrefInformation, getDetailInformation, listMachinePermissions } from '../api/machine_api';
 import { getUserPermissions, listAllUserBrefInformation } from '../api/user_api';
 import { createContainer } from '../api/container_api';
-import { listImageBrefInformation, getImageDetailInformation } from '../api/image_api';
+import { listImageBrefInformation } from '../api/image_api';
 import './CreateContainer.css';
 
-// 环境模板由后端 image list/detail 提供；创建容器时只提交 image_id。
+// 环境模板由后端 image list 提供；创建容器时只提交 image_id。
 const IMAGE_ICONS = {
   gpu: <ThunderboltOutlined />,
   base: <CodeOutlined />,
@@ -195,7 +195,7 @@ const CreateContainer = () => {
     return () => clearTimeout(timer);
   }, [imageKeyword]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectImage = async (image) => {
+  const selectImage = (image) => {
     const imageId = image?.image_id;
     if (!imageId) return;
     if (String(selectedImage?.image_id) === String(imageId)) {
@@ -203,16 +203,6 @@ const CreateContainer = () => {
       return;
     }
     setSelectedImage(image);
-    try {
-      const res = await getImageDetailInformation(imageId);
-      if (res?.image) setSelectedImage(normalizeImage(res.image));
-    } catch (err) {
-      await showErrorModal({
-        message: err?.body || err || '加载环境模板详情失败',
-        status: err?.status || err?.response?.status,
-        route: err?.route || err?.response?.url,
-      });
-    }
   };
 
   const fetchMachines = async () => {

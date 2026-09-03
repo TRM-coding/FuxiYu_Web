@@ -102,8 +102,52 @@ export const createRbacGroup = async ({ name, description = '', entity_codes = [
   }
 };
 
+export const getUserRbacGroups = async (userId = 0, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(new URL(API_ROUTES.RBAC_USER_GROUPS(userId), BACKEND_ORIGIN).toString(), {
+      method: 'GET',
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Get RBAC user groups');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Get RBAC user groups request timed out');
+    throw err;
+  }
+};
+
+export const setUserRbacGroups = async (userId = 0, groupIds = [], timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const res = await fetch(new URL(API_ROUTES.RBAC_USER_GROUPS(userId), BACKEND_ORIGIN).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_ids: groupIds }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Set RBAC user groups');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Set RBAC user groups request timed out');
+    throw err;
+  }
+};
+
 export default {
   createRbacGroup,
   getRbacMatrix,
+  getUserRbacGroups,
+  setUserRbacGroups,
   updateRbacGroupEntities,
 };

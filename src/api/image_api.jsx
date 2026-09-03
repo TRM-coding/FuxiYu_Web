@@ -38,7 +38,7 @@ const ensureOk = async (res, action) => {
   return res.json();
 };
 
-export const listImageBrefInformation = async ({ page_number = 1, page_size = 50, image_search = '' } = {}, timeout = null) => {
+export const listImageBrefInformation = async ({ page_number = 1, page_size = 50, image_search = '', mine_only = false } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
     const url = new URL(API_ROUTES.IMAGES_LIST, BACKEND_ORIGIN);
@@ -46,6 +46,7 @@ export const listImageBrefInformation = async ({ page_number = 1, page_size = 50
     url.searchParams.set('page_size', String(page_size));
     const keyword = String(image_search || '').trim();
     if (keyword) url.searchParams.set('image_search', keyword);
+    if (mine_only) url.searchParams.set('mine_only', 'true');
     const res = await fetch(url.toString(), {
       method: 'GET',
       signal: controller.signal,

@@ -68,7 +68,7 @@ export default function CreateImage() {
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [images, setImages] = useState([]);
   const [keyword, setKeyword] = useState('');
-  const [mineOnly, setMineOnly] = useState(false);
+  const [mineOnly, setMineOnly] = useState(true);
   const [loadingList, setLoadingList] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -87,10 +87,7 @@ export default function CreateImage() {
     return keys.some(k => (form[k] ?? '') !== (originalForm[k] ?? ''));
   }, [form, originalForm]);
 
-  const visibleImages = useMemo(() => {
-    if (!mineOnly || !canManage) return images;
-    return images.filter(item => Number(item.created_by_user_id || 0) === Number(currentUserId || 0));
-  }, [images, mineOnly, canManage, currentUserId]);
+  const visibleImages = images;
 
   const loadImages = async (search = keyword) => {
     setLoadingList(true);
@@ -99,6 +96,7 @@ export default function CreateImage() {
         page_number: 1,
         page_size: 100,
         image_search: search,
+        mine_only: mineOnly || !canManage,
       });
       const items = Array.isArray(result?.images) ? result.images.map(normalizeImage) : [];
       setImages(items);
@@ -160,9 +158,18 @@ export default function CreateImage() {
   }, [navigate]);
 
   useEffect(() => {
-    loadImages('');
+    if (!permissionsLoaded || !currentUserId) return;
+    loadImages(keyword);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [permissionsLoaded, currentUserId, mineOnly, canManage]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    if (visibleImages.some(item => String(item.image_id) === String(selectedId))) return;
+    setSelectedId(null);
+    setForm(EMPTY_FORM);
+    setOriginalForm(EMPTY_FORM);
+  }, [selectedId, visibleImages]);
 
   const updateField = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -203,6 +210,7 @@ export default function CreateImage() {
         const result = await createImage({
           name,
           description: form.description || '',
+          status: form.status,
           base_image: baseImage,
           dockerfile_body: dockerfileBody,
         });
