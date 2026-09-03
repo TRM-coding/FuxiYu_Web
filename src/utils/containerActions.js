@@ -6,12 +6,21 @@ export function getContainerActionState(effectiveStatus) {
   const status = String(effectiveStatus || '').toLowerCase();
   const hostOffline = status === 'host_offline';
   const blockedByHost = hostOffline || status === 'host_maintenance' || status === 'status_unknown';
+  const blockedForLongTerm = blockedByHost || [
+    'building',
+    'creating',
+    'starting',
+    'stopping',
+    'restarting',
+    'failed',
+  ].includes(status);
   return {
     hostOffline,
     canStart: !blockedByHost && status === 'offline',
     canStop: !blockedByHost && status === 'online',
     canRestart: !blockedByHost && status === 'online',
     canUnpause: !blockedByHost && status === 'paused',
+    canSetLongTerm: !blockedForLongTerm,
   };
 }
 

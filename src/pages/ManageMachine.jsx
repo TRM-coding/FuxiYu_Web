@@ -330,6 +330,7 @@ const ManageMachine = () => {
         machine_ip: m.machine_ip || '',
         machine_type: (m.machine_type || '').toUpperCase(),
         machine_status: (m.machine_status || '').toLowerCase(),
+        is_maintenance: m.is_maintenance === true,
         cpu_core_number: null,
         memory_size_gb: null,
         max_memory_gb: null,
@@ -363,6 +364,7 @@ const ManageMachine = () => {
                 machine_description: detail.machine_description ?? it.machine_description,
                 machine_type: (detail.machine_type ?? it.machine_type).toUpperCase(),
                 machine_status: (detail.machine_status ?? it.machine_status).toLowerCase(),
+                is_maintenance: detail.is_maintenance ?? it.is_maintenance,
                 runtime_snapshot: detail.runtime_snapshot ?? it.runtime_snapshot
               };
             } catch (err) {
@@ -1233,6 +1235,7 @@ const ManageMachine = () => {
             checked={containerRecord?.is_long_term === true}
             disabled={
               !!longTermUpdatingMap[String(containerRecord?.key)] ||
+              !actionState.canSetLongTerm ||
               (containerRecord?.is_long_term !== true && containerRecord?.long_term_container_can_enable === false)
             }
             onChange={e => handleLongTermChange(containerRecord, e.target.checked)}

@@ -17,7 +17,7 @@ import ManageUserInTable from './ManageUserInTable';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import EntitySearchBar from '../components/EntitySearchBar';
-import { createContainerStatusTransition, deriveContainerEffectiveStatus } from '../utils/containerActions';
+import { createContainerStatusTransition, deriveContainerEffectiveStatus, getContainerActionState } from '../utils/containerActions';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
 import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint, userListFingerprint } from '../utils/listRefresh';
 
@@ -1426,7 +1426,11 @@ const ManageUser = () => {
                     )}
                     <Checkbox
                       checked={containerRecord.is_long_term === true}
-                      disabled={!!longTermUpdatingMap[String(containerRecord.key)] || (!containerRecord.is_long_term && containerRecord.long_term_container_can_enable === false)}
+                      disabled={
+                        !!longTermUpdatingMap[String(containerRecord.key)] ||
+                        !getContainerActionState(containerRecord.effective_status).canSetLongTerm ||
+                        (!containerRecord.is_long_term && containerRecord.long_term_container_can_enable === false)
+                      }
                       onClick={(event) => event.stopPropagation()}
                       onChange={(event) => handleLongTermChange(userRecord, containerRecord, event.target.checked)}
                     >

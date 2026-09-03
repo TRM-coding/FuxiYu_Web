@@ -44,6 +44,25 @@ describe('getContainerActionState', () => {
     expect(getContainerActionState(undefined).canStart).toBe(false);
     expect(getContainerActionState('host_offline').hostOffline).toBe(true);
   });
+
+  it('disables long-term writes during unstable or derived unavailable states', () => {
+    for (const status of [
+      'building',
+      'creating',
+      'starting',
+      'stopping',
+      'restarting',
+      'failed',
+      'host_offline',
+      'host_maintenance',
+      'status_unknown',
+    ]) {
+      expect(getContainerActionState(status).canSetLongTerm).toBe(false);
+    }
+    expect(getContainerActionState('online').canSetLongTerm).toBe(true);
+    expect(getContainerActionState('offline').canSetLongTerm).toBe(true);
+    expect(getContainerActionState('paused').canSetLongTerm).toBe(true);
+  });
 });
 
 describe('getRoleActionSet', () => {

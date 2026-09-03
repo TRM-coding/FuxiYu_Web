@@ -944,6 +944,7 @@ const Home = () => {
               checked={record.is_long_term === true}
               disabled={
                 !!longTermUpdatingMap[String(record.key)] ||
+                !actionState.canSetLongTerm ||
                 (record.is_long_term !== true && record.long_term_container_can_enable === false)
               }
               onChange={e => handleLongTermChange(record, e.target.checked)}
