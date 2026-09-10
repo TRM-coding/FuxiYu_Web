@@ -29,7 +29,6 @@ export const API_ROUTES = {
 	USERS_LIST: '/api/users/list_all_user_bref_information',
 
 	// Machine routes
-	MACHINES_ADD: '/api/machines/add_machine',
 	MACHINES_REGISTER: '/api/machines/register_machine',
 	MACHINES_REMOVE: '/api/machines/remove_machine',
 	MACHINES_UPDATE: '/api/machines/update_machine',

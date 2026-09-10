@@ -63,7 +63,6 @@ export const routeErrorMap = {
     '/containers/unpause_container': { unpause_failed: '解冻容器失败' },
 
     // 机器相关
-    '/machines/add_machine': { duplicate_entry: '机器已存在', internal_error: '内部错误，添加失败', create_failed: '添加机器失败' },
     '/machines/remove_machine': { remove_failed: '删除机器失败' },
     '/machines/update_machine': { update_failed: '更新机器失败', machine_not_found: '机器不存在', machine_maintenance: '机器正在维护中', machine_offline: '机器离线' },
     '/machines/get_detail_information': { machine_not_found: '机器不存在', machine_offline: '机器离线', machine_maintenance: '机器正在维护中' },

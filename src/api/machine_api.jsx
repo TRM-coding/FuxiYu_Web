@@ -39,31 +39,6 @@ const ensureOk = async (res, action) => {
   return res.json();
 };
 
-export const addMachine = async (machineData = {}, timeout = null) => {
-  const { controller, timer } = createTimeoutController(timeout);
-  try {
-    const url = new URL(API_ROUTES.MACHINES_ADD, BACKEND_ORIGIN).toString();
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',  
-      },
-      body: JSON.stringify(machineData),
-      signal: controller.signal,
-      credentials: CREDENTIALS,
-    });
-    clearTimeout(timer);
-    const result = await ensureOk(res, 'Add machine');
-    unregisterController(controller);
-    return result;
-  } catch (err) {
-    clearTimeout(timer);
-    try { unregisterController(controller); } catch (e) {}
-    if (err.name === 'AbortError') throw new Error('Add machine request timed out');
-    throw err;
-  }
-};
-
 export const registerMachine = async (machineData = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
