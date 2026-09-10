@@ -71,6 +71,44 @@ describe('AdminLogs 日志页', () => {
     expect(screen.getByText('总操作数')).toBeInTheDocument();
   });
 
+  it('renders setting labels and deleted container display names without navigation', async () => {
+    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    listOperationLogs.mockResolvedValueOnce({
+      total_pages: 1,
+      logs: [
+        { id: 10, operation: 'update_setting', target_type: 'system_setting', target_id: 0,
+          target_display_name: 'container.cleanup_after_days', success: true,
+          created_at: '2026-08-16T08:00:00', detail: {} },
+        { id: 11, operation: 'delete_container', target_type: 'container', target_id: 9,
+          target_name: null, target_display_name: 'retained', root_owner: 'alice', success: true,
+          created_at: '2026-08-16T08:00:00', detail: {} },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText('更新系统设置')).toBeInTheDocument();
+    expect(screen.getByText('系统设置 container.cleanup_after_days')).toBeInTheDocument();
+    const target = screen.getByText('容器 retained · 超管 alice');
+    expect(target.closest('a')).toBeNull();
+  });
+
+  it('renders mail audit labels and announcement names without navigation', async () => {
+    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    listOperationLogs.mockResolvedValueOnce({
+      total_pages: 1,
+      logs: [{ id: 12, operation: 'send_mail', target_type: 'announcement', target_id: 8,
+        target_display_name: 'Maintenance', success: false, error_reason: 'smtp refused',
+        created_at: '2026-08-16T08:00:00',
+        detail: { mail_type: 'announcement', recipient: 'owner@example.test', subject: 'Maintenance' } }],
+    });
+    renderPage();
+    expect(await screen.findByText('发送邮件')).toBeInTheDocument();
+    expect(screen.getByText('公告 Maintenance').closest('a')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Expand row' }));
+    expect(screen.getByText('邮件用途')).toBeInTheDocument();
+    expect(screen.getByText('owner@example.test')).toBeInTheDocument();
+    expect(screen.getByText(/error_reason: smtp refused/)).toBeInTheDocument();
+  });
+
   it('展开行显示前→后对比（状态值翻译）', async () => {
     getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
     renderPage();

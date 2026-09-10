@@ -59,6 +59,8 @@ const OPERATION_TEXT = {
   create_image: '创建镜像',
   update_image: '更新镜像',
   delete_image: '删除镜像',
+  update_setting: '更新系统设置',
+  send_mail: '发送邮件',
   // 定时任务 / 系统事件
   send_cleanup_reminder: '发送清理提醒',
   pause_container: '冻结容器（磁盘超限）',
@@ -100,11 +102,23 @@ const OPERATION_META = {
   create_image: { color: 'cyan', icon: <FileImageOutlined /> },
   update_image: { color: 'orange', icon: <FileImageOutlined /> },
   delete_image: { color: 'red', icon: <DeleteOutlined /> },
+  update_setting: { color: 'red', icon: <SafetyCertificateOutlined /> },
   // 系统任务
   send_cleanup_reminder: { color: 'gold', icon: <BellOutlined /> },
+  send_mail: { color: 'gold', icon: <BellOutlined /> },
 };
 
-const TARGET_TEXT = { machine: '机器', container: '容器', user: '用户', rbac_group: '权限组', image: '镜像' };
+const TARGET_TEXT = {
+  machine: '机器',
+  container: '容器',
+  user: '用户',
+  rbac_group: '权限组',
+  image: '镜像',
+  system_setting: '系统设置',
+  container_mount_cleanup: '容器挂载清理',
+  mail: '邮件',
+  announcement: '公告',
+};
 
 /** detail 字段名 → 可读中文（未知字段显示原文） */
 const FIELD_TEXT = {
@@ -128,6 +142,16 @@ const FIELD_TEXT = {
   user_id: '用户ID',
   username: '用户名',
   recipient: '收件人',
+  cc: '抄送',
+  bcc: '密送',
+  subject: '邮件主题',
+  mail_type: '邮件用途',
+  mail_mode: '发送模式',
+  batch_total: '批次邮件总数',
+  message_count: '本组邮件数',
+  messages: '邮件明细',
+  smtp_code: 'SMTP 状态码',
+  exc_type: '错误类型',
   threshold: '提醒档位',
   cleanup_at: '预计清理时间',
   role: '角色',
@@ -146,6 +170,9 @@ const FIELD_TEXT = {
   requested_entities: '请求的权限点',
   group_id: '权限组ID',
   why: '失败原因',
+  setting_keys: '设置项',
+  before: '变更前',
+  requested: '请求值（未生效）',
 };
 
 /** 状态值 → 可读中文 */
@@ -199,7 +226,7 @@ const fmtStatusVal = (v) => (typeof v === 'string' && STATUS_TEXT[v.toLowerCase(
 export const LogDetail = ({ record }) => {
   const [mode, setMode] = React.useState('structured');
   const detail = record.detail;
-  const hasDiff = !!detail && typeof detail === 'object' && (detail.before || detail.after);
+  const hasDiff = !!detail && typeof detail === 'object' && !('requested' in detail) && (detail.before || detail.after);
 
   const diffFields = React.useMemo(() => {
     if (!hasDiff) return [];
@@ -717,6 +744,10 @@ export default function AdminLogs() {
                 { value: 'user', label: '用户' },
                 { value: 'rbac_group', label: '权限组' },
                 { value: 'image', label: '镜像' },
+                { value: 'system_setting', label: '系统设置' },
+                { value: 'container_mount_cleanup', label: '容器挂载清理' },
+                { value: 'mail', label: '邮件' },
+                { value: 'announcement', label: '公告' },
               ]}
             />
           </Col>
@@ -807,7 +838,7 @@ export default function AdminLogs() {
             key="target_id"
             render={(_, r) => {
               const prefix = `${TARGET_TEXT[r.target_type] || r.target_type || '-'} `;
-              let label = r.target_name || `#${r.target_id}`;
+              let label = r.target_name || r.target_display_name || `#${r.target_id}`;
               if (r.target_type === 'container' && r.root_owner) {
                 label = `${label} · 超管 ${r.root_owner}`;
               }
