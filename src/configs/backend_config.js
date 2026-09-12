@@ -33,6 +33,7 @@ export const API_ROUTES = {
 	MACHINES_REMOVE: '/api/machines/remove_machine',
 	MACHINES_UPDATE: '/api/machines/update_machine',
 	MACHINES_SET_MAINTENANCE: '/api/machines/set_maintenance',
+	MACHINES_RENEW_TRUST: '/api/machines/renew_machine_trust',
 	MACHINES_GET_DETAIL: '/api/machines/get_detail_information',
 	MACHINES_STATUS: '/api/machines/machine_status',
 	MACHINES_LIST: '/api/machines/list_all_machine_bref_information',

@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Col, Input, message, Modal, Row, Select, Slider, Spin, Switch, Tag, Typography } from 'antd';
-import { ArrowLeftOutlined, DeleteOutlined, DesktopOutlined, EditOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons';
-import { getDetailInformation, getMachineStatus, removeMachine, setMachineMaintenance, updateMachine } from '../api/machine_api';
+import { ArrowLeftOutlined, DeleteOutlined, DesktopOutlined, EditOutlined, ReloadOutlined, SafetyCertificateOutlined, SaveOutlined } from '@ant-design/icons';
+import { getDetailInformation, getMachineStatus, removeMachine, renewMachineTrust, setMachineMaintenance, updateMachine } from '../api/machine_api';
 import CopyChip from '../components/CopyChip';
 import ConfirmModal from '../components/ConfirmModal';
 import RuntimeTrendChart from '../components/RuntimeTrendChart';
+import { usePermission } from '../contexts/PermissionContext';
 import showErrorModal from '../utils/showErrorModal';
 import { formatNumber, formatSnapshotTime } from '../utils/detailFormat';
 import { getMachineStatusDisplay } from '../utils/statusDisplay';
@@ -36,6 +37,7 @@ const addHistoryPoint = (history, snapshot) => {
 const MachineDetailPage = () => {
   const { machineId } = useParams();
   const navigate = useNavigate();
+  const { hasPermission } = usePermission();
   const [machine, setMachine] = useState(null);
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState([]);
@@ -46,6 +48,9 @@ const MachineDetailPage = () => {
   const [savingLimits, setSavingLimits] = useState(false);
   const [deletingMachine, setDeletingMachine] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  // 修复连接（重钉信任锚）：机器还在、只是证书变了导致链路连不上时的修复入口
+  const [renewingTrust, setRenewingTrust] = useState(false);
+  const [renewConfirmVisible, setRenewConfirmVisible] = useState(false);
   // 机器基本信息编辑（名称/类型/IP；IP 变更后端自动校验证书并重 pin）
   const [editBasicVisible, setEditBasicVisible] = useState(false);
   const [basicDraft, setBasicDraft] = useState(null);
@@ -98,6 +103,25 @@ const MachineDetailPage = () => {
       await showErrorModal({ message: err?.body || err || '删除机器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
     } finally {
       setDeletingMachine(false);
+    }
+  };
+
+  // 修复连接（2026-09）：Node 重新生成过自签证书 → 本地 pin 失效、链路连不上。
+  // 机器、容器、uid 都没变，坏的只是连接能力；后端只更新原行，不重建档。
+  const handleConfirmRenewTrust = async () => {
+    setRenewingTrust(true);
+    try {
+      const result = await renewMachineTrust(Number(machineId));
+      const parts = ['连接信任已重建'];
+      if (result?.uid_reissued) parts.push('已重发身份牌');
+      if (result?.uid_mismatch) parts.push('注意：身份牌与对端不一致，已保留本端值');
+      message.success(parts.join('；'));
+      setRenewConfirmVisible(false);
+      await loadDetail({ silent: true });
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '修复连接失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setRenewingTrust(false);
     }
   };
 
@@ -322,6 +346,13 @@ const MachineDetailPage = () => {
           <div className="detail-topbar-actions">
             <Button icon={<ArrowLeftOutlined />} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/admin/machines'))}>返回</Button>
             <Button icon={<ReloadOutlined />} onClick={() => loadDetail()}>刷新</Button>
+            {hasPermission('machine:manage') && (
+              <Button
+                icon={<SafetyCertificateOutlined />}
+                loading={renewingTrust}
+                onClick={() => setRenewConfirmVisible(true)}
+              >修复连接</Button>
+            )}
             <Button danger icon={<DeleteOutlined />} loading={deletingMachine} onClick={handleDeleteMachine}>删除</Button>
           </div>
         </div>
@@ -559,6 +590,32 @@ const MachineDetailPage = () => {
           onCancel={() => setDeleteConfirmVisible(false)}
           loading={deletingMachine}
           confirmText="删除"
+        />
+        <ConfirmModal
+          visible={renewConfirmVisible}
+          title="确认修复连接"
+          icon={<SafetyCertificateOutlined style={{ color: '#1677ff', fontSize: 18 }} />}
+          message={(
+            <div>
+              <div className="mm-delete-headline">即将对机器<span className="mm-action-verb">重新建立</span>连接信任</div>
+              <div className="mm-delete-name">名称：{machine?.machine_name || machineId}</div>
+            </div>
+          )}
+          content={(
+            <div>
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+                用于机器还在、但 Node 换过自签证书导致链路连不上的情况。执行后会重新抓取该机器当前的证书，
+                作为本端唯一信任的凭据。
+              </Typography.Paragraph>
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                机器本身、容器与身份牌都不会变动；连接能力已正常时执行也不会造成破坏。
+              </Typography.Paragraph>
+            </div>
+          )}
+          onConfirm={handleConfirmRenewTrust}
+          onCancel={() => setRenewConfirmVisible(false)}
+          loading={renewingTrust}
+          confirmText="修复"
         />
       </div>
     </main>

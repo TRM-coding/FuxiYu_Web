@@ -139,6 +139,31 @@ export const setMachineMaintenance = async (machine_id = 0, is_maintenance = fal
   }
 };
 
+export const renewMachineTrust = async (machine_id = 0, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.MACHINES_RENEW_TRUST, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ machine_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Renew machine trust');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Renew machine trust request timed out');
+    throw err;
+  }
+};
+
 export const getDetailInformation = async (machine_id = 0, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {

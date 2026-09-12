@@ -67,6 +67,14 @@ export const routeErrorMap = {
     '/machines/update_machine': { update_failed: '更新机器失败', machine_not_found: '机器不存在', machine_maintenance: '机器正在维护中', machine_offline: '机器离线' },
     '/machines/get_detail_information': { machine_not_found: '机器不存在', machine_offline: '机器离线', machine_maintenance: '机器正在维护中' },
     '/machines/list_all_machine_bref_information': { list_failed: '获取机器列表失败', machine_offline: '机器离线' },
+    '/machines/renew_machine_trust': {
+      machine_not_found: '机器不存在',
+      invalid_machine_ip: '该机器没有可用的 IP，无法重新抓取证书',
+      machine_unreachable: '连不上该机器，无法抓取证书；原有信任未被改动',
+      enrollment_failed: '该机器未返回接入资料；原有信任未被改动',
+      issue_uid_failed: '该机器的身份牌下发失败；原有信任未被改动',
+      persist_failed: '信任已重建，但写库失败，请重试',
+    },
 
     // 设置相关
     '/settings': { invalid_setting: '设置项不合法', update_failed: '保存设置失败' },
