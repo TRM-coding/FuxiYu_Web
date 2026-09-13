@@ -23,6 +23,7 @@ import RuntimeTrendChart from '../components/RuntimeTrendChart';
 import showErrorModal from '../utils/showErrorModal';
 import { formatNumber, formatSnapshotTime } from '../utils/detailFormat';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
+import { isDiskOverLimit, DISK_OVER_LIMIT_MESSAGE } from '../utils/diskLimit';
 
 // 容器相关操作 → 中文（与 AdminLogs 的映射保持一致；未知操作回退原文）
 const CONTAINER_OPERATION_LABELS = {
@@ -299,6 +300,10 @@ const ContainerDetailPage = () => {
   const statusDisplay = getContainerStatusDisplay(status);
   const metrics = container?.runtime_metrics || {};
   const diskUsage = container?.disk_usage || {};
+  // 「长期容器」勾选框：已长期的不用拦（超限的长期容器走冻结升级），未长期但磁盘已达上限的置灰。
+  // 详情页的磁盘数据是嵌套形状（disk_usage.usage_percent），共用判据两种形状都认。
+  const longTermBlockedByDisk = container?.is_long_term !== true && isDiskOverLimit(container);
+  const longTermBlockedByQuota = container?.is_long_term !== true && container?.long_term_container_can_enable === false;
   const latestHistoryPoint = history.length ? history[history.length - 1] : null;
   const collectedAt = latestHistoryPoint?.collectedAt || metrics?.collected_at || metrics?.cache_updated_at;
   const gpuDevices = metrics?.gpu?.device_ids || [];
@@ -483,7 +488,11 @@ const ContainerDetailPage = () => {
                 <div className="container-secondary-actions">
                   <Checkbox
                     checked={container?.is_long_term === true}
-                    disabled={longTermSaving || (container?.is_long_term !== true && container?.long_term_container_can_enable === false)}
+                    disabled={longTermSaving || longTermBlockedByDisk || longTermBlockedByQuota}
+                    title={longTermSaving ? undefined
+                      : longTermBlockedByDisk ? DISK_OVER_LIMIT_MESSAGE
+                        : longTermBlockedByQuota ? '绑定用户已达到长期容器上限'
+                          : undefined}
                     onChange={e => handleLongTermToggle(e.target.checked)}
                   >长期容器（不参与清理倒计时）</Checkbox>
                   {hasPermission('container:manage') && (

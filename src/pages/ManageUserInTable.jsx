@@ -2,6 +2,7 @@ import React from 'react';
 import { DownOutlined, ReloadOutlined, UpOutlined } from '@ant-design/icons';
 import { Button, Card, Checkbox, Space, Table, Typography } from 'antd';
 import TableComponent from '../components/TableComponent';
+import { isDiskOverLimit } from '../utils/diskLimit';
 
 const { Column } = Table;
 
@@ -102,12 +103,19 @@ const ManageUserInTable = ({
                         const remaining = entry.long_term_container_remaining;
                         const limitReached = remaining !== null && remaining !== undefined && Number(remaining) <= 0;
                         const blockedByRelatedUser = containerRecord?.long_term_container_can_enable === false;
-                        const disabled = !!longTermUpdatingMap[String(cid)] || (!longTermChecked && (limitReached || blockedByRelatedUser));
+                        // 防呆：已超磁盘硬限的容器不该被设成长期——勾上就等于让它进冻结升级的射程
+                        const blockedByDisk = !longTermChecked && isDiskOverLimit(containerRecord);
+                        const updating = !!longTermUpdatingMap[String(cid)];
+                        const disabled = updating || (!longTermChecked && (limitReached || blockedByRelatedUser || blockedByDisk));
+                        const disabledReason = updating ? undefined
+                          : blockedByDisk ? '磁盘用量已达上限，无法设为长期容器'
+                            : (limitReached || blockedByRelatedUser) ? '绑定用户已达到长期容器上限'
+                              : undefined;
                         return (
                           <Checkbox
                             checked={longTermChecked}
                             disabled={disabled}
-                            title={disabled && !longTermUpdatingMap[String(cid)] ? '绑定用户已达到长期容器上限' : undefined}
+                            title={disabledReason}
                             onChange={e => handleLongTermChange(record, containerRecord, e.target.checked)}
                           />
                         );

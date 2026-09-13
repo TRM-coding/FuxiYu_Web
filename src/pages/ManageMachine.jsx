@@ -12,6 +12,7 @@ import { handleAuthError } from '../utils/authHelpers';
 import { listAllUserBrefInformation, getUserDetailInformation } from '../api/user_api';
 import { usePermission } from '../contexts/PermissionContext';
 import { isAbortError } from '../utils/requestManager';
+import { isDiskOverLimit, DISK_OVER_LIMIT_MESSAGE } from '../utils/diskLimit';
 import { useNavigate } from 'react-router-dom';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import CopyChip from '../components/CopyChip';
@@ -1264,6 +1265,14 @@ const ManageMachine = () => {
     const limit = containerRecord?.disk_limit_gb;
     const pct = Number(containerRecord?.disk_usage_percent || 0);
     const actionState = getContainerActionState(containerRecord?.effective_status);
+    // 「长期容器」勾选框：已长期的不用拦（超限的长期容器走冻结升级），未长期但磁盘已达上限的置灰——
+    // 否则可以先超限再勾长期，把自动清理躲掉，切换后立刻撞上冻结。
+    const blockedByDisk = containerRecord?.is_long_term !== true && isDiskOverLimit(containerRecord);
+    const blockedByQuota = containerRecord?.is_long_term !== true && containerRecord?.long_term_container_can_enable === false;
+    const longTermDisabled = !!longTermUpdatingMap[String(containerRecord?.key)] || !actionState.canSetLongTerm || blockedByDisk || blockedByQuota;
+    const longTermDisabledReason = blockedByDisk
+      ? DISK_OVER_LIMIT_MESSAGE
+      : blockedByQuota ? '绑定用户已达到长期容器上限' : undefined;
     return (
       <div className="mm-container-disk-line">
         <span>{total == null ? '磁盘 -' : `磁盘 ${total}G / ${limit != null ? `${limit}G` : '-'}`}</span>
@@ -1283,11 +1292,8 @@ const ManageMachine = () => {
           )}
           <Checkbox
             checked={containerRecord?.is_long_term === true}
-            disabled={
-              !!longTermUpdatingMap[String(containerRecord?.key)] ||
-              !actionState.canSetLongTerm ||
-              (containerRecord?.is_long_term !== true && containerRecord?.long_term_container_can_enable === false)
-            }
+            disabled={longTermDisabled}
+            title={longTermDisabled ? longTermDisabledReason : undefined}
             onChange={e => handleLongTermChange(containerRecord, e.target.checked)}
             onClick={e => e.stopPropagation()}
           >

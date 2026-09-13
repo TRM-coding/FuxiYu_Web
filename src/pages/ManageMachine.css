@@ -277,6 +277,8 @@
   background: #ff4d4f;
 }
 .mm-container-card-actions {
+  /* 下移一点点：磁盘占用条绝对定位在磁盘行的底边，动作按钮原本紧贴它（看着像被压住） */
+  margin-top: 4px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;

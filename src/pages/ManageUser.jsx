@@ -17,6 +17,7 @@ import ContainerDetailModal from '../components/ContainerDetailModal';
 import ManageUserInTable from './ManageUserInTable';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
+import { isDiskOverLimit, DISK_OVER_LIMIT_MESSAGE } from '../utils/diskLimit';
 import EntitySearchBar from '../components/EntitySearchBar';
 import { createContainerStatusTransition, deriveContainerEffectiveStatus, getContainerActionState } from '../utils/containerActions';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
@@ -1504,7 +1505,13 @@ const ManageUser = () => {
                       disabled={
                         !!longTermUpdatingMap[String(containerRecord.key)] ||
                         !getContainerActionState(containerRecord.effective_status).canSetLongTerm ||
-                        (!containerRecord.is_long_term && containerRecord.long_term_container_can_enable === false)
+                        (!containerRecord.is_long_term && (containerRecord.long_term_container_can_enable === false || isDiskOverLimit(containerRecord)))
+                      }
+                      title={
+                        containerRecord.is_long_term ? undefined
+                          : isDiskOverLimit(containerRecord) ? DISK_OVER_LIMIT_MESSAGE
+                            : containerRecord.long_term_container_can_enable === false ? '绑定用户已达到长期容器上限'
+                              : undefined
                       }
                       onClick={(event) => event.stopPropagation()}
                       onChange={(event) => handleLongTermChange(userRecord, containerRecord, event.target.checked)}

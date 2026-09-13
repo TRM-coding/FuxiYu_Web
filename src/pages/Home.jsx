@@ -9,6 +9,7 @@ import ContainerActionConfirmModal from '../components/ContainerActionConfirmMod
 import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer, unpauseContainer } from '../api/container_api';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
+import { isDiskOverLimit, DISK_OVER_LIMIT_MESSAGE } from '../utils/diskLimit';
 import { CONTAINER_TERMINAL_STATES, createContainerStatusTransition, deriveContainerEffectiveStatus, getContainerActionState, getRoleActionSet } from '../utils/containerActions';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint } from '../utils/listRefresh';
@@ -911,6 +912,14 @@ const Home = () => {
       ? '磁盘 -'
       : `磁盘 ${diskTotal}G / ${diskLimit != null ? `${diskLimit}G` : '-'}`;
     const diskFillClass = diskPct >= 90 ? 'home-container-disk-fill danger' : diskPct >= 75 ? 'home-container-disk-fill warn' : 'home-container-disk-fill';
+    // 「长期容器」勾选框：已长期的不用拦（超限的长期容器走冻结升级），未长期但磁盘已达上限的置灰——
+    // 否则可以先超限再勾长期，把自动清理躲掉。
+    const blockedByDisk = record.is_long_term !== true && isDiskOverLimit(record);
+    const blockedByQuota = record.is_long_term !== true && record.long_term_container_can_enable === false;
+    const longTermDisabled = !!longTermUpdatingMap[String(record.key)] || !actionState.canSetLongTerm || blockedByDisk || blockedByQuota;
+    const longTermDisabledReason = blockedByDisk
+      ? DISK_OVER_LIMIT_MESSAGE
+      : blockedByQuota ? '绑定用户已达到长期容器上限' : undefined;
 
     return (
       <article className="home-container-card" key={record.key}>
@@ -942,11 +951,8 @@ const Home = () => {
             )}
             <Checkbox
               checked={record.is_long_term === true}
-              disabled={
-                !!longTermUpdatingMap[String(record.key)] ||
-                !actionState.canSetLongTerm ||
-                (record.is_long_term !== true && record.long_term_container_can_enable === false)
-              }
+              disabled={longTermDisabled}
+              title={longTermDisabled ? longTermDisabledReason : undefined}
               onChange={e => handleLongTermChange(record, e.target.checked)}
               onClick={e => e.stopPropagation()}
             >长期</Checkbox>
