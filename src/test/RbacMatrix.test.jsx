@@ -24,6 +24,22 @@ vi.mock('../utils/showErrorModal', () => ({
 import { getRbacMatrix, updateRbacGroupEntities } from '../api/rbac_api';
 import RbacMatrix from '../pages/RbacMatrix';
 
+/**
+ * 等到矩阵真正可交互。
+ *
+ * 整个矩阵包在 `<Spin spinning={loading}>` 里，而 antd 在转动期间给容器加
+ * `.ant-spin-blur { pointer-events: none }` —— 此时 user-event 会以
+ * 「元素不可交互」拒绝点击。
+ *
+ * 要点：**内容在 loading 期间就已渲染**，所以「找得到文本」不等于「可以交互」。
+ * 只等 findAllByText 会在 loading 尚未结束时就去点，是否踩中取决于调度快慢——
+ * 本地快就过、CI 慢就挂。以「刷新按钮解禁」为完成信号，把这段竞态从结构上消掉。
+ */
+const waitForMatrixReady = async () => {
+  await screen.findAllByText('user');
+  await waitFor(() => expect(screen.getByRole('button', { name: /刷新/ })).toBeEnabled());
+};
+
 describe('RbacMatrix', () => {
   beforeEach(() => {
     getRbacMatrix.mockReset();
@@ -59,7 +75,8 @@ describe('RbacMatrix', () => {
       </MemoryRouter>,
     );
 
-    expect((await screen.findAllByText('user')).length).toBeGreaterThan(0);
+    await waitForMatrixReady();
+    expect(screen.getAllByText('user').length).toBeGreaterThan(0);
     expect(screen.getByText('机器')).toBeInTheDocument();
     expect(screen.getByText('容器')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '开启 container:create' })).toHaveClass('rbac-permission-chip-off');
@@ -82,7 +99,7 @@ describe('RbacMatrix', () => {
       </MemoryRouter>,
     );
 
-    await screen.findAllByText('user');
+    await waitForMatrixReady();
 
     await user.click(screen.getByRole('button', { name: '开启 container:create' }));
     await user.click(screen.getByRole('button', { name: '开启 container:manage' }));
@@ -108,7 +125,7 @@ describe('RbacMatrix', () => {
       </MemoryRouter>,
     );
 
-    await screen.findAllByText('user');
+    await waitForMatrixReady();
 
     await user.click(screen.getByRole('button', { name: '开启 bypass_auth_entity' }));
 
