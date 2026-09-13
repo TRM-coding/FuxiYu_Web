@@ -14,6 +14,8 @@ const BACKEND_ERROR_REASONS = [
   // 机器
   'duplicate_entry', 'create_failed', 'remove_failed', 'update_failed',
   'machine_not_found', 'machine_maintenance', 'machine_offline',
+  // 有效状态机族（动作类先撞的是这一族，不是 machine_*）
+  'container_host_maintenance', 'container_host_offline',
   'machine_permission_denied', 'node_endpoint_not_found',
   // 容器
   'container_exists', 'container_not_found', 'container_offline',
@@ -40,5 +42,40 @@ describe('showErrorModal 错误映射守护', () => {
     const mapped = collectMappedReasons();
     const missing = BACKEND_ERROR_REASONS.filter(r => !mapped.has(r));
     expect(missing).toEqual([]);
+  });
+});
+
+/**
+ * 会先撞「机器作用域」守卫的容器路由：创建走机器准入（machine_*），
+ * 动作类走有效状态机（container_host_*）。两族都必须在**本路由**上映射，
+ * 否则会退到全局兜底去借别的路由的措辞（按 Object.keys 顺序取首个命中者，很脆）。
+ */
+const MACHINE_SCOPE_ROUTES = [
+  '/containers/create_container',
+  '/containers/delete_container',
+  '/containers/add_collaborator',
+  '/containers/remove_collaborator',
+  '/containers/update_role',
+  '/containers/unpause_container',
+];
+
+describe('机器作用域族按路由映射', () => {
+  it('容器路由自带该族文案，不依赖全局兜底', () => {
+    const missing = [];
+    for (const route of MACHINE_SCOPE_ROUTES) {
+      const map = routeErrorMap[route] || {};
+      for (const reason of ['machine_maintenance', 'machine_offline', 'machine_not_found',
+                            'container_host_maintenance', 'container_host_offline']) {
+        if (!map[reason]) missing.push(`${route} → ${reason}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it('有效状态机族不再退化成后端原文', () => {
+    // 这两条曾经在全表里映射为 0 处，用户看到的是 "MACHINE remove aborted: machine is maintenance"
+    const mapped = collectMappedReasons();
+    expect(mapped.has('container_host_maintenance')).toBe(true);
+    expect(mapped.has('container_host_offline')).toBe(true);
   });
 });

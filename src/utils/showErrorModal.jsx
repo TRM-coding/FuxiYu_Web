@@ -33,6 +33,15 @@ const restoreModals = () => {
   });
 };
 
+// 机器作用域族的文案：容器动作与创建共用。措辞指向"所在机器"，不假定是哪个容器动作。
+const MACHINE_SCOPE_MESSAGES = {
+  machine_maintenance: '所在机器正在维护中，暂时无法操作其上的容器',
+  machine_offline: '所在机器不在线，暂时无法操作其上的容器',
+  machine_not_found: '容器所在的机器不存在',
+  container_host_maintenance: '所在机器正在维护中，暂时无法操作其上的容器',
+  container_host_offline: '所在机器不在线，暂时无法操作其上的容器',
+};
+
 export const routeErrorMap = {
     // 用户相关
     '/register': { username_exists: '用户名已存在', email_exists: '邮箱已存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线' },
@@ -46,11 +55,41 @@ export const routeErrorMap = {
     '/users/reset_password': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
 
     // 容器相关
-    '/containers/create_container': { duplicate_entry: '创建容器失败：重复项', invalid_payload: '无效的容器数据', invalid_config: '容器配置无效或超出宿主机上限', create_failed: '创建容器失败' },
-    '/containers/delete_container': { delete_failed: '删除容器失败', not_found: '容器不存在' },
-    '/containers/add_collaborator': { add_collaborator_failed: '添加协作者失败', container_offline: '容器未在线，无法添加协作者' },
-    '/containers/remove_collaborator': { remove_collaborator_failed: '移除协作者失败', container_offline: '容器未在线，无法移除协作者' },
-    '/containers/update_role': { update_role_failed: '更新角色失败', container_offline: '容器未在线，无法更新角色' },
+    // 机器作用域族：容器动作与创建都可能撞上，措辞与具体容器动作无关，故抽成一块共用。
+    // 两个来源：动作类先撞**有效状态机**（container_host_*），创建没有容器、只撞
+    // **机器准入**（machine_*）。此前两族都没映射到容器路由，靠全局兜底去 /machines/*
+    // 借措辞——能用但脆：它按 Object.keys 的遍历顺序取第一个命中者。
+    '/containers/create_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      duplicate_entry: '创建容器失败：重复项',
+      invalid_payload: '无效的容器数据',
+      invalid_config: '容器配置无效或超出宿主机上限',
+      create_failed: '创建容器失败',
+    },
+    '/containers/delete_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      delete_failed: '删除容器失败',
+      not_found: '容器不存在',
+    },
+    '/containers/add_collaborator': {
+      ...MACHINE_SCOPE_MESSAGES,
+      add_collaborator_failed: '添加协作者失败',
+      container_offline: '容器未在线，无法添加协作者',
+    },
+    '/containers/remove_collaborator': {
+      ...MACHINE_SCOPE_MESSAGES,
+      remove_collaborator_failed: '移除协作者失败',
+      container_offline: '容器未在线，无法移除协作者',
+    },
+    '/containers/update_role': {
+      ...MACHINE_SCOPE_MESSAGES,
+      update_role_failed: '更新角色失败',
+      container_offline: '容器未在线，无法更新角色',
+    },
+    '/containers/unpause_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      unpause_failed: '解冻容器失败',
+    },
     '/containers/get_container_detail_information': { get_detail_failed: '获取容器详情失败' },
     '/containers/list_all_container_bref_information': { list_failed: '获取容器列表失败' },
     '/containers/set_long_term_container': {
@@ -60,7 +99,6 @@ export const routeErrorMap = {
       long_term_limit_reached: '已达到长期容器上限',
       invalid_payload: '长期容器设置参数无效',
     },
-    '/containers/unpause_container': { unpause_failed: '解冻容器失败' },
 
     // 机器相关
     // 登记（TOFU 接入）与「修复连接」共用若干 reason（machine_unreachable /
