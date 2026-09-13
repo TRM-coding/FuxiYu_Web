@@ -902,7 +902,7 @@ const ManageMachine = () => {
   const openAddHostModal = () => {
     addHostForm.resetFields();
     // set defaults for add mode: default status = maintenance
-    addHostForm.setFieldsValue({ maintenance_mode: 'normal', machine_type: 'CPU', gpu_number: 0, max_shared_gb: 0 });
+    addHostForm.setFieldsValue({ maintenance_mode: 'normal', machine_type: 'CPU', gpu_number: 0, max_shared_gb: 0, port: undefined });
     setAddHostVisible(true);
   };
 
@@ -932,10 +932,17 @@ const ManageMachine = () => {
       // 添加模式：机器建档走 register_machine，硬件信息由 node 首连返回。
       let success = false;
       try {
+        // port 留空即不传（后端存 NULL = 回落全局默认），不把默认端口号固化进记录
+        const rawPort = values.port;
+        const port =
+          rawPort === undefined || rawPort === null || String(rawPort).trim() === ''
+            ? null
+            : Number(rawPort);
         await registerMachine({
           machine_name: payload.machine_name,
           machine_ip: payload.machine_ip,
           machine_description: payload.machine_description || '',
+          ...(port === null ? {} : { port }),
         });
         const refreshed = await fetchMachinesFromApi();
         setMachines(refreshed);
@@ -1529,6 +1536,25 @@ const ManageMachine = () => {
                   </Form.Item>
                 </Col>
               </Row>
+              <Form.Item
+                name="port"
+                label="Node 端口"
+                extra="留空表示使用平台默认端口；仅当该宿主机上 Node 不监听默认端口时才需要填写。"
+                rules={[
+                  {
+                    validator: (_, value) => {
+                      if (value === undefined || value === null || value === '') return Promise.resolve();
+                      const n = Number(value);
+                      if (!Number.isInteger(n) || n < 1 || n > 65535) {
+                        return Promise.reject(new Error('端口须为 1-65535 之间的整数'));
+                      }
+                      return Promise.resolve();
+                    },
+                  },
+                ]}
+              >
+                <Input placeholder="留空用默认" allowClear />
+              </Form.Item>
               <Form.Item name="machine_description" label="描述">
                 <Input.TextArea rows={3} placeholder="可选，机器位置、用途或维护说明" maxLength={115} />
               </Form.Item>

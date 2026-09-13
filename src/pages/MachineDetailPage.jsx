@@ -62,6 +62,7 @@ const MachineDetailPage = () => {
       machine_name: machine?.machine_name || '',
       machine_type: (machine?.machine_type || 'CPU').toUpperCase() === 'GPU' ? 'GPU' : 'CPU',
       machine_ip: machine?.machine_ip || '',
+      port: machine?.port ?? '',
       is_maintenance: machine?.is_maintenance === true,
     });
     setEditBasicVisible(true);
@@ -70,10 +71,23 @@ const MachineDetailPage = () => {
     if (!basicDraft || !machineId) return;
     setSavingBasic(true);
     try {
+      // 端口显式传 null 表示清空（回落平台默认）——与「不传这个字段」（保持不动）是两回事
+      const rawPort = basicDraft.port;
+      const trimmedPort = rawPort === undefined || rawPort === null ? '' : String(rawPort).trim();
+      if (trimmedPort !== '') {
+        const n = Number(trimmedPort);
+        if (!Number.isInteger(n) || n < 1 || n > 65535) {
+          message.error('Node 端口须为 1-65535 之间的整数，或留空使用平台默认');
+          setSavingBasic(false);
+          return;
+        }
+      }
+      const port = trimmedPort === '' ? null : Number(trimmedPort);
       await updateMachine(Number(machineId), {
         machine_name: basicDraft.machine_name,
         machine_type: basicDraft.machine_type,
         machine_ip: basicDraft.machine_ip,
+        port,
       });
       if (Boolean(basicDraft.is_maintenance) !== (machine?.is_maintenance === true)) {
         await setMachineMaintenance(Number(machineId), Boolean(basicDraft.is_maintenance));
@@ -368,6 +382,7 @@ const MachineDetailPage = () => {
               <div className="detail-subtitle">
                 <span>ID {machineId}</span>
                 <CopyChip value={machine?.machine_ip || ''}>{machine?.machine_ip || '-'}</CopyChip>
+                <Tag>{machine?.port ? `端口 ${machine.port}` : '端口 默认'}</Tag>
                 <Tag>{(machine?.machine_type || 'CPU').toUpperCase()}</Tag>
                 <Tag color={collectedAt ? 'blue' : 'default'}>采集 {formatSnapshotTime(collectedAt)}</Tag>
               </div>
@@ -410,7 +425,21 @@ const MachineDetailPage = () => {
                     onChange={e => setBasicDraft(d => ({ ...d, machine_ip: e.target.value }))}
                     placeholder="10.0.0.x"
                   />
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>IP 变更将自动校验证书并重新 pin（证书不一致会被拒绝）</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    保存后链路按新地址自动重连。若新地址上没有该机器的证书，需再点一次「修复连接」重新建立信任。
+                  </Typography.Text>
+                </div>
+                <div className="detail-field">
+                  <span className="detail-field-label">Node 端口</span>
+                  <Input
+                    value={basicDraft?.port ?? ''}
+                    onChange={e => setBasicDraft(d => ({ ...d, port: e.target.value }))}
+                    placeholder="留空用平台默认"
+                    allowClear
+                  />
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    留空表示使用平台默认端口。只改端口无需重新建立信任（证书与主机都没变）。
+                  </Typography.Text>
                 </div>
                 <div className="detail-field">
                   <span className="detail-field-label">维护状态</span>

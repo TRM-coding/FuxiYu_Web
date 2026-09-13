@@ -63,6 +63,22 @@ export const routeErrorMap = {
     '/containers/unpause_container': { unpause_failed: '解冻容器失败' },
 
     // 机器相关
+    // 登记（TOFU 接入）与「修复连接」共用若干 reason（machine_unreachable /
+    // enrollment_failed / issue_uid_failed），但**语义不同**：登记是首次建立信任，
+    // 没有「原有信任」可言；修复连接是在保住已有信任。所以两条路由各写各的文案，
+    // 不能靠全局兜底互相借用——否则登记失败会显示「原有信任未被改动」这种错话。
+    '/machines/register_machine': {
+      invalid_trust_anchor: '机器名与 IP 为必填项',
+      invalid_machine_ip: 'IP 地址须为纯地址（不含端口），端口请单独填写',
+      invalid_node_port: '端口须为 1-65535 之间的整数',
+      machine_unreachable: '连不上该机器，无法抓取证书',
+      peer_cert_unavailable: '该机器未提供证书，无法建立信任',
+      enrollment_failed: '该机器未返回接入资料',
+      issue_uid_failed: '该机器的身份牌下发失败',
+      issue_uid_rejected: '该机器拒绝了下发身份牌',
+      persist_failed: '建档写库失败，请重试',
+      internal_error: '建档过程中出现内部错误，请查看日志',
+    },
     '/machines/remove_machine': { remove_failed: '删除机器失败' },
     '/machines/update_machine': { update_failed: '更新机器失败', machine_not_found: '机器不存在', machine_maintenance: '机器正在维护中', machine_offline: '机器离线' },
     '/machines/get_detail_information': { machine_not_found: '机器不存在', machine_offline: '机器离线', machine_maintenance: '机器正在维护中' },
