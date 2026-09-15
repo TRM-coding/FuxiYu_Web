@@ -21,6 +21,7 @@ import { isDiskOverLimit, DISK_OVER_LIMIT_MESSAGE } from '../utils/diskLimit';
 import EntitySearchBar from '../components/EntitySearchBar';
 import { createContainerStatusTransition, deriveContainerEffectiveStatus, getContainerActionState } from '../utils/containerActions';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
+import { formatContainerImage } from '../utils/detailFormat';
 import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint, userListFingerprint } from '../utils/listRefresh';
 
 // users and containers will be fetched from backend
@@ -780,7 +781,7 @@ const ManageUser = () => {
       setSelectedContainer({
         key: detail.container_id ? String(detail.container_id) : String(cid),
         container_name: detail.container_name || detail.name || container.container_name || '',
-        container_image: detail.container_image || detail.image || container.container_image || '',
+        container_image: detail.container_image || container.container_image || '',
         port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
         effective_status: (detail.effective_status || '').toLowerCase(),
         machine_ip: detail.machine_ip || container.machine_ip || '',
@@ -1200,7 +1201,7 @@ const ManageUser = () => {
               </Col>
               <Col span={24}>
                 <Typography.Text type="secondary">容器镜像：</Typography.Text>
-                <Typography.Text className="manage-user-text-gap">{container?.container_image}</Typography.Text>
+                <Typography.Text className="manage-user-text-gap">{formatContainerImage(container?.container_image)}</Typography.Text>
               </Col>
               <Col span={24}>
                 <Typography.Text type="secondary">当前角色：</Typography.Text>

@@ -81,3 +81,60 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── 二选一弹窗里的逐行差异窗格 ──────────────────────────────────────
+   刻意**不出现滚动条**（"简单一点嵌在里面"）：未变动的长段已在
+   utils/dockerfileDiff 里折叠掉，剩下的行一屏放得下；真放不下时也只换行，
+   不让弹窗里多出一块可滚区域。 */
+.dc-diff {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: hidden;
+}
+
+.dc-diff-row {
+  display: flex;
+  gap: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dc-diff-mark {
+  flex: 0 0 10px;
+  color: #9ca3af;
+  user-select: none;
+}
+
+.dc-diff-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dc-diff-del {
+  background: #fff1f0;
+}
+
+.dc-diff-del .dc-diff-mark,
+.dc-diff-del .dc-diff-text {
+  color: #a8071a;
+}
+
+.dc-diff-add {
+  background: #f6ffed;
+}
+
+.dc-diff-add .dc-diff-mark,
+.dc-diff-add .dc-diff-text {
+  color: #135200;
+}
+
+.dc-diff-skip {
+  color: #9ca3af;
+  font-style: italic;
+}

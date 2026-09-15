@@ -1,10 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Empty, Popconfirm, Spin, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Empty, Modal, Popconfirm, Radio, Spin, Table, Tag, Typography, message } from 'antd';
 import { DeleteOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { cleanDeletedContainerMount, listDeletedContainers, resurrectDeletedContainer } from '../api/container_api';
+import {
+  cleanDeletedContainerMount,
+  listDeletedContainers,
+  resurrectDeletedContainer,
+} from '../api/container_api';
 import { usePermission } from '../contexts/PermissionContext';
 import { handleAuthError } from '../utils/authHelpers';
+import { dockerfileDiff } from '../utils/dockerfileDiff';
 import showErrorModal from '../utils/showErrorModal';
 import './DeletedContainers.css';
 
@@ -22,6 +27,13 @@ const statusTag = (record) => {
   return <Tag color="green">mount 保留</Tag>;
 };
 
+// 差异分段的显示名。分段是后端给的（基础镜像 / 业务片段），这里只做翻译。
+// 没有平台注入：它两侧都取当下的系统设置，按构造恒等，后端不会把它列为分段。
+const SECTION_LABELS = {
+  base_image: '基础镜像',
+  dockerfile_body: '业务片段',
+};
+
 export default function DeletedContainers() {
   const navigate = useNavigate();
   const { hasPermission, loaded } = usePermission();
@@ -29,6 +41,10 @@ export default function DeletedContainers() {
   const [loading, setLoading] = useState(true);
   const [cleaningId, setCleaningId] = useState(null);
   const [resurrectingId, setResurrectingId] = useState(null);
+  // 二选一的内容（来自恢复接口的响应，不是另开的查询接口）。后端不设默认——默认属于
+  // 界面，这样"替用户拿主意"这件事发生在用户看得见的地方。
+  const [contentChoice, setContentChoice] = useState(null);
+  const [chosenSource, setChosenSource] = useState('snapshot');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
@@ -90,12 +106,34 @@ export default function DeletedContainers() {
     }
   };
 
-  const resurrectContainer = async (record) => {
+  /**
+   * 恢复容器 —— **同一个接口承担两件事**（后端 design D14）。
+   *
+   * 不带 contentSource 调它：后端要么真的恢复了，要么在"这台容器有两份可选内容"时
+   * **不恢复**，而是把两份内容与分段差异放在响应里交回来。后者就弹二选一，选完再带
+   * contentSource 调一次。
+   *
+   * 这样只有一处公布面：容器留痕不是靠一个独立查询接口读出来的，而是要真的发起恢复、
+   * 且确实面临二选一时才会返回。
+   */
+  const resurrectContainer = async (record, contentSource = null) => {
     if (!record?.deleted_id || String(record.deleted_id).startsWith('mount-')) return;
     setResurrectingId(record.deleted_id);
     try {
-      await resurrectDeletedContainer(record.deleted_id);
+      const res = await resurrectDeletedContainer(record.deleted_id, contentSource);
+      if (res?.requires_choice) {
+        // 后端没有恢复，交回两份内容等用户选。
+        // 两份文本都在手里，差异在前端算——不再为它多要一个接口。
+        setChosenSource('snapshot');
+        setContentChoice({
+          record,
+          choice: res,
+          diff: dockerfileDiff(res?.snapshot?.dockerfile, res?.template?.dockerfile),
+        });
+        return;
+      }
       message.success('容器恢复请求已发送');
+      setContentChoice(null);
       await loadRecords();
     } catch (err) {
       if (err?.status === 401 || err?.status === 403) {
@@ -137,8 +175,10 @@ export default function DeletedContainers() {
     },
     {
       title: '镜像',
-      dataIndex: 'image',
-      key: 'image',
+      // 与容器列表同一口径：后端由容器行推导（归属标识 + 构建版本戳）。
+      // 不再消费快照 JSON 里内嵌的副本——那是把派生值又抄一份再读出来，会与容器行失真。
+      dataIndex: 'container_image',
+      key: 'container_image',
       ellipsis: true,
       render: (value) => value || '-',
     },
@@ -286,6 +326,71 @@ export default function DeletedContainers() {
           <Empty description="暂无已删除容器" />
         )}
       </Spin>
+
+      <Modal
+        title="恢复内容与删除前不同"
+        open={contentChoice != null}
+        onCancel={() => setContentChoice(null)}
+        onOk={() => resurrectContainer(contentChoice.record, chosenSource)}
+        okText="按所选内容恢复"
+        cancelText="取消"
+        confirmLoading={resurrectingId != null}
+        width={720}
+        destroyOnHidden
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="该容器所依据的模板在它存活期间被编辑过"
+          description="按原快照恢复可拿回删除前的那一份；按当前模板恢复会带上模板后来的改动。"
+        />
+        {contentChoice?.choice?.sections?.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <Typography.Text strong>变化分布</Typography.Text>
+            <div style={{ marginTop: 8 }}>
+              {contentChoice.choice.sections.map((section) => (
+                <Tag key={section.name} color={section.changed ? 'red' : 'green'}>
+                  {SECTION_LABELS[section.name] || section.name}：{section.changed ? '有变化' : '无变化'}
+                </Tag>
+              ))}
+            </div>
+          </div>
+        )}
+        {contentChoice?.diff && (
+          <div style={{ marginBottom: 16 }}>
+            <Typography.Text strong>逐行差异</Typography.Text>
+            <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+              − 原快照独有（{contentChoice.diff.removed} 行）　+ 当前模板独有（{contentChoice.diff.added} 行）
+            </Typography.Text>
+            <div className="dc-diff">
+              {contentChoice.diff.rows.map((row, idx) => {
+                if (row.type === 'skip') {
+                  return (
+                    <div key={`skip-${idx}`} className="dc-diff-row dc-diff-skip">
+                      ⋯ {row.count} 行未变
+                    </div>
+                  );
+                }
+                const mark = row.type === 'add' ? '+' : row.type === 'del' ? '−' : ' ';
+                return (
+                  <div
+                    key={`${row.type}-${idx}`}
+                    className={`dc-diff-row dc-diff-${row.type}`}
+                  >
+                    <span className="dc-diff-mark">{mark}</span>
+                    <span className="dc-diff-text">{row.text || ' '}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <Radio.Group value={chosenSource} onChange={(e) => setChosenSource(e.target.value)}>
+          <Radio.Button value="snapshot">按原快照恢复（推荐）</Radio.Button>
+          <Radio.Button value="template">按当前模板恢复</Radio.Button>
+        </Radio.Group>
+      </Modal>
     </div>
   );
 }

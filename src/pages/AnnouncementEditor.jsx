@@ -54,7 +54,7 @@ const CONTAINER_ATTRS = [
   { key: 'container_name_port', label: '容器名(端口)', get: c => `${c.container_name} (端口:${c.port})` },
   { key: 'container_name', label: '容器名', get: c => c.container_name },
   { key: 'container_port', label: '端口', get: c => String(c.port || '') },
-  { key: 'container_image', label: '镜像', get: c => c.image || c.container_image || '' },
+  { key: 'container_image', label: '镜像', get: c => c.container_image || '' },
   { key: 'container_cpu', label: 'CPU 数', get: c => String(c.cpu_number ?? '-') },
   { key: 'container_memory', label: '内存(GB)', get: c => String(c.memory_gb ?? '-') },
   { key: 'container_gpu', label: 'GPU 数', get: c => String(c.gpu_number ?? 0) },
@@ -197,7 +197,9 @@ export default function AnnouncementEditor() {
         setContainerDetail({
           container_name: c.container_name || c.name || '',
           port: c.port || '',
-          image: c.container_image || c.image || '',
+          // 键名与出参一致：这里曾叫 image，于是下面 CONTAINER_ATTRS 里出现 c.image，
+          // 看起来像在回落一个早已退役的字段，实际读的是这个 state 的键。同名就没有这层歧义。
+          container_image: c.container_image || '',
           cpu_number: c.cpu_number ?? null,
           memory_gb: c.memory_gb ?? null,
           gpu_number: c.gpu_number ?? 0,

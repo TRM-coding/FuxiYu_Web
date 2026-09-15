@@ -11,6 +11,7 @@ import {
   HddOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
+import { formatContainerImage } from '../utils/detailFormat';
 import './ContainerDetailModal.css';
 
 const ROLE = {
@@ -187,7 +188,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
                 <ClockCircleOutlined className="cdm-icon" />
                 <div>
                   <Typography.Text strong className="cdm-item-label">镜像</Typography.Text>
-                  <Typography.Text className="cdm-image-text" ellipsis={{ tooltip: container.container_image }}>{container.container_image}</Typography.Text>
+                  <Typography.Text className="cdm-image-text" ellipsis={{ tooltip: formatContainerImage(container.container_image) }}>{formatContainerImage(container.container_image)}</Typography.Text>
                 </div>
               </Space>
             </Col>

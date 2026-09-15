@@ -16,6 +16,7 @@ import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint }
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
 import { isAbortError } from '../utils/requestManager';
+import { formatContainerImage } from '../utils/detailFormat';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import { usePermission } from '../contexts/PermissionContext';
@@ -741,7 +742,7 @@ const Home = () => {
       const mapped = {
         key: detail.container_id ? String(detail.container_id) : (container.key || String(Date.now())),
         container_name: detail.container_name || detail.name || container.container_name || '',
-        container_image: detail.container_image || detail.image || container.container_image || '',
+        container_image: detail.container_image || container.container_image || '',
         port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
         effective_status: (detail.effective_status || '').toLowerCase(),
         machine_ip: detail.machine_ip || container.machine_ip || '',
@@ -962,7 +963,7 @@ const Home = () => {
           </div>
         </div>
         <div className="home-container-card-foot">
-          <Typography.Text type="secondary" ellipsis>{record.container_image || '未记录镜像'}</Typography.Text>
+          <Typography.Text type="secondary" ellipsis>{formatContainerImage(record.container_image)}</Typography.Text>
           <div className="home-container-card-actions">
             <Button
               size="small"

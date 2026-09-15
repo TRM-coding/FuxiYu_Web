@@ -1,3 +1,10 @@
+// 推不出运行镜像标签时的统一占位（如本次改造前就存在的裸镜像容器）。
+// 后端对"推不出来"返回 null，**不编造**——标签是 Node 侧的缓存键，编一个就指着一个
+// 没跑过的制品。所以"不知道"这件事由展示层说，且全站说同一句话。
+export const UNKNOWN_IMAGE = '未知';
+
+export const formatContainerImage = value => value || UNKNOWN_IMAGE;
+
 export const formatNumber = (value, suffix = '') => {
   if (value === null || value === undefined || value === '') return '-';
   const n = Number(value);

@@ -280,6 +280,11 @@ const ManageMachine = () => {
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deleteTargetMachine, setDeleteTargetMachine] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  // 该机器名下的容器数：删机器前要拦"还有容器"的情况。
+  // 单独查一次**不带搜索词**的计数——卡片里的 total_number 是带 container_search
+  // 拉回来的过滤计数，拿它当判据会让同一个按钮的行为随搜索框内容变。
+  // status: checking=核对中（确认按钮先禁用）· ok=已拿到 · unknown=取不到（交给后端 409 兜底）
+  const [deleteTargetBusy, setDeleteTargetBusy] = useState({ status: 'ok', count: 0 });
   // 删除容器的二次确认状态
   const [containerDeleteConfirmVisible, setContainerDeleteConfirmVisible] = useState(false);
   const [deleteTargetContainer, setDeleteTargetContainer] = useState(null);
@@ -752,7 +757,7 @@ const ManageMachine = () => {
       const mapped = {
         key: detail.container_id ? String(detail.container_id) : (container.key || String(Date.now())),
         container_name: detail.container_name || detail.name || container.container_name || '',
-        container_image: detail.container_image || detail.image || container.container_image || '',
+        container_image: detail.container_image || container.container_image || '',
         port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
         effective_status: (detail.effective_status || '').toLowerCase(),
         machine_ip: detail.machine_ip || container.machine_ip || '',
@@ -965,17 +970,29 @@ const ManageMachine = () => {
     }
   };
 
-  // 打开删除确认弹窗（2026-09：机器上仍有容器 → 提前拦截，提示先手动清理；后端 409 兜底）
+  // 打开删除确认弹窗（2026-09 决策：机器上仍有容器时**照常弹窗**，在弹窗里说明原因并把
+  // 确认按钮置灰。原先是提前 return 只丢一条 toast —— 用户点"删除"什么都没发生，看起来
+  // 像按钮坏了，而弹窗能说清"为什么不能删、还差什么"。后端 409 仍然兜底。）
   const openDeleteConfirm = (machine) => {
-    const mid = String(machine.machine_id ?? machine.key);
-    const entry = containerMap[mid] || {};
-    const containerCount = entry.total_number ?? (entry.data ? entry.data.length : 0);
-    if (containerCount > 0) {
-      message.warning(`该机器仍有 ${containerCount} 个容器，请先手动清理后再删除`);
-      return;
-    }
     setDeleteTargetMachine(machine);
-    setDeleteConfirmVisible(true);
+    setDeleteTargetBusy({ status: 'checking', count: 0 });
+    setDeleteConfirmVisible(true);   // 点击永远有响应，不等查询
+    const mid = String(machine.machine_id ?? machine.key);
+    (async () => {
+      try {
+        const res = await listAllContainerBrefInformation({
+          machine_id: mid,
+          page_number: 1,
+          page_size: 1,
+        });
+        const n = Number(res && (res.total_number ?? res.totalNumber ?? res.total)) || 0;
+        setDeleteTargetBusy({ status: 'ok', count: n });
+      } catch (err) {
+        // 取不到计数就不拦——让用户点确认，由后端 409 给出权威判断
+        console.error('count containers for delete failed', mid, err);
+        setDeleteTargetBusy({ status: 'unknown', count: 0 });
+      }
+    })();
   };
 
   // 确认删除机器
@@ -1604,15 +1621,31 @@ const ManageMachine = () => {
                   <Typography.Text className="mm-ml-8">{(deleteTargetMachine.machine_status || '').toLowerCase()}</Typography.Text>
                 </Col>
               </Row>
-              <Typography.Text type="danger" className="mm-danger-text">
-                此操作不可恢复！此操作将移除该机器及其所有容器。             </Typography.Text>
+              {deleteTargetBusy.status === 'checking' ? (
+                <Typography.Text type="secondary" className="mm-danger-text">
+                  正在核对这台机器名下的容器…
+                </Typography.Text>
+              ) : deleteTargetBusy.count > 0 ? (
+                <Typography.Text type="danger" className="mm-danger-text">
+                  该机器仍有 {deleteTargetBusy.count} 个容器，请先手动清理后再删除。
+                </Typography.Text>
+              ) : (
+                <Typography.Text type="danger" className="mm-danger-text">
+                  此操作不可恢复！此操作将移除该机器及其所有容器。
+                </Typography.Text>
+              )}
             </div>
           ) : null
         }
         danger
         iconColor="#ff4d4f"
+        confirmDisabled={deleteTargetBusy.status === 'checking' || deleteTargetBusy.count > 0}
         onConfirm={handleDeleteConfirm}
-        onCancel={() => { setDeleteConfirmVisible(false); setDeleteTargetMachine(null); }}
+        onCancel={() => {
+          setDeleteConfirmVisible(false);
+          setDeleteTargetMachine(null);
+          setDeleteTargetBusy({ status: 'ok', count: 0 });
+        }}
         loading={deleteLoading}
         confirmText="删除"
       />

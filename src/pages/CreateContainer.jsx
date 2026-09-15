@@ -363,7 +363,6 @@ const CreateContainer = () => {
         CPU_NUMBER: cpuCount || 1,
         MEMORY: memoryGb || 1,
         NAME: name.trim(),
-        image: selectedImage.base_image || selectedImage.name || '',
         shared_memory: sharedGb || 0,
       },
       public_key: publicKey || '',

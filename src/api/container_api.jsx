@@ -320,14 +320,20 @@ export const cleanDeletedContainerMount = async (mount_cleanup_id = 0, timeout =
 	}
 };
 
-export const resurrectDeletedContainer = async (deleted_id = 0, timeout = null) => {
+/**
+ * 恢复容器。
+ *
+ * content_source 只在「模板就绪但容器落后」时需要——那时内容会真正改变，后端不设默认，
+ * 必须由界面明确选择（默认预选快照）。其余情形传 null 即可，后端会忽略。
+ */
+export const resurrectDeletedContainer = async (deleted_id = 0, content_source = null, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const url = new URL(API_ROUTES.CONTAINERS_RESURRECT_DELETED, BACKEND_ORIGIN).toString();
 		const res = await fetch(url, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ deleted_id }),
+			body: JSON.stringify({ deleted_id, content_source }),
 			signal: controller.signal,
 			credentials: CREDENTIALS,
 		});

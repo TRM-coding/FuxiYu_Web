@@ -21,7 +21,7 @@ import CopyChip from '../components/CopyChip';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import RuntimeTrendChart from '../components/RuntimeTrendChart';
 import showErrorModal from '../utils/showErrorModal';
-import { formatNumber, formatSnapshotTime } from '../utils/detailFormat';
+import { formatNumber, formatSnapshotTime, formatContainerImage } from '../utils/detailFormat';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
 import { isDiskOverLimit, DISK_OVER_LIMIT_MESSAGE } from '../utils/diskLimit';
 
@@ -646,7 +646,7 @@ const ContainerDetailPage = () => {
               <div className="detail-card container-image-card">
                 <h2>镜像信息</h2>
                 <div className="detail-field-grid">
-                  <div className="detail-field"><span className="detail-field-label">镜像</span><span className="detail-field-value">{container?.container_image || '-'}</span></div>
+                  <div className="detail-field"><span className="detail-field-label">镜像</span><span className="detail-field-value">{formatContainerImage(container?.container_image)}</span></div>
                   <div className="detail-field"><span className="detail-field-label">GPU 分配</span><span className="detail-field-value">{gpuDevices.length ? gpuDevices.join(', ') : formatNumber(allocGpu, ' 张')}</span></div>
                   <div className="detail-field"><span className="detail-field-label">共享内存</span><span className="detail-field-value">{formatNumber(container?.shared_gb, ' GB')}</span></div>
                 </div>
