@@ -505,6 +505,7 @@ export default function AdminLogs() {
           data: {
             key: detail.container_id != null ? String(detail.container_id) : String(record.target_id),
             container_name: detail.container_name,
+            image_id: detail.image_id ?? null,
             image_name: detail.image_name || '',
             machine_ip: detail.machine_ip || '',
             port: detail.port != null ? String(detail.port) : '',
@@ -514,6 +515,19 @@ export default function AdminLogs() {
             memory_gb: detail.memory_gb ?? 0,
             shared_gb: detail.shared_gb ?? 0,
             accounts: detail.accounts || [],
+            // 「清理与磁盘」这一段的字段必须一并带过来——漏了它们整段就只剩 "-"。
+            // 运行摘要刻意不带（见下面的 showRuntimeSummary）。
+            is_long_term: detail.is_long_term ?? false,
+            last_ssh_login_time: detail.last_ssh_login_time ?? null,
+            cleanup_status: detail.cleanup_status ?? null,
+            cleanup_at: detail.cleanup_at ?? null,
+            seconds_until_cleanup: detail.seconds_until_cleanup ?? null,
+            cleanup_after_days: detail.cleanup_after_days ?? null,
+            disk_usage: detail.disk_usage ?? null,
+            disk_total_gb: detail.disk_total_gb ?? null,
+            disk_limit_gb: detail.disk_limit_gb ?? null,
+            disk_usage_percent: detail.disk_usage_percent ?? null,
+            freeze_state: detail.freeze_state ?? null,
           },
         });
       } else if (tt === 'user') {
@@ -878,6 +892,7 @@ export default function AdminLogs() {
         container={detailModal?.data || null}
         onClose={() => setDetailModal(null)}
         readOnly
+        showRuntimeSummary={false}
       />
       <UserInfoModal
         visible={detailModal?.type === 'user'}

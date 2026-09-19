@@ -117,4 +117,35 @@ describe('ContainerDetailModal', () => {
     expect(screen.getByText('人员管理 (1人)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /管理人员/ })).toBeInTheDocument();
   });
+
+  it('日志页场景：可以关掉「运行摘要」，只留「清理与磁盘」', () => {
+    const container = {
+      key: 11,
+      container_id: 11,
+      container_name: 'log-target',
+      image_name: 'Ubuntu 24.04 · 基础',
+      machine_ip: '10.0.0.9',
+      effective_status: 'online',
+      cpu_number: 1,
+      gpu_number: 0,
+      memory_gb: 2,
+      shared_gb: 0,
+      accounts: [],
+      // 日志页只带这一段：清理与磁盘
+      is_long_term: false,
+      last_ssh_login_time: '2026-09-01T10:00:00',
+      seconds_until_cleanup: 86400,
+      disk_usage: { total_gb: 5, limit_gb: 20, usage_percent: 25 },
+    };
+
+    render(
+      <ContainerDetailModal visible onClose={() => {}} readOnly showRuntimeSummary={false} container={container} />
+    );
+
+    // Antd Modal 走 portal，挂在 document.body 上，所以用 screen 查
+    expect(screen.queryByText('运行摘要')).toBeNull();
+    expect(screen.queryByText('块 IO')).toBeNull();
+    expect(screen.getByText('清理与磁盘')).toBeTruthy();
+    expect(screen.getByText('25%')).toBeTruthy();      // 磁盘用量真的渲染出来了，不是 "-"
+  });
 });

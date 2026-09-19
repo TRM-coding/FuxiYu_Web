@@ -59,7 +59,18 @@ const formatCleanup = container => {
   return '-';
 };
 
-const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, onUnpause, usersList = [], currentUserId = null, forceSystemAdmin = false, readOnly = false }) => {
+/**
+ * 容器详情弹窗。
+ *
+ * `showRuntimeSummary`：是否显示「运行摘要」。默认显示，但**日志页**那种"看一条历史操作"
+ * 的场景要关掉——那里的上下文不是"这台容器现在跑得怎么样"，而且它的数据来源只挑了
+ * 部分字段，硬显示只会是一排 "-"。
+ */
+const ContainerDetailModal = ({
+  visible, container, onClose, onEdit, onDelete, onLeave, onUnpause,
+  usersList = [], currentUserId = null, forceSystemAdmin = false, readOnly = false,
+  showRuntimeSummary = true,
+}) => {
   if (!container) return null;
 
   const accountsByRole = container.accounts?.reduce((acc, account) => {
@@ -280,6 +291,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
         )}
 
         <div className="cdm-metrics-grid">
+          {showRuntimeSummary && (
           <div className="cdm-metric-card cdm-runtime-card">
             <div className="cdm-metric-head">
               <ThunderboltOutlined />
@@ -311,6 +323,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
               </Col>
             </Row>
           </div>
+          )}
 
           <div className="cdm-metric-card">
             <div className="cdm-metric-head">
