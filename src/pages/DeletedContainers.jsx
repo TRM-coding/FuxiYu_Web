@@ -1,3 +1,4 @@
+import { parseServerTime } from '../utils/detailFormat';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Empty, Modal, Popconfirm, Radio, Spin, Table, Tag, Typography, message } from 'antd';
 import { DeleteOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
@@ -14,11 +15,14 @@ import showErrorModal from '../utils/showErrorModal';
 import './DeletedContainers.css';
 
 const formatTime = (value) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
+  if (!value || value === '') return '-';
+  // 后端时间戳是**不带时区后缀的 UTC**，必须走 parseServerTime——裸用 new Date 会按
+  // 本地时间解析，等于把 UTC 的数值原样显示（差 8 小时）。
+  const date = parseServerTime(value);
+  if (!date) return String(value);
   return date.toLocaleString('zh-CN', { hour12: false });
 };
+
 
 const statusTag = (record) => {
   if (!record.mount_path) return <Tag>无挂载</Tag>;

@@ -11,7 +11,7 @@ import {
   HddOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { formatContainerImage } from '../utils/detailFormat';
+import { formatContainerImage, parseServerTime } from '../utils/detailFormat';
 import './ContainerDetailModal.css';
 
 const ROLE = {
@@ -41,9 +41,11 @@ const formatRuntime = (value, suffix = '') => {
   return `${n.toFixed(n % 1 === 0 ? 0 : 1)}${suffix}`;
 };
 const formatTime = value => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
+  if (!value || value === '') return '-';
+  // 后端时间戳是**不带时区后缀的 UTC**，必须走 parseServerTime——裸用 new Date 会按
+  // 本地时间解析，等于把 UTC 的数值原样显示（差 8 小时）。
+  const date = parseServerTime(value);
+  if (!date) return String(value);
   return date.toLocaleString('zh-CN', { hour12: false });
 };
 const formatCleanup = container => {

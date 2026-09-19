@@ -1,3 +1,4 @@
+import { parseServerTime } from '../utils/detailFormat';
 import React from 'react';
 
 const AXIS_LEFT = 42;
@@ -11,9 +12,11 @@ const clampPercent = value => {
   return Math.max(0, Math.min(100, n));
 };
 
+// 走共用的 parseServerTime：后端发的是**不带时区后缀的 UTC**，裸用 new Date 会
+// 按本地时间解析，等于把 UTC 的数值原样画出来（差 8 小时）。
 const formatTickTime = value => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  const date = parseServerTime(value);
+  if (!date) return '';
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
