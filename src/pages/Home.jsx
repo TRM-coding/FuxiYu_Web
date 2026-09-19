@@ -195,7 +195,7 @@ const Home = () => {
           key: c.container_id ? String(c.container_id) : `c-${idx}`,
           container_id: c.container_id ?? null,
           container_name: c.container_name || c.name || `container-${idx}`,
-          container_image: c.container_image || '',
+          image_name: c.image_name || '',
           port: c.port ? String(c.port) : (c.port_str || ''),
           effective_status: (c.effective_status || '').toLowerCase(),
           failed_reason: c.failed_reason ?? null,
@@ -742,7 +742,7 @@ const Home = () => {
       const mapped = {
         key: detail.container_id ? String(detail.container_id) : (container.key || String(Date.now())),
         container_name: detail.container_name || detail.name || container.container_name || '',
-        container_image: detail.container_image || container.container_image || '',
+        image_name: detail.image_name || container.image_name || '',
         port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
         effective_status: (detail.effective_status || '').toLowerCase(),
         machine_ip: detail.machine_ip || container.machine_ip || '',
@@ -963,7 +963,7 @@ const Home = () => {
           </div>
         </div>
         <div className="home-container-card-foot">
-          <Typography.Text type="secondary" ellipsis>{formatContainerImage(record.container_image)}</Typography.Text>
+          <Typography.Text type="secondary" ellipsis>{formatContainerImage(record.image_name)}</Typography.Text>
           <div className="home-container-card-actions">
             <Button
               size="small"

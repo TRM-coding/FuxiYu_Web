@@ -177,8 +177,8 @@ export default function DeletedContainers() {
       title: '镜像',
       // 与容器列表同一口径：后端由容器行推导（归属标识 + 构建版本戳）。
       // 不再消费快照 JSON 里内嵌的副本——那是把派生值又抄一份再读出来，会与容器行失真。
-      dataIndex: 'container_image',
-      key: 'container_image',
+      dataIndex: 'image_name',
+      key: 'image_name',
       ellipsis: true,
       render: (value) => value || '-',
     },

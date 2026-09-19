@@ -646,7 +646,7 @@ const ContainerDetailPage = () => {
               <div className="detail-card container-image-card">
                 <h2>镜像信息</h2>
                 <div className="detail-field-grid">
-                  <div className="detail-field"><span className="detail-field-label">镜像</span><span className="detail-field-value">{formatContainerImage(container?.container_image)}</span></div>
+                  <div className="detail-field"><span className="detail-field-label">镜像</span><span className="detail-field-value">{formatContainerImage(container?.image_name)}</span></div>
                   <div className="detail-field"><span className="detail-field-label">GPU 分配</span><span className="detail-field-value">{gpuDevices.length ? gpuDevices.join(', ') : formatNumber(allocGpu, ' 张')}</span></div>
                   <div className="detail-field"><span className="detail-field-label">共享内存</span><span className="detail-field-value">{formatNumber(container?.shared_gb, ' GB')}</span></div>
                 </div>

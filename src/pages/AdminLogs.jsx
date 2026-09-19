@@ -505,7 +505,7 @@ export default function AdminLogs() {
           data: {
             key: detail.container_id != null ? String(detail.container_id) : String(record.target_id),
             container_name: detail.container_name,
-            container_image: detail.container_image || '',
+            image_name: detail.image_name || '',
             machine_ip: detail.machine_ip || '',
             port: detail.port != null ? String(detail.port) : '',
             effective_status: (detail.effective_status || '').toLowerCase(),

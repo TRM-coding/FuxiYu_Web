@@ -188,7 +188,7 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
                 <ClockCircleOutlined className="cdm-icon" />
                 <div>
                   <Typography.Text strong className="cdm-item-label">镜像</Typography.Text>
-                  <Typography.Text className="cdm-image-text" ellipsis={{ tooltip: formatContainerImage(container.container_image) }}>{formatContainerImage(container.container_image)}</Typography.Text>
+                  <Typography.Text className="cdm-image-text" ellipsis={{ tooltip: formatContainerImage(container.image_name) }}>{formatContainerImage(container.image_name)}</Typography.Text>
                 </div>
               </Space>
             </Col>

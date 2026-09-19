@@ -36,7 +36,7 @@ describe('DeletedContainers', () => {
           original_container_id: 3,
           container_name: 'deleted-train',
           // 后端由容器行推导（归属标识 + 构建版本戳）；不再有快照 JSON 内嵌的副本
-          container_image: 'fuxi/image-1:20260825T090016Z',
+          image_name: 'fuxi/image-1:20260825T090016Z',
           image_id: 1,
           machine_name: 'gpu-a',
           machine_ip: '10.0.0.8',
