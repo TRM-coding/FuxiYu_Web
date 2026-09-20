@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Col, Input, message, Modal, Row, Select, Slider, Spin, Switch, Tag, Typography } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, DesktopOutlined, EditOutlined, ReloadOutlined, SafetyCertificateOutlined, SaveOutlined } from '@ant-design/icons';
 import { getDetailInformation, getMachineStatus, removeMachine, renewMachineTrust, setMachineMaintenance, updateMachine } from '../api/machine_api';
+import { POLL_TIMEOUT } from '../configs/backend_config';
 import CopyChip from '../components/CopyChip';
 import ConfirmModal from '../components/ConfirmModal';
 import RuntimeTrendChart from '../components/RuntimeTrendChart';
@@ -156,7 +157,9 @@ const MachineDetailPage = () => {
   const loadStatus = async () => {
     if (!machineId) return;
     try {
-      const data = await getMachineStatus(Number(machineId));
+      // 轮询用短超时（POLL_TIMEOUT）：5s 的 setInterval 没有 in-flight 守卫，
+      // 靠超时把并发压在 3 个以内（详见 configs/backend_config.js）
+      const data = await getMachineStatus(Number(machineId), POLL_TIMEOUT);
       setMachine(prev => {
         if (!prev) return prev;
         const has = key => Object.prototype.hasOwnProperty.call(data || {}, key);

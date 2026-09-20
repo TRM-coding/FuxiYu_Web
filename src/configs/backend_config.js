@@ -12,7 +12,19 @@ export const BACKEND_ORIGIN = (typeof window !== 'undefined' ? window.location.o
 // when launching Vite to indicate HTTPS mode.
 // Default to true (HTTPS enabled) unless explicitly disabled by VITE_ENABLE_SSL='false'
 export const ENABLE_SSL = (import.meta.env.VITE_ENABLE_SSL === 'false') ? false : true;
-export const REQUEST_TIMEOUT = 15000;
+// 同步请求（用户在等结果的那些）：45s。
+// 定这么宽是因为**卡住的多半是网络/排队，后端往往最终会成功**——15s 太容易让前端先松手，
+// 弹一个"请求超时"，而服务端其实已经把事做完了（2026-09 用户反馈"几乎每个操作都弹超时"）。
+// 上限受反向代理约束：若有 nginx，proxy_read_timeout 默认 60s，别再往上加。
+export const REQUEST_TIMEOUT = 45000;
+
+// 轮询请求（状态探活、列表刷新）：**刻意不跟着放宽**。
+// 轮询要的是"这一拍的新鲜度"：等 45s 只会让状态显示滞后，而且 5s 一次的节奏会长出
+// 一堆并发请求（Home/ManageX 的列表轮询有 in-flight 守卫、不会堆；但两个详情页的
+// setInterval(loadStatus, 5000) 没有守卫，全靠这个超时把并发压在 3 个以内）。
+// 取 15s = 调整前的有效值，即轮询行为保持原样。
+export const POLL_TIMEOUT = 15000;
+
 export const CREDENTIALS = 'include'; // 携带 cookies
 
 export const API_ROUTES = {
@@ -92,6 +104,7 @@ export const API_ROUTES = {
 export default {
 	BACKEND_ORIGIN,
 	REQUEST_TIMEOUT,
+	POLL_TIMEOUT,
 	CREDENTIALS,
 	API_ROUTES,
 };

@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { PermissionProvider } from '../contexts/PermissionContext';
 
 vi.mock('../utils/showErrorModal', () => ({ default: vi.fn() }));
 
@@ -31,9 +32,9 @@ describe('CreateImage image resource scope', () => {
   });
 
   it('loads user_images scope by default for image editors', async () => {
-    getUserPermissions.mockResolvedValue(['image:view', 'image:edit']);
+    getUserPermissions.mockResolvedValue({ entities: ['image:view', 'image:edit'], userId: 3, userName: 'editor' });
 
-    render(<MemoryRouter><CreateImage /></MemoryRouter>);
+    render(<MemoryRouter><PermissionProvider><CreateImage /></PermissionProvider></MemoryRouter>);
 
     await screen.findByText('环境模板');
     await waitFor(() => {
@@ -63,7 +64,7 @@ describe('CreateImage entrypoint 编辑', () => {
     localStorage.setItem('currentUserName', 'editor');
     localStorage.setItem('currentUserId', '3');
     getUserPermissions.mockReset();
-    getUserPermissions.mockResolvedValue(['image:view', 'image:edit']);
+    getUserPermissions.mockResolvedValue({ entities: ['image:view', 'image:edit'], userId: 3, userName: 'editor' });
     listImageBrefInformation.mockReset();
     listImageBrefInformation.mockResolvedValue({ images: [{ image_id: 9, name: 'jenkins', status: 'ready' }] });
     getImageDetailInformation.mockReset();
@@ -74,7 +75,7 @@ describe('CreateImage entrypoint 编辑', () => {
   it('把详情里的 entrypoint 读进表单，并在保存时发出去', async () => {
     getImageDetailInformation.mockResolvedValue(imageDetail('tail -f /dev/null'));
 
-    render(<MemoryRouter><CreateImage /></MemoryRouter>);
+    render(<MemoryRouter><PermissionProvider><CreateImage /></PermissionProvider></MemoryRouter>);
 
     const field = await screen.findByDisplayValue('tail -f /dev/null');
     fireEvent.change(field, { target: { value: 'jenkins.sh' } });
@@ -90,7 +91,7 @@ describe('CreateImage entrypoint 编辑', () => {
   it('清空时发空串而不是 null（null 会被后端 exclude_none 丢掉，等于没清）', async () => {
     getImageDetailInformation.mockResolvedValue(imageDetail('jenkins.sh'));
 
-    render(<MemoryRouter><CreateImage /></MemoryRouter>);
+    render(<MemoryRouter><PermissionProvider><CreateImage /></PermissionProvider></MemoryRouter>);
 
     const field = await screen.findByDisplayValue('jenkins.sh');
     fireEvent.change(field, { target: { value: '' } });

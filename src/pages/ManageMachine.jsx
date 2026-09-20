@@ -234,23 +234,10 @@ const ManageMachine = () => {
   const navigate = useNavigate();
   const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
 
-  // auth + operator 门禁（PermissionContext 通配判定，替代旧 is_operator 字段猜测）
-  const { hasPermission, loaded: permLoaded } = usePermission();
+  // 门禁只剩"授权"这一层（operator 通配判定）：**认证不在这里判**——
+  // 未登录由全局 401 处理统一回登录页，页面不再读 localStorage 副本（2026-09 决策）。
+  const { hasPermission, loaded: permLoaded, userName: currentUserName, userId: currentUserId } = usePermission();
   useEffect(() => {
-    const name = localStorage.getItem('currentUserName');
-    const id = localStorage.getItem('currentUserId');
-    if (!name || !id) {
-      if (!sessionStorage.getItem('auth_modal_shown')) {
-        try {
-          sessionStorage.setItem('auth_modal_shown', '1');
-          showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 })
-        } finally {
-          sessionStorage.removeItem('auth_modal_shown');
-        }
-      }
-      handleAuthError(401, navigate);
-      return;
-    }
     if (!permLoaded) return;
     if (!hasPermission('bypass_auth_entity')) {
       if (!sessionStorage.getItem('auth_modal_shown')) {
@@ -1669,8 +1656,8 @@ const ManageMachine = () => {
         onUnpause={handleUnpauseContainer}
         onDelete={openDeleteContainerConfirm}
         usersList={usersList}
-        currentUserName={localStorage.getItem('currentUserName')}
-        currentUserId={localStorage.getItem('currentUserId')}
+        currentUserName={currentUserName}
+        currentUserId={currentUserId}
         forceSystemAdmin={true}
         />
 

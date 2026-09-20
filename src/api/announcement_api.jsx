@@ -20,14 +20,8 @@ const ensureOk = async (res, action) => {
     err.body = body;
     if (res.status === 401 || res.status === 403) {
       try { const { abortAll } = await import('../utils/requestManager'); abortAll('auth'); } catch (e) {}
-      if (typeof window !== 'undefined' && res.status === 401) {
-        try {
-          localStorage.removeItem('currentUserId');
-          localStorage.removeItem('currentUserName');
-          document.cookie = 'auth_token=; Max-Age=0; path=/';
-        } catch (e) {}
-        try { window.location.href = '/'; } catch (e) {}
-      }
+      // 401 只发信号（abortAll → 'auth:expired'），统一由 App 级监听器处置：
+      // 不碰 localStorage（本地身份已废除）/ cookie（HttpOnly，删不掉）/ 硬跳转（会打风暴）。
     }
     throw err;
   }

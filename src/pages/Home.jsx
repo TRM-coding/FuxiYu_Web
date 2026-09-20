@@ -41,45 +41,9 @@ const Home = () => {
   const { barRef: statsBarRef, barStyle: statsBarStyle } = useAutoHideTopBar();
   const navigate = useNavigate();
 
-  // read current user name from localStorage; if missing or error, clear auth and redirect to login
-  const [currentUserName, setCurrentUserName] = useState(null);
-  const [currentUserId, setCurrentUserId] = useState(null);
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const name = localStorage.getItem('currentUserName');
-        const id = localStorage.getItem('currentUserId');
-        // require both name and id; if missing, show 401 modal then clear auth and force login
-        if (!name || !id) {
-          if (!sessionStorage.getItem('auth_modal_shown')) {
-            try {
-              sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-            } finally {
-              sessionStorage.removeItem('auth_modal_shown');
-            }
-          }
-          // 401: clear auth and navigate to login
-          handleAuthError(401, navigate);
-          return;
-        }
-        setCurrentUserName(name);
-        setCurrentUserId(id);
-      } catch (e) {
-        if (!sessionStorage.getItem('auth_modal_shown')) {
-          try {
-            sessionStorage.setItem('auth_modal_shown', '1');
-            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-          } finally {
-            sessionStorage.removeItem('auth_modal_shown');
-          }
-        }
-        // 401: clear auth and navigate to login
-        handleAuthError(401, navigate);
-      }
-    };
-    checkAuth();
-  }, [navigate]);
+  // 身份与权限都来自 PermissionContext（服务端给的）：不再读 localStorage 副本，
+  // 页面自己也不做"未登录"门禁——未登录由全局 401 处理统一回登录页（2026-09 决策）。
+  const { userId: currentUserId, userName: currentUserName, hasPermission } = usePermission();
 
   // containers state loaded from backend
   const [containers, setContainers] = useState(initialContainers);
@@ -89,7 +53,6 @@ const Home = () => {
   const [longTermLimit, setLongTermLimit] = useState(null);
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   const [unpauseMap, setUnpauseMap] = useState({});
-  const { hasPermission } = usePermission();
   const pendingContainerTransitionRef = useRef(new Map());
   const containerListFingerprintRef = useRef('');
 

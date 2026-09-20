@@ -238,7 +238,7 @@ const ManageUser = () => {
   const navigate = useNavigate();
 
   // auth + operator 门禁（PermissionContext 通配判定，替代旧 is_operator 字段猜测）
-  const { hasPermission, loaded: permLoaded } = usePermission();
+  const { hasPermission, loaded: permLoaded, userName: currentUserName, userId: currentUserId } = usePermission();
   // 用户 ↔ 权限组 弹窗（生效权限 = 各组并集；入口仅 rbac:manage 可见）
   const [userGroupModal, setUserGroupModal] = useState({
     visible: false,
@@ -248,22 +248,9 @@ const ManageUser = () => {
     loading: false,
     saving: false,
   });
+  // 门禁只剩"授权"这一层（operator 通配判定）：**认证不在这里判**——
+  // 未登录由全局 401 处理统一回登录页，页面不再读 localStorage 副本（2026-09 决策）。
   React.useEffect(() => {
-    const name = localStorage.getItem('currentUserName');
-    const id = localStorage.getItem('currentUserId');
-    if (!name || !id) {
-      if (!sessionStorage.getItem('auth_modal_shown')) {
-        try {
-          sessionStorage.setItem('auth_modal_shown', '1');
-          showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-        } finally {
-          sessionStorage.removeItem('auth_modal_shown');
-        }
-      }
-      // 401: clear auth and navigate to login
-      handleAuthError(401, navigate);
-      return;
-    }
     if (!permLoaded) return;
     if (!hasPermission('bypass_auth_entity')) {
       if (!sessionStorage.getItem('auth_modal_shown')) {
@@ -308,10 +295,7 @@ const ManageUser = () => {
       } catch (err) {
         console.error('load users failed', err);
         const msg = err && err.message ? String(err.message) : '';
-        if (msg.toLowerCase().includes('invalid or missing token') || msg.includes('401')) {
-          handleAuthError(401, navigate);
-          return;
-        }
+        // 401 不在这里处理：api 层统一发信号、App 级监听器清快照并回登录页
         if (!silent) {
           await showErrorModal({ message: err?.body || err || (msg ? `加载用户列表失败: ${msg}` : '加载用户列表失败'), status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
         }
@@ -1316,8 +1300,8 @@ const ManageUser = () => {
           setSelectedContainer(null);
         }}
         usersList={users.map(u => ({ id: u.key, name: u.username, username: u.username }))}
-        currentUserName={localStorage.getItem('currentUserName')}
-        currentUserId={localStorage.getItem('currentUserId')}
+        currentUserName={currentUserName}
+        currentUserId={currentUserId}
         readOnly
       />
 

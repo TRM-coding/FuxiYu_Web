@@ -41,6 +41,7 @@ const CONTAINER_OPERATION_LABELS = {
   send_cleanup_reminder: '发送清理提醒',
 };
 import { getContainerStatusDisplay } from '../utils/statusDisplay';
+import { POLL_TIMEOUT } from '../configs/backend_config';
 import { usePermission } from '../contexts/PermissionContext';
 import { getContainerActionState } from '../utils/containerActions';
 import './DetailPages.css';
@@ -129,7 +130,7 @@ const ContainerDetailPage = () => {
   const [peopleSaving, setPeopleSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState(null); // 'start' | 'stop' | 'restart' | 'unpause' | 'delete' | null
   const [containerActionConfirm, setContainerActionConfirm] = useState({ visible: false, action: '' });
-  const { hasPermission } = usePermission();
+  const { hasPermission, userId: currentUserId } = usePermission();
 
   const loadDetail = async ({ silent = false } = {}) => {
     if (!containerId) return;
@@ -162,7 +163,9 @@ const ContainerDetailPage = () => {
   const loadStatus = async () => {
     if (!containerId) return;
     try {
-      const data = await getContainerStatus(Number(containerId));
+      // 轮询用短超时（POLL_TIMEOUT）：这个 5s 的 setInterval 没有 in-flight 守卫，
+      // 靠超时把并发压在 3 个以内；跟着同步请求放宽到 45s 会长出 9 个并发。
+      const data = await getContainerStatus(Number(containerId), POLL_TIMEOUT);
       setContainer(prev => {
         if (!prev) return prev;
         const has = key => Object.prototype.hasOwnProperty.call(data || {}, key);
@@ -327,7 +330,6 @@ const ContainerDetailPage = () => {
   const sshEndpoint = container?.machine_ip && container?.port ? `${container.machine_ip}:${container.port}` : '';
   // 端口映射（docker 自动分配，Node inspect 回填落库；后端出参已派生补齐 22→port）
   const portMappings = Array.isArray(container?.port_mappings) ? container.port_mappings : [];
-  const currentUserId = localStorage.getItem('currentUserId');
   const accounts = (container?.accounts || []).map(account => normalizeAccount(account, usersList));
   const isRoot = accounts.some(account => account.role === ROLE.ROOT && String(account.user_id) === String(currentUserId));
   const canManagePeople = isRoot && status === 'online';

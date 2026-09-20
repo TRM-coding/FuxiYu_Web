@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { POLL_TIMEOUT } from '../configs/backend_config';
 
 vi.mock('../api/container_api', () => ({
   addCollaborator: vi.fn(),
@@ -148,7 +149,9 @@ describe('DetailPages snapshot polling', () => {
       await pollingCallback();
     });
 
-    await waitFor(() => expect(getContainerStatus).toHaveBeenCalledWith(12));
+    // 轮询必须用**短超时**：这个 5s 的 setInterval 没有 in-flight 守卫，
+    // 跟着同步请求放宽到 45s 会长出一堆并发（2026-09 决策）
+    await waitFor(() => expect(getContainerStatus).toHaveBeenCalledWith(12, POLL_TIMEOUT));
     expect(getContainerDetailInformation).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.getAllByText('运行中').length).toBeGreaterThan(0));
     expect(screen.getAllByText(/2026\/8\/29/).length).toBeGreaterThan(0);
@@ -355,7 +358,7 @@ describe('DetailPages snapshot polling', () => {
       await pollingCallback();
     });
 
-    await waitFor(() => expect(getMachineStatus).toHaveBeenCalledWith(7));
+    await waitFor(() => expect(getMachineStatus).toHaveBeenCalledWith(7, POLL_TIMEOUT));
     expect(getDetailInformation).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('已停止')).toBeInTheDocument();
     expect(screen.getAllByText(/2026\/8\/29/).length).toBeGreaterThan(0);

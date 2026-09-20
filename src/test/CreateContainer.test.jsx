@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { PermissionProvider } from '../contexts/PermissionContext';
 
 // antd message 在 jsdom 下会产生滚动条测量噪音，只保留组件实现、替换 message
 vi.mock('antd', async (importOriginal) => {
@@ -88,8 +89,8 @@ describe.sequential('CreateContainer 代建门禁（container:manage 分类显�
   });
 
   it('普通用户（无 container:manage）不显示 ROOT 用户选择器', async () => {
-    getUserPermissions.mockResolvedValue(['container:create', 'container:view']);
-    render(<MemoryRouter><CreateContainer /></MemoryRouter>);
+    getUserPermissions.mockResolvedValue({ entities: ['container:create', 'container:view'], userId: 1, userName: 'operator1' });
+    render(<MemoryRouter><PermissionProvider><CreateContainer /></PermissionProvider></MemoryRouter>);
 
     await screen.findByText('选择镜像');
     await waitFor(() => expect(getUserPermissions).toHaveBeenCalled());
@@ -97,8 +98,8 @@ describe.sequential('CreateContainer 代建门禁（container:manage 分类显�
   });
 
   it('普通用户提交 payload 不带 owner_user_id（后端归一为自己）', async () => {
-    getUserPermissions.mockResolvedValue(['container:create']);
-    render(<MemoryRouter><CreateContainer /></MemoryRouter>);
+    getUserPermissions.mockResolvedValue({ entities: ['container:create'], userId: 1, userName: 'operator1' });
+    render(<MemoryRouter><PermissionProvider><CreateContainer /></PermissionProvider></MemoryRouter>);
 
     await screen.findByText('选择镜像');
     await waitFor(() => expect(getUserPermissions).toHaveBeenCalled());
@@ -116,11 +117,12 @@ describe.sequential('CreateContainer 代建门禁（container:manage 分类显�
   });
 
   it('代建者显示 ROOT 用户选择器；未选机器时禁用，选机器后默认当前用户', async () => {
-    getUserPermissions.mockResolvedValue(['container:create', 'container:manage']);
-    render(<MemoryRouter><CreateContainer /></MemoryRouter>);
+    getUserPermissions.mockResolvedValue({ entities: ['container:create', 'container:manage'], userId: 1, userName: 'operator1' });
+    render(<MemoryRouter><PermissionProvider><CreateContainer /></PermissionProvider></MemoryRouter>);
 
     await screen.findByText('选择镜像');
-    expect(screen.getByText('ROOT 用户')).toBeInTheDocument();
+    // 权限快照来自 App 级 Provider（异步一拍），所以这里要 findBy 而不是 getBy
+    expect(await screen.findByText('ROOT 用户')).toBeInTheDocument();
     // 未选机器：选择器禁用
     expect(document.querySelector('#cc-owner')).toBeDisabled();
 
@@ -131,8 +133,8 @@ describe.sequential('CreateContainer 代建门禁（container:manage 分类显�
   });
 
   it('代建者提交 payload 携带所选 owner_user_id', async () => {
-    getUserPermissions.mockResolvedValue(['container:manage']);
-    render(<MemoryRouter><CreateContainer /></MemoryRouter>);
+    getUserPermissions.mockResolvedValue({ entities: ['container:manage'], userId: 1, userName: 'operator1' });
+    render(<MemoryRouter><PermissionProvider><CreateContainer /></PermissionProvider></MemoryRouter>);
 
     await screen.findByText('选择镜像');
     await selectImage();

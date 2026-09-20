@@ -372,16 +372,10 @@ export default function AdminLogs() {
     return `${ws.format('YYYY-MM-DD')} ~ ${ws.add(6, 'day').format('YYYY-MM-DD')}`;
   }, [timeRange]);
 
-  // auth + operator 门禁（PermissionContext 通配判定，替代旧 is_operator 字段猜测）
+  // 门禁只剩"授权"这一层（operator 通配判定）：**认证不在这里判**——
+  // 未登录由全局 401 处理统一回登录页，页面不再读 localStorage 副本（2026-09 决策）。
   const { hasPermission, loaded: permLoaded } = usePermission();
   useEffect(() => {
-    const name = localStorage.getItem('currentUserName');
-    const id = localStorage.getItem('currentUserId');
-    if (!name || !id) {
-      showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-      handleAuthError(401, navigate);
-      return;
-    }
     if (!permLoaded) return;
     if (!hasPermission('bypass_auth_entity')) {
       showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });

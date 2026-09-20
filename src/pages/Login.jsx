@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { loginUser } from '../api/user_api';
 import ConfirmModal from '../components/ConfirmModal';
 import showErrorModal from '../utils/showErrorModal';
+import { usePermission } from '../contexts/PermissionContext';
 import './Login.css';
 
 const LoginBlock = () => {
@@ -12,22 +13,27 @@ const LoginBlock = () => {
 	const [confirmMessage, setConfirmMessage] = useState('');
 	const [confirmContent, setConfirmContent] = useState(null);
 	const navigate = useNavigate();
+	const { loaded, userId, refresh } = usePermission();
 
+	// 已经是登录态就别停在登录页。判据来自服务端（cookie 换来的那次权限请求），
+	// 不再是 localStorage 里的副本——那份副本会和 cookie 各说各话，互相把人推来推去。
 	useEffect(() => {
-		const currentUserId = localStorage.getItem('currentUserId');
-		if (currentUserId) {
+		if (loaded && userId) {
 			navigate('/index', { replace: true });
 		}
-	}, [navigate]);
+	}, [loaded, userId, navigate]);
 
 	const onFinish = async values => {
 		try {
 			const data = await loginUser(values);
-			// 假设后端返回 { token: '...', success: true } 或类似结构
 			if (data && (data.success !== false)) {
-				// 后端返回 { success, user_id, username, permission }；token 已由 httpOnly cookie 承载
-				if (data.user_id) localStorage.setItem('currentUserId', String(data.user_id));
-				if (data.username) localStorage.setItem('currentUserName', String(data.username));
+				// 登录成功后必须重建快照：首屏那次请求是匿名发的（401），
+				// 身份与权限都还没拿到；换账号时同样靠它覆盖上一个人的权限。
+				try {
+					await refresh();
+				} catch (e) {
+					// 快照没拿到不该挡住"登录成功"这件事本身；进站后任何请求都会再给出答案
+				}
 				message.success('登录成功');
 				navigate('/index');
 			} else {

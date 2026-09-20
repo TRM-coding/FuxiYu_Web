@@ -11,25 +11,12 @@ import './AdminProfile.css';
 
 const AdminProfile = () => {
   const navigate = useNavigate();
-  const { hasPermission, loaded: permLoaded } = usePermission();
+  const { hasPermission, loaded: permLoaded, userId: currentUserId } = usePermission();
   const [userInfo, setUserInfo] = useState(null);
 
-  // auth + operator 门禁（PermissionContext 通配判定，替代旧 is_operator 字段猜测）
+  // 门禁只剩"授权"这一层（operator 通配判定）：**认证不在这里判**——
+  // 未登录由全局 401 处理统一回登录页，页面不再读 localStorage 副本（2026-09 决策）。
   useEffect(() => {
-    const name = localStorage.getItem('currentUserName');
-    const id = localStorage.getItem('currentUserId');
-    if (!name || !id) {
-      if (!sessionStorage.getItem('auth_modal_shown')) {
-        try {
-          sessionStorage.setItem('auth_modal_shown', '1');
-          showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-        } finally {
-          sessionStorage.removeItem('auth_modal_shown');
-        }
-      }
-      handleAuthError(401, navigate);
-      return;
-    }
     if (!permLoaded) return;
     if (!hasPermission('bypass_auth_entity')) {
       if (!sessionStorage.getItem('auth_modal_shown')) {
@@ -45,23 +32,16 @@ const AdminProfile = () => {
     }
     const loadDetail = async () => {
       try {
-        const res = await getUserDetailInformation(Number(id));
+        const res = await getUserDetailInformation(Number(currentUserId));
         const info = (res && (res.user_info || res.data)) || res || {};
         setUserInfo(info);
       } catch (e) {
-        if (!sessionStorage.getItem('auth_modal_shown')) {
-          try {
-            sessionStorage.setItem('auth_modal_shown', '1');
-            showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-          } finally {
-            sessionStorage.removeItem('auth_modal_shown');
-          }
-        }
-        handleAuthError(401, navigate);
+        // 401 不在这里处理：api 层统一发信号、App 级监听器清快照并回登录页。
+        // 其它失败保持原行为——不弹框（这一页空着比误报更不打扰）。
       }
     };
     loadDetail();
-  }, [navigate, permLoaded, hasPermission]);
+  }, [permLoaded, hasPermission]);
 
   return (
     <div className="ap-wrap">

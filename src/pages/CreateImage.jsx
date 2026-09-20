@@ -9,9 +9,7 @@ import {
   SaveOutlined,
 } from '@ant-design/icons';
 import showErrorModal from '../utils/showErrorModal';
-import { handleAuthError } from '../utils/authHelpers';
-import { useNavigate } from 'react-router-dom';
-import { getUserPermissions } from '../api/user_api';
+import { usePermission } from '../contexts/PermissionContext';
 import {
   createImage,
   deleteImage,
@@ -64,10 +62,13 @@ const normalizeImage = (image = {}) => ({
 });
 
 export default function CreateImage() {
-  const navigate = useNavigate();
-  const [currentUserId, setCurrentUserId] = useState(null);
-  const [permissions, setPermissions] = useState([]);
-  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
+  // 身份与权限都来自 PermissionContext（服务端那一次请求给的）：不再自己发一份、
+  // 也不读 localStorage 副本，页面不做认证门禁（2026-09 决策）。
+  const {
+    userId: currentUserId,
+    entities: permissions,
+    loaded: permissionsLoaded,
+  } = usePermission();
   const [images, setImages] = useState([]);
   const [keyword, setKeyword] = useState('');
   const [mineOnly, setMineOnly] = useState(true);
@@ -135,29 +136,6 @@ export default function CreateImage() {
       setLoadingDetail(false);
     }
   };
-
-  useEffect(() => {
-    const name = localStorage.getItem('currentUserName');
-    const id = localStorage.getItem('currentUserId');
-    if (!name || !id) {
-      handleAuthError(401, navigate);
-      return;
-    }
-    setCurrentUserId(Number(id));
-    let mounted = true;
-    (async () => {
-      try {
-        const list = await getUserPermissions();
-        if (mounted) {
-          setPermissions(Array.isArray(list) ? list : []);
-          setPermissionsLoaded(true);
-        }
-      } catch (err) {
-        if (err?.status === 401) handleAuthError(401, navigate);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [navigate]);
 
   useEffect(() => {
     if (!permissionsLoaded || !currentUserId) return;

@@ -63,7 +63,7 @@ describe('AdminLogs 日志页', () => {
   });
 
   it('渲染日志行：操作名走中文映射，操作人为系统', async () => {
-    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
     renderPage();
 
     await waitPageLoaded();
@@ -72,7 +72,7 @@ describe('AdminLogs 日志页', () => {
   });
 
   it('renders setting labels and deleted container display names without navigation', async () => {
-    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
     listOperationLogs.mockResolvedValueOnce({
       total_pages: 1,
       logs: [
@@ -92,7 +92,7 @@ describe('AdminLogs 日志页', () => {
   });
 
   it('renders mail audit labels and announcement names without navigation', async () => {
-    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
     listOperationLogs.mockResolvedValueOnce({
       total_pages: 1,
       logs: [{ id: 12, operation: 'send_mail', target_type: 'announcement', target_id: 8,
@@ -110,7 +110,7 @@ describe('AdminLogs 日志页', () => {
   });
 
   it('展开行显示前→后对比（状态值翻译）', async () => {
-    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
     renderPage();
 
     await waitPageLoaded();
@@ -124,7 +124,7 @@ describe('AdminLogs 日志页', () => {
   });
 
   it('点击「上一周」以新的时间范围重新查询', async () => {
-    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
     renderPage();
 
     await waitPageLoaded();
@@ -140,7 +140,7 @@ describe('AdminLogs 日志页', () => {
   });
 
   it('普通用户（无 bypass_auth_entity）被拒入，不渲染日志内容', async () => {
-    getUserPermissions.mockResolvedValue(['container:view']);
+    getUserPermissions.mockResolvedValue({ entities: ['container:view'], userId: 1, userName: 'operator1' });
     renderPage();
 
     // 403 弹窗出现，operator 专属内容（统计/日志表）不渲染
@@ -149,7 +149,7 @@ describe('AdminLogs 日志页', () => {
   });
 
   it('「本周」初始禁用；翻到上周后可用且点击跳回本周', async () => {
-    getUserPermissions.mockResolvedValue(['bypass_auth_entity', 'operation_log:manage']);
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
     renderPage();
 
     await waitPageLoaded();

@@ -1,5 +1,5 @@
 // Web heartbeat utility: poll Ctrl for container status until RUNNING
-import { BACKEND_ORIGIN, REQUEST_TIMEOUT } from '../configs/backend_config';
+import { BACKEND_ORIGIN, POLL_TIMEOUT } from '../configs/backend_config';
 
 export function startContainerStatusHeartbeat({ machine_id, container_name, container_id, onRunning, onTerminal, onProgress, terminalState = 'online', requiredProgressState = '', timeout = 180000, interval = 3000 }) {
   let stopped = false;
@@ -19,7 +19,7 @@ export function startContainerStatusHeartbeat({ machine_id, container_name, cont
     }
     try {
       const controller = new AbortController();
-      const to = setTimeout(() => controller.abort(), REQUEST_TIMEOUT || 5000);
+      const to = setTimeout(() => controller.abort(), POLL_TIMEOUT);
       const headers = { 'Content-Type': 'application/json' };
       const url = new URL('/api/containers/container_status', BACKEND_ORIGIN).toString();
       const res = await fetch(url, {
@@ -78,7 +78,7 @@ export function startMachineStatusHeartbeat({ machine_id, onTerminal, terminalSt
     }
     try {
       const controller = new AbortController();
-      const to = setTimeout(() => controller.abort(), REQUEST_TIMEOUT || 5000);
+      const to = setTimeout(() => controller.abort(), POLL_TIMEOUT);
       const headers = { 'Content-Type': 'application/json' };
       const url = new URL('/api/machines/list_all_machine_bref_information', BACKEND_ORIGIN).toString();
       const res = await fetch(url, {
@@ -137,7 +137,7 @@ export function watchIngContainerUntilTerminal({ machine_id, container_id, conta
     }
     try {
       const controller = new AbortController();
-      const to = setTimeout(() => controller.abort(), REQUEST_TIMEOUT || 5000);
+      const to = setTimeout(() => controller.abort(), POLL_TIMEOUT);
       const headers = { 'Content-Type': 'application/json' };
       const url = new URL('/api/containers/container_status', BACKEND_ORIGIN).toString();
       const res = await fetch(url, {

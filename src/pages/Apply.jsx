@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Typography, Row, Col, Button, Input, Tag, Radio, Space, Form, InputNumber, message, Select, Pagination } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import showErrorModal from '../utils/showErrorModal';
-import { handleAuthError } from '../utils/authHelpers';
+import { usePermission } from '../contexts/PermissionContext';
 import EntitySearchBar from '../components/EntitySearchBar';
 import './Apply.css';
 
@@ -30,46 +30,9 @@ const Apply = () => {
   const [value3, setValue3] = useState('Any');
   const [searchIp, setSearchIp] = useState('');
   const [searchId, setSearchId] = useState('');
-  const [currentUserName, setCurrentUserName] = useState(null);
-  const [currentUserId, setCurrentUserId] = useState(null);
-
-  // 读取当前用户信息，如果缺失则清除 auth 并重定向到登录
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const name = localStorage.getItem('currentUserName');
-        const id = localStorage.getItem('currentUserId');
-        // 需要同时拥有 name 和 id；如果缺失，先弹提示再清除 auth 并强制登录
-        if (!name || !id) {
-          if (!sessionStorage.getItem('auth_modal_shown')) {
-            try {
-              sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-            } finally {
-              sessionStorage.removeItem('auth_modal_shown');
-            }
-          }
-          // 401: clear auth and navigate to login
-          handleAuthError(401, navigate);
-          return;
-        }
-        setCurrentUserName(name);
-        setCurrentUserId(id);
-      } catch (e) {
-        if (!sessionStorage.getItem('auth_modal_shown')) {
-          try {
-            sessionStorage.setItem('auth_modal_shown', '1');
-            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-          } finally {
-            sessionStorage.removeItem('auth_modal_shown');
-          }
-        }
-        // 401: clear auth and navigate to login
-        handleAuthError(401, navigate);
-      }
-    };
-    checkAuth();
-  }, [navigate]);
+  // 身份来自服务端（见 PermissionContext）：不再读 localStorage 副本，页面也不自己做
+  // "未登录"门禁——未登录由全局 401 处理统一回登录页（2026-09 决策）。
+  const { userId: currentUserId, userName: currentUserName } = usePermission();
 
   const [machines, setMachines] = useState([]);
   const [loading, setLoading] = useState(false);

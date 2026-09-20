@@ -3,9 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Typography, Input, InputNumber, Button, Card, Tag, message, Empty, Spin, Slider, Select } from 'antd';
 import { SearchOutlined, CheckCircleFilled, ThunderboltOutlined, CodeOutlined, LockOutlined } from '@ant-design/icons';
 import showErrorModal from '../utils/showErrorModal';
-import { handleAuthError } from '../utils/authHelpers';
+import { usePermission } from '../contexts/PermissionContext';
 import { listAllMachineBrefInformation, getDetailInformation, listMachinePermissions } from '../api/machine_api';
-import { getUserPermissions, listAllUserBrefInformation } from '../api/user_api';
+import { listAllUserBrefInformation } from '../api/user_api';
 import { createContainer } from '../api/container_api';
 import { listImageBrefInformation } from '../api/image_api';
 import './CreateContainer.css';
@@ -94,8 +94,13 @@ const clampNum = (v, max, min) => {
 const CreateContainer = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [currentUserName, setCurrentUserName] = useState(null);
-  const [currentUserId, setCurrentUserId] = useState(null);
+  // 身份来自服务端（见 PermissionContext）：不再读 localStorage 副本，页面不做认证门禁
+  const {
+    userId: currentUserId,
+    userName: currentUserName,
+    hasPermission,
+    loaded: permLoaded,
+  } = usePermission();
 
   // 环境(镜像)选择
   const [imageKeyword, setImageKeyword] = useState('');
@@ -124,41 +129,6 @@ const CreateContainer = () => {
   const [rootUsers, setRootUsers] = useState([]);
   const [rootUsersLoading, setRootUsersLoading] = useState(false);
   const [ownerUserId, setOwnerUserId] = useState(null);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const name = localStorage.getItem('currentUserName');
-        const id = localStorage.getItem('currentUserId');
-        // 需要同时拥有 name 和 id；缺失则清 auth 并强制登录
-        if (!name || !id) {
-          if (!sessionStorage.getItem('auth_modal_shown')) {
-            try {
-              sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-            } finally {
-              sessionStorage.removeItem('auth_modal_shown');
-            }
-          }
-          handleAuthError(401, navigate);
-          return;
-        }
-        setCurrentUserName(name);
-        setCurrentUserId(id);
-      } catch (e) {
-        if (!sessionStorage.getItem('auth_modal_shown')) {
-          try {
-            sessionStorage.setItem('auth_modal_shown', '1');
-            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-          } finally {
-            sessionStorage.removeItem('auth_modal_shown');
-          }
-        }
-        handleAuthError(401, navigate);
-      }
-    };
-    checkAuth();
-  }, [navigate]);
 
   const fetchImages = async (keyword = '') => {
     setImagesLoading(true);
@@ -262,19 +232,12 @@ const CreateContainer = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [machines, preselectMachineId]);
 
-  // 代建门禁：权限接口失败时保守隐藏选择器（按无代建能力处理）
+  // 代建门禁：走 PermissionContext（App 级那一次请求），页面不再自己发一份。
+  // 未加载完/权限接口失败 → 保守隐藏选择器（按无代建能力处理）。
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const entities = await getUserPermissions();
-        if (mounted) setHasManage(Array.isArray(entities) && entities.includes('container:manage'));
-      } catch (err) {
-        if (mounted) setHasManage(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
+    if (!permLoaded) return;
+    setHasManage(hasPermission('container:manage'));
+  }, [permLoaded, hasPermission]);
 
   // 仅运行中的机器可创建（维护/离线机器不可选）
   const onlineMachines = machines.filter(m => (m.machine_status || '').toLowerCase() === 'online');
@@ -315,7 +278,7 @@ const CreateContainer = () => {
           name: u.display_name || u.username || u.name || String(u.user_id || u.id || u.uid),
         }));
       setRootUsers(mapped);
-      const cur = Number(localStorage.getItem('currentUserId') || 0);
+      const cur = Number(currentUserId || 0);
       setOwnerUserId(prev => {
         const keep = Number(prev);
         if (keep && mapped.some(u => u.id === keep)) return keep;

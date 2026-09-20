@@ -24,15 +24,10 @@ const ensureOk = async (res, action) => {
     err.route = res.url;
     err.body = body;
     if (res.status === 401 || res.status === 403) {
+      // 认证失效**只在这里发一个信号**，由 App 级监听器统一处置（清权限快照 + 客户端跳登录页）。
+      // 这里不再碰 localStorage（本地身份已废除）、不碰 cookie（HttpOnly，前端删不掉）、
+      // 也不做 window.location 硬跳（那会把页面推来推去，2026-09 实测成 12 次/秒的风暴）。
       try { abortAll('auth'); } catch (e) {}
-      if (typeof window !== 'undefined' && res.status === 401) {
-        try {
-          localStorage.removeItem('currentUserId');
-          localStorage.removeItem('currentUserName');
-          document.cookie = 'auth_token=; Max-Age=0; path=/';
-        } catch (e) {}
-        try { window.location.href = '/'; } catch (e) {}
-      }
     }
     throw err;
   }
@@ -316,7 +311,13 @@ export const getUserPermissions = async (timeout = null) => {
     clearTimeout(timer);
     if (!res.ok) throw Object.assign(new Error('failed to load permissions'), { status: res.status });
     const data = await res.json().catch(() => null);
-    return (data && data.entities) || [];
+    // 一次请求交付三样：认证信号（200/401）、授权数据（entities）、身份（user_id/username）。
+    // 身份必须从这里来——cookie 是 HttpOnly，前端读不到它（2026-09 决策）。
+    return {
+      entities: (data && data.entities) || [],
+      userId: (data && data.user_id) ?? null,
+      userName: (data && data.username) || '',
+    };
   } catch (err) {
     clearTimeout(timer);
     throw err;
