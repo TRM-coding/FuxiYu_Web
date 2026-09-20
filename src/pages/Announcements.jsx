@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Typography, Row, Col, Button, Card, Checkbox, Tag, Space, Modal, Select,
-  Input, message, Spin, Empty, Popconfirm, Descriptions, Divider
+  Input, message, Spin, Empty, Popconfirm, Divider, Progress
 } from 'antd';
 import {
   PlusOutlined, SendOutlined, EditOutlined, DeleteOutlined,
@@ -10,7 +10,7 @@ import {
   DesktopOutlined, CloudServerOutlined, UserOutlined, CloseOutlined
 } from '@ant-design/icons';
 import {
-  listDrafts, deleteDraft, batchSendDrafts, resolveTargets,
+  listDrafts, deleteDraft, batchSendDrafts, resolveTargets, getAnnouncementsStatus,
   listAnnouncements, copyAnnouncementAsDraft, resendAnnouncement, convertToTemplate,
   deleteAnnouncement, batchDeleteAnnouncements
 } from '../api/announcement_api';
@@ -18,12 +18,18 @@ import { listAllMachineBrefInformation } from '../api/machine_api';
 import { listAllContainerBrefInformation } from '../api/container_api';
 import { listAllUserBrefInformation } from '../api/user_api';
 import showErrorModal from '../utils/showErrorModal';
+import { POLL_TIMEOUT } from '../configs/backend_config';
+import { trackAnnouncementSend } from '../utils/announcementSend';
 import './Announcements.css';
 
 const { Text, Title } = Typography;
 
-const STATUS_COLOR = { sent: 'green', partial: 'orange', failed: 'red' };
-const STATUS_LABEL = { sent: '已发送', partial: '部分失败', failed: '发送失败' };
+const STATUS_COLOR = { sending: 'processing', sent: 'green', partial: 'orange', failed: 'red' };
+const STATUS_LABEL = { sending: '发送中', sent: '已发送', partial: '部分失败', failed: '发送失败' };
+
+// 批量发送改成异步（2026-09）：发起后轮询公告状态看进度。
+// 间隔与超时用 POLL_TIMEOUT —— 轮询要的是"这一拍的新鲜度"，不该跟着同步请求放宽。
+const SEND_POLL_INTERVAL_MS = 3000;
 
 /** 后端 naive UTC → 北京时间（UTC+8，固定，不随浏览器时区）展示 */
 const formatBeijingTime = (v) => {
@@ -61,8 +67,9 @@ export default function Announcements() {
 
   // ── 批量发送状态 ──────────────────────────────────────────────────
   const [sending, setSending] = useState(false);
-  const [sendResultVisible, setSendResultVisible] = useState(false);
-  const [sendResults, setSendResults] = useState([]);
+  // 后台发送进度（发起后由轮询更新；null = 还没有过批次）。
+  // 收尾时**不清空**，而是把 finished 置真——结果直接留在页面上，不再弹窗。
+  const [sendProgress, setSendProgress] = useState(null);
   const [checkedAnnouncementIds, setCheckedAnnouncementIds] = useState([]);
   const [deleting, setDeleting] = useState(false);
 
@@ -201,6 +208,36 @@ export default function Announcements() {
     }
   };
 
+  // ── 批量发送（异步 + 轮询进度）─────────────────────────────────────
+  // 发起只等"受理"（后端建好 SENDING 公告就返回），发信在 Ctrl 的后台线程里一封封发
+  // （每封间隔 0.8s，一批可能好几分钟）。所以发起后必须轮询公告状态，而不是等结果。
+  const pollTimerRef = useRef(null);
+
+  const stopSendPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => stopSendPolling, [stopSendPolling]);
+
+  const pollSendProgress = useCallback((announcementIds) => {
+    stopSendPolling();
+    pollTimerRef.current = trackAnnouncementSend({
+      announcementIds,
+      // 按 id 定位（后端有轻量出参）：不扫列表、不受分页影响、不拖正文
+      fetchList: () => getAnnouncementsStatus(announcementIds, POLL_TIMEOUT),
+      onProgress: setSendProgress,
+      onDone: () => {
+        // 结果不再弹窗：进度行保留成"已完成 x/N · 成功 A · 失败 B"，列表同时刷新
+        setSendProgress(prev => ({ ...(prev || {}), finished: true }));
+        loadDrafts();
+        loadAnnouncements();
+      },
+    });
+  }, [stopSendPolling, loadDrafts, loadAnnouncements]);
+
   const handleBatchSend = async () => {
     if (checkedDraftIds.length === 0) {
       message.warning('请至少勾选一个草稿');
@@ -216,14 +253,19 @@ export default function Announcements() {
         draft_ids: checkedDraftIds,
         targets: selectedTargets.map(t => ({ type: t.type, id: t.id })),
       });
-      setSendResults(res?.results || []);
-      setSendResultVisible(true);
+      const ids = res?.announcement_ids || [];
+      message.success(`已受理 ${res?.total ?? ids.length} 条，正在后台发送…`);
       setCheckedDraftIds([]);
       setSelectedTargets([]);
       setRecipientCount(0);
       loadDrafts();
       loadAnnouncements();
+      if (ids.length > 0) {
+        setSendProgress({ total: ids.length, done: 0, success: 0, fail: 0 });
+        pollSendProgress(ids);
+      }
     } catch (err) {
+      // 注意：冷却**不是**错误——它在后台排队（发送槽位），请求永远立刻受理
       await showErrorModal({ message: err?.body?.message || '批量发送失败', status: err?.status });
     } finally {
       setSending(false);
@@ -236,9 +278,13 @@ export default function Announcements() {
 
   const handleResend = async (annId) => {
     try {
-      await resendAnnouncement(annId);
-      message.success('已重新发送');
+      // 重发也是异步（一封封发 + 排队等发送槽位），所以同样是"受理后轮询"
+      const res = await resendAnnouncement(annId);
+      message.success('已受理，正在后台重发…');
+      const ids = [res?.announcement_id ?? annId];
+      setSendProgress({ total: ids.length, done: 0, success: 0, fail: 0 });
       loadAnnouncements();
+      pollSendProgress(ids);
     } catch (err) {
       await showErrorModal({ message: err?.body?.message || '重发失败', status: err?.status });
     }
@@ -359,6 +405,24 @@ export default function Announcements() {
               <Text type="secondary">
                 收件人: {resolvingTargets ? <Spin size="small" /> : <strong>{recipientCount}</strong>}人
               </Text>
+              {/* 后台发送进度：发起后信还在一封封发，这里给出"还在动"的证据 */}
+              {sendProgress && (
+                <Space size={6} align="center">
+                  <Progress
+                    type="line"
+                    size="small"
+                    showInfo={false}
+                    style={{ width: 96, marginBottom: 0 }}
+                    strokeColor={sendProgress.finished && sendProgress.fail > 0 ? '#faad14' : undefined}
+                    percent={sendProgress.total ? Math.round((sendProgress.done / sendProgress.total) * 100) : 0}
+                  />
+                  <Text type={sendProgress.finished && sendProgress.fail > 0 ? 'warning' : 'secondary'}>
+                    {sendProgress.finished ? '已完成 ' : '发送中 '}
+                    {sendProgress.done}/{sendProgress.total} 条
+                    {sendProgress.finished && ` · 成功 ${sendProgress.success} · 失败 ${sendProgress.fail}`}
+                  </Text>
+                </Space>
+              )}
               <Button
                 type="primary"
                 danger
@@ -613,38 +677,8 @@ export default function Announcements() {
         </Spin>
       </Modal>
 
-      {/* ── 发送结果弹窗 ────────────────────────────────────────── */}
-      <Modal
-        open={sendResultVisible}
-        title="发送结果"
-        onCancel={() => setSendResultVisible(false)}
-        footer={<Button onClick={() => setSendResultVisible(false)}>关闭</Button>}
-        width={600}
-      >
-        {sendResults.map((r, i) => (
-          <Card key={i} size="small" style={{ marginBottom: 8 }}>
-            <Descriptions column={2} size="small">
-              <Descriptions.Item label="草稿ID">{r.draft_id}</Descriptions.Item>
-              <Descriptions.Item label="状态">
-                <Tag color={r.status === 'sent' ? 'green' : r.status === 'partial' ? 'orange' : 'red'}>
-                  {r.status}
-                </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="收件人数">{r.recipient_count}</Descriptions.Item>
-              <Descriptions.Item label="成功/失败">{r.success_count} / {r.fail_count}</Descriptions.Item>
-              {r.failures && r.failures.length > 0 && (
-                <Descriptions.Item label="失败详情" span={2}>
-                  {r.failures.map((f, j) => (
-                    <Text key={j} type="danger" style={{ display: 'block', fontSize: 12 }}>
-                      {f.email}: {f.error}
-                    </Text>
-                  ))}
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-          </Card>
-        ))}
-      </Modal>
+      {/* 没有"发送结果"弹窗：结果就落在页面那条进度上 + 下方列表里每条的状态/计数
+          （列表本来就是懒加载、自动刷新的）。弹窗只是同一份信息的第二次展示。 */}
     </div>
   );
 }

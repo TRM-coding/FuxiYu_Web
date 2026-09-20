@@ -94,6 +94,8 @@ export const API_ROUTES = {
 	ANNOUNCEMENTS_TEMPLATES: '/api/announcements/templates',
 	ANNOUNCEMENTS_RESOLVE_TARGETS: '/api/announcements/resolve-targets',
 	ANNOUNCEMENTS_LIST: '/api/announcements/list',
+	// 按 id 查公告进度（批量发送/重发的轮询用：只认自己那一批，不扫列表）
+	ANNOUNCEMENTS_STATUS: '/api/announcements/status',
 	ANNOUNCEMENTS_BASE: '/api/announcements',
 	ANNOUNCEMENTS_DRAFTS: '/api/announcements/drafts',
 	ANNOUNCEMENTS_DRAFTS_SAVE: '/api/announcements/drafts/save',

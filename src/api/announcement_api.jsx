@@ -193,6 +193,34 @@ export const listAnnouncements = async ({ status, limit, offset } = {}, timeout 
   }
 };
 
+/**
+ * 按 id 查公告进度（批量发送/重发的前端轮询用）。
+ *
+ * 刻意不用 listAnnouncements：那要拉列表再本地过滤（只覆盖前 N 条、还会把正文一起
+ * 拖下来）。进度轮询只认自己那一批 id，后端也回轻量出参（2026-09）。
+ */
+export const getAnnouncementsStatus = async (announcementIds = [], timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.ANNOUNCEMENTS_STATUS, BACKEND_ORIGIN);
+    url.searchParams.set('ids', announcementIds.join(','));
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Get announcements status');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Get announcements status request timed out');
+    throw err;
+  }
+};
+
 export const getAnnouncement = async (announcementId, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
