@@ -28,6 +28,7 @@ const EMPTY_FORM = {
   status: 'draft',
   base_image: 'ubuntu:22.04',
   dockerfile_body: '',
+  entrypoint: '',
   created_by_user_id: null,
 };
 
@@ -57,6 +58,7 @@ const normalizeImage = (image = {}) => ({
   status: image.status || 'draft',
   base_image: image.base_image || 'ubuntu:22.04',
   dockerfile_body: image.dockerfile_body ?? '',
+  entrypoint: image.entrypoint ?? '',
   created_by_user_id: image.created_by_user_id ?? null,
   updated_at: image.updated_at || null,
 });
@@ -83,7 +85,7 @@ export default function CreateImage() {
 
   // 脏检查：编辑字段与加载快照不一致 → 显示保存键（新建模式填了内容同样触发）
   const formDirty = useMemo(() => {
-    const keys = ['name', 'description', 'status', 'base_image', 'dockerfile_body'];
+    const keys = ['name', 'description', 'status', 'base_image', 'dockerfile_body', 'entrypoint'];
     return keys.some(k => (form[k] ?? '') !== (originalForm[k] ?? ''));
   }, [form, originalForm]);
 
@@ -185,6 +187,9 @@ export default function CreateImage() {
     const name = form.name.trim();
     const baseImage = form.base_image.trim();
     const dockerfileBody = form.dockerfile_body.trimEnd();
+    // entrypoint 的"空"是**有意义的取值**（= 回到平台默认），所以必须原样发空串：
+    // 后端 update 走 exclude_none，发 null 会被丢掉 = 什么都不改，"清空"就成了假功能。
+    const entrypoint = form.entrypoint.trim();
     if (!name) {
       message.warning('请填写模板名称');
       return;
@@ -203,6 +208,7 @@ export default function CreateImage() {
           status: form.status,
           base_image: baseImage,
           dockerfile_body: dockerfileBody,
+          entrypoint,
         });
         message.success('模板已保存');
         await selectImage(form.image_id);
@@ -213,6 +219,7 @@ export default function CreateImage() {
           status: form.status,
           base_image: baseImage,
           dockerfile_body: dockerfileBody,
+          entrypoint,
         });
         message.success('模板已创建');
         await loadImages(keyword);
@@ -421,6 +428,19 @@ export default function CreateImage() {
                   disabled={!canEdit}
                   spellCheck={false}
                   placeholder="WORKDIR /workspace&#10;RUN pip install -r requirements.txt"
+                />
+              </div>
+              <div className="ci-code-section ci-code-entrypoint-row">
+                <span className="ci-code-from-label">ENTRYPOINT</span>
+                <Input.TextArea
+                  className="ci-code-area ci-code-area-entrypoint"
+                  value={form.entrypoint}
+                  onChange={e => updateField('entrypoint', e.target.value)}
+                  disabled={!canEdit}
+                  spellCheck={false}
+                  maxLength={255}
+                  autoSize={{ minRows: 1, maxRows: 2 }}
+                  placeholder="留空 = 平台默认（保持容器存活）"
                 />
               </div>
             </div>
