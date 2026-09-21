@@ -168,7 +168,7 @@ const User = () => {
       {/* 增加span数值，让列更宽 */}
       <Col xs={24} sm={22} md={18} lg={14} offset={0}>
         <Card
-          title="用户信息"
+          title="用户信息管理"
           bordered
           extra={cardExtra}
           className="user-card"
@@ -235,7 +235,7 @@ const User = () => {
             <Form.Item label="当前密码" name="current_password" className="user-form-item">
               <Space>
                 <Input.Password
-                  placeholder="留空以不修改"
+                  placeholder="此处修改的是伏羲平台网页登录密码哦~"
                   className="user-input-300"
                   value={currentPassword}
                   onChange={e => {
@@ -245,7 +245,7 @@ const User = () => {
                   }}
                   status={currentPasswordInvalid ? 'error' : undefined}
                 />
-                <Button type="text" onClick={handleChangePassword}>修改密码</Button>
+                <Button type="text" onClick={handleChangePassword}>修改</Button>
               </Space>
               {passwordMsg ? (
                 <div className="user-msg-wrapper">
@@ -253,7 +253,7 @@ const User = () => {
                 </div>
               ) : null}
             </Form.Item>
-            <Form.Item label="新密码" name="new_password" className="user-form-item">
+            <Form.Item label="新的密码" name="new_password" className="user-form-item">
                 <Input.Password
                   placeholder="输入新密码"
                   className="user-input-300"
