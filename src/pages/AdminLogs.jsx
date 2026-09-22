@@ -60,6 +60,9 @@ const OPERATION_TEXT = {
   create_image: '创建镜像',
   update_image: '更新镜像',
   delete_image: '删除镜像',
+  // 可见性变更（分享事件）：与改内容分开记，出事要能单独捞
+  set_image_valid_range: '调整镜像可见范围',
+  set_image_visible_users: '调整镜像授权名单',
   update_setting: '更新系统设置',
   send_mail: '发送邮件',
   // 定时任务 / 系统事件
@@ -104,6 +107,8 @@ const OPERATION_META = {
   create_image: { color: 'cyan', icon: <FileImageOutlined /> },
   update_image: { color: 'orange', icon: <FileImageOutlined /> },
   delete_image: { color: 'red', icon: <DeleteOutlined /> },
+  set_image_valid_range: { color: 'geekblue', icon: <SafetyCertificateOutlined /> },
+  set_image_visible_users: { color: 'geekblue', icon: <TeamOutlined /> },
   update_setting: { color: 'red', icon: <SafetyCertificateOutlined /> },
   // 系统任务
   send_cleanup_reminder: { color: 'gold', icon: <BellOutlined /> },

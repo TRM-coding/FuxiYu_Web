@@ -126,6 +126,53 @@ export const updateImage = async (payload = {}, timeout = null) => {
   }
 };
 
+export const setImageValidRange = async ({ image_id, valid_range } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.IMAGES_SET_VALID_RANGE, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_id, valid_range }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Set image valid range');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Set image valid range request timed out');
+    throw err;
+  }
+};
+
+// 整组替换（set 语义）：传 [] 即清空名单。仅 valid_range=custom 时可调，其余态后端 400。
+export const setImageVisibleUsers = async ({ image_id, user_ids = [] } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.IMAGES_SET_VISIBLE_USERS, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_id, user_ids }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Set image visible users');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Set image visible users request timed out');
+    throw err;
+  }
+};
+
 export const deleteImage = async (image_id, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {

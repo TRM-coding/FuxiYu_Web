@@ -79,6 +79,9 @@ export const API_ROUTES = {
 	IMAGES_DELETE: '/api/images/delete_image',
 	IMAGES_GET_DETAIL: '/api/images/get_image_detail_information',
 	IMAGES_LIST: '/api/images/list_image_bref_information',
+	// 可见范围两个入口：三态开关 + CUSTOM 名单（整组替换）
+	IMAGES_SET_VALID_RANGE: '/api/images/set_image_valid_range',
+	IMAGES_SET_VISIBLE_USERS: '/api/images/set_image_visible_users',
 
 	// Admin routes
 	ADMIN_OPERATION_LOGS: '/api/admin/operation_logs',

@@ -175,6 +175,20 @@
   grid-column: 1 / -1;
 }
 
+/* 可见范围：三态开关与名单选择器之间的说明行（非 custom 态用） */
+.ci-range-hint {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 只读提示：模板非自己所建时，说明为什么整块编辑区是灰的 */
+.ci-readonly-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .ci-code-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
