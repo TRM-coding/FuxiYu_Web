@@ -82,7 +82,7 @@ npm test
 cd ~/FuxiYu_Next/FuxiYu_Web
 git switch chester-next
 git pull --ff-only
-npm ci
+npm ci --include=dev
 ```
 
 若尚无 `.env`，先复制 `.env.example` 为 `.env`，再编辑。保留实际 Ctrl 地址与端口，不要把已有配置直接覆盖为示例值。Web 配置如下：
@@ -132,11 +132,11 @@ npm start
 
 ### 4. 交给 PM2 托管
 
-删除旧的失败进程或 `pm2 serve` 进程后，使用统一入口：
+前台验证通过并按 Ctrl+C 后，删除旧的失败进程或 `pm2 serve` 进程，按顺序执行统一入口：
 
 ```bash
 pm2 delete FuxiYu
-pm2 start npm --name FuxiYu --cwd "$PWD" -- run start
+pm2 start npm --name FuxiYu -- run start
 pm2 logs FuxiYu --lines 30 --nostream
 pm2 list
 pm2 save
@@ -149,7 +149,7 @@ pm2 startup
 
 ```bash
 git pull --ff-only
-npm ci
+npm ci --include=dev
 npm run build && pm2 restart FuxiYu --update-env
 pm2 logs FuxiYu --lines 30 --nostream
 ```
