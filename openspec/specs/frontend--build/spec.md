@@ -103,11 +103,31 @@
 - **WHEN** 尚未在生产预览中用浏览器测量首屏
 - **THEN** 不得宣称构建调整使首屏更快，也不得声称总依赖代码因此减少
 
+### Requirement: 构建产物不是持续运行入口
+
+生产构建 SHALL 只负责产出 `dist/` 静态产物并正常结束。项目 SHALL 通过 `npm start` 提供持续运行入口，其行为契约由 `frontend--production-server` 承载；`npm run dev` 与 `npm run preview` 保留开发及本地预览用途。构建配置 SHALL 保持构建职责，生产代理与 TLS 由独立启动入口提供。
+
+#### Scenario: 构建只产出静态产物
+
+- **WHEN** 执行 `npm run build`
+- **THEN** 只产出 `dist/` 下的静态文件与分包结果，不产出常驻服务进程
+
+#### Scenario: 构建后的持续运行
+
+- **WHEN** 构建完成后执行 `npm start`
+- **THEN** 常驻入口读取构建产物并提供服务，构建命令自身不常驻
+
+#### Scenario: 不改构建配置补功能
+
+- **WHEN** 需要生产环境的 HTTPS 与 `/api` 代理
+- **THEN** 由生产入口提供；`vite.config.js` 的开发代理与构建分包配置保持原有职责，不因本需求改动
+
 ## Source references
 
 - [vite.config.js](../../../vite.config.js)：`build.rollupOptions.output.manualChunks` 的实际分组逻辑（注释已收敛，逻辑逐字未改）。
 - [src/routes/index.jsx](../../../src/routes/index.jsx)：`React.lazy`、route element 级 `Suspense` 与完整路由表。
 - [src/layouts/LoginLayout.jsx](../../../src/layouts/LoginLayout.jsx)：`ModelViewer` 独立 `lazy`、`ModelStageBoundary` 局部兜底与空占位。
 - [src/components/ModelViewer.jsx](../../../src/components/ModelViewer.jsx)：自身 `renderDisabled` 降级语义（未改动）。
+- [package.json](../../../package.json)：`build` 只产出 `dist/` 后结束，`start` 由常驻入口提供（契约见 [frontend--production-server](../frontend--production-server/spec.md)）。
 - 显式链接本 capability 的两份页面主规格：[frontend--page-create-container](../frontend--page-create-container/spec.md)、[frontend--page-machine-detail-page](../frontend--page-machine-detail-page/spec.md)。
-- 页面 capability 的「构建归属」段落与本 capability 描述同一策略；具体体积/警告数字见 `openspec/changes/fix-web-build/chunk-policy-report.md` 与实现报告，不属于本规格。
+- 页面 capability 的「构建归属」段落与本 capability 描述同一策略；具体体积/警告数字见 `openspec/changes/archive/2026-10-11-fix-web-build/chunk-policy-report.md` 与同目录实现报告，不属于本规格。

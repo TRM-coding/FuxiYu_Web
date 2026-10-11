@@ -48,7 +48,7 @@ npm run build
 npm run preview
 ```
 
-构建产物位于 `dist/`，预览地址以终端输出为准。正式部署时，静态站点需要将同源 `/api` 请求转发给 Ctrl，并保持登录 cookie 的传递。
+构建产物位于 `dist/`，预览地址以终端输出为准。常驻运行使用下面的 PM2 流程；`build` 生成文件后结束，`start` 持续提供这些文件和同源 API。
 
 ### 5. 运行检查
 
@@ -72,6 +72,92 @@ $env:NODE_OPTIONS = '--no-experimental-webstorage'
 npm test
 ```
 
+## PM2 常驻运行
+
+以下流程只使用本项目的 Node 服务和 PM2，适用于已安装 PM2 的 Linux 机器。Node.js 至少使用 20.19.0，建议采用项目 CI 使用的 Node 22。
+
+### 1. 更新代码与依赖
+
+```bash
+cd ~/FuxiYu_Next/FuxiYu_Web
+git switch chester-next
+git pull --ff-only
+npm ci
+```
+
+若尚无 `.env`，先复制 `.env.example` 为 `.env`，再编辑。保留实际 Ctrl 地址与端口，不要把已有配置直接覆盖为示例值。Web 配置如下：
+
+```dotenv
+ENABLE_SSL=true
+WEB_IP=192.168.5.230
+WEB_PORT=5173
+```
+
+同时确认 `CTRL_IP` 与 `CTRL_PORT` 指向实际 Ctrl 服务；这里只填裸 IP 和端口。若旧配置或 shell 中还有 `VITE_ENABLE_SSL`，移除它或设为 `true`，因为兼容键优先于 `ENABLE_SSL`。上游默认 HTTPS，Web 默认兼容上游自签证书，受信任证书环境可设置 `CTRL_TLS_VERIFY=true` 开启上游校验。只有 Ctrl 确实使用 HTTP 时才显式配置 `CTRL_SCHEME=http`。
+
+### 2. 准备证书与构建
+
+```bash
+npm run gen-cert
+npm run build
+```
+
+证书脚本会保留已有 `certs/web.pem` 和 `certs/web-key.pem`。如果提示旧证书缺少当前 `WEB_IP`，先确认它是需要替换的自签证书，再备份并重新生成：
+
+```bash
+backup_dir="certs/bak/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$backup_dir"
+mv certs/web.pem certs/web-key.pem "$backup_dir/"
+npm run gen-cert
+```
+
+自备受信任证书也使用这两个文件名，并应包含实际访问 IP 或域名。私钥留在服务器。
+
+### 3. 先前台验证
+
+```bash
+npm start
+```
+
+启动日志应显示 HTTPS 监听和正确的 Ctrl 上游地址。在另一个终端执行：
+
+```bash
+curl -k -I https://127.0.0.1:5173/
+curl -k -i https://127.0.0.1:5173/api/users/me/permissions
+```
+
+首页应返回 200；未登录的权限请求应返回 Ctrl 的 401 JSON，不能返回首页 HTML。502 表示 Web 无法连接 Ctrl，504 表示代理超时，需检查上游地址、协议和服务状态。`-k` 仅用于这次自签环境的连通检查。
+
+浏览器使用 **`https://192.168.5.230:5173/`**。确认能登录、刷新页面并查看容器后，在运行 `npm start` 的终端按 Ctrl+C。
+
+### 4. 交给 PM2 托管
+
+删除旧的失败进程或 `pm2 serve` 进程后，使用统一入口：
+
+```bash
+pm2 delete FuxiYu
+pm2 start npm --name FuxiYu --cwd "$PWD" -- run start
+pm2 logs FuxiYu --lines 30 --nostream
+pm2 list
+pm2 save
+pm2 startup
+```
+
+若之前没有名为 FuxiYu 的进程，删除命令提示不存在可继续。确认状态稳定且重启次数没有持续增长，再保存进程列表。`pm2 save` 保存当前列表；`pm2 startup` 只打印系统启动配置命令，**还需要复制并执行其输出的完整 sudo 命令**，然后再执行 `pm2 save`。以后 PM2 会按保存的列表恢复服务。
+
+### 5. 后续更新
+
+```bash
+git pull --ff-only
+npm ci
+npm run build && pm2 restart FuxiYu --update-env
+pm2 logs FuxiYu --lines 30 --nostream
+```
+
+只有构建成功才重启。原地构建会修改 `dist/`，并非原子发布；失败时应先检查产物，不应假设旧文件完整保留。
+
+`ERR_SSL_PROTOCOL_ERROR` 通常表示 HTTPS 请求连到了 HTTP 服务或错误端口。上述入口默认提供 HTTPS；自签证书产生的“不受信任”或证书地址不匹配提示属于另一类问题，需要客户端信任公开证书及正确的 SAN。自签证书不会自动变成浏览器受信任证书。
+
 ## 目录结构
 
 ```text
@@ -85,7 +171,7 @@ src/configs/         # API 路径、超时与网络配置
 src/utils/           # 容器状态、校验及通用工具
 src/assets/          # 图标、模型等静态资源
 src/test/            # Vitest 交互测试
-scripts/             # 本地开发证书脚本
+scripts/             # 证书、常驻服务与集成测试
 openspec/specs/      # 按页面组织的行为契约
 vite.config.js       # 开发代理、HTTPS 与测试配置
 ```
