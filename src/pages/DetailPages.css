@@ -698,6 +698,40 @@
   margin-bottom: 2px;
 }
 
+/* 滑条与数字输入同口径：两者共用同一 min/max/step 与同一收敛函数 */
+.machine-limit-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.machine-limit-control .ant-slider {
+  flex: 1;
+  min-width: 0;
+  margin-inline: 0;
+}
+
+.machine-limit-input {
+  width: 92px;
+  flex: 0 0 auto;
+}
+
+/* 硬件容量：与机器配置限额分开写，避免把配置上限读成实时空闲量 */
+.machine-limit-capacity {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #8c8c8c;
+}
+
+/* 自动收敛的可见提示：共享上限因内存上限下调而变小 */
+.machine-limit-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #a8071a;
+}
+
 .machine-limit-slider .cc-mono {
   font-variant-numeric: tabular-nums;
 }

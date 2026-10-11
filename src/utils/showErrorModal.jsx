@@ -118,7 +118,16 @@ export const routeErrorMap = {
       internal_error: '建档过程中出现内部错误，请查看日志',
     },
     '/machines/remove_machine': { remove_failed: '删除机器失败' },
-    '/machines/update_machine': { update_failed: '更新机器失败', machine_not_found: '机器不存在', machine_maintenance: '机器正在维护中', machine_offline: '机器离线' },
+    '/machines/update_machine': {
+      update_failed: '更新机器失败',
+      machine_not_found: '机器不存在',
+      machine_maintenance: '机器正在维护中',
+      machine_offline: '机器离线',
+      // 限额编辑被拒：与容器创建的超限文案分开，先看具体 message 里的字段与数值
+      invalid_config: '机器配置限额无效或超出硬件容量',
+      invalid_payload: '机器配置限额参数无效',
+      missing_field: '缺少必填字段',
+    },
     '/machines/get_detail_information': { machine_not_found: '机器不存在', machine_offline: '机器离线', machine_maintenance: '机器正在维护中' },
     '/machines/list_all_machine_bref_information': { list_failed: '获取机器列表失败', machine_offline: '机器离线' },
     '/machines/renew_machine_trust': {
@@ -163,6 +172,44 @@ export const routeErrorMap = {
       cannot_delete_system_template: '系统模板不可删除'
     }
   };
+
+// 占位/无信息量文案：这些不算「具体信息」，不能让它们抵掉中文原因映射
+const PLACEHOLDER_MESSAGES = new Set([
+  '发生错误', '发生错误，请稍后重试或联系管理员。', '未知错误', '请求失败', '失败',
+  'error', 'Error', 'failed', 'Failed', 'undefined', 'null',
+]);
+
+// 网络类失败（fetch 抛错 / 超时）：没有 HTTP 状态也没有 error_reason 时给中文兜底，
+// 不把 "Failed to fetch" 这类英文原文直接抛给用户。
+const NETWORK_FAILURE_PATTERN = /(failed to fetch|networkerror|network request failed|fetch failed|load failed|err_connection|err_network|econnrefused|etimedout|network error|timed out|超时)/i;
+
+/** 后端 message 是否算「具体信息」（能带出申请值/上限等细节、不是占位或原因名本身） */
+const isSpecificMessage = (text, errorReason) => {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (PLACEHOLDER_MESSAGES.has(t)) return false;
+  if (errorReason && t.toLowerCase() === String(errorReason).toLowerCase()) return false;
+  if (/^\d{3}\s*错误$/.test(t)) return false;
+  return true;
+};
+
+/** 路由优先、其次全表，找到 error_reason 的中文映射；未收录返回 null */
+const resolveReasonMessage = (errorReason, routePath) => {
+  if (!errorReason) return null;
+  if (routePath) {
+    for (const key of Object.keys(routeErrorMap)) {
+      if (routePath.endsWith(key) || routePath.indexOf(key) !== -1) {
+        const map = routeErrorMap[key] || {};
+        if (map[errorReason]) return map[errorReason];
+      }
+    }
+  }
+  for (const key of Object.keys(routeErrorMap)) {
+    const map = routeErrorMap[key] || {};
+    if (map[errorReason]) return map[errorReason];
+  }
+  return null;
+};
 
 const showErrorModal = ({ title = '错误', message = '发生错误', status, route } = {}) => {
   if (typeof document === 'undefined') return Promise.resolve({ confirmed: false, status });
@@ -267,36 +314,32 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
     errorReason = message.error_reason || message.error || (message.body && message.body.error_reason) || (message.data && message.data.error_reason) || null;
   }
 
+  // 后端具体 message（可能带申请值与上限等数字）与中文原因映射分开保存：
+  // 具体 message 优先保留，中文映射只作为补充行，不再反过来覆盖数值。
+  // 未收录的原因也不硬套某个已知错误（例如把任何失败都说成超限）。
+  const rawMessage = String(displayMessage || '').trim();
+  const mappedReasonMessage = resolveReasonMessage(errorReason, routePath);
+  const specificMessage = isSpecificMessage(rawMessage, errorReason) ? rawMessage : null;
+  const hasStatusCode = Number.isFinite(Number(code)) || Number.isFinite(Number(status));
+  const networkFailure = !errorReason && !hasStatusCode && NETWORK_FAILURE_PATTERN.test(rawMessage);
 
-  // If an explicit error_reason exists, prefer it for display
-  if (errorReason) {
-    let found = false;
-    // prefer route-specific mapping when routePath is available
-    if (routePath) {
-      for (const key of Object.keys(routeErrorMap)) {
-        if (routePath.endsWith(key) || routePath.indexOf(key) !== -1) {
-          const map = routeErrorMap[key] || {};
-          if (map[errorReason]) {
-            displayMessage = map[errorReason];
-            found = true;
-            break;
-          }
-        }
-      }
+  let secondaryMessage = '';
+  if (networkFailure) {
+    displayMessage = '网络异常或请求超时，无法连接到服务器，请检查网络后重试。';
+  } else if (specificMessage) {
+    displayMessage = specificMessage;
+    if (mappedReasonMessage && mappedReasonMessage !== specificMessage) {
+      secondaryMessage = `原因：${mappedReasonMessage}`;
     }
-    // fallback: search all mappings for the errorReason (global match)
-    if (!found) {
-      for (const key of Object.keys(routeErrorMap)) {
-        const map = routeErrorMap[key] || {};
-        if (map[errorReason]) {
-          displayMessage = map[errorReason];
-          found = true;
-          break;
-        }
-      }
-    }
-    if (!extraDetails) extraDetails = {};
+  } else if (mappedReasonMessage) {
+    displayMessage = mappedReasonMessage;
+  } else if (errorReason) {
+    displayMessage = '发生未知错误，请重试或联系管理员。';
+    secondaryMessage = `未收录的错误原因：${errorReason}`;
+  } else {
+    displayMessage = '发生错误，请稍后重试或联系管理员。';
   }
+  if (!extraDetails) extraDetails = {};
 
   // Provide a localized hint for common HTTP status codes to help users understand errors.
   let hint = '';
@@ -363,6 +406,9 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
         content={(
           <div style={{ background: '#fff2f0', padding: 12, borderRadius: 4, border: '1px solid #ffccc7' }}>
             <div style={{ color: '#a8071a', marginBottom: 8 }}>{displayMessage}</div>
+            {secondaryMessage ? (
+              <div style={{ color: '#a8071a', marginBottom: 8 }}>{secondaryMessage}</div>
+            ) : null}
             {hint ? <div style={{ color: '#a8071a', opacity: 0.9 }}>{hint}</div> : null}
           </div>
         )}

@@ -1,5 +1,8 @@
 import { BACKEND_ORIGIN, REQUEST_TIMEOUT, CREDENTIALS, API_ROUTES } from '../configs/backend_config';
-import { createController, unregisterController } from '../utils/requestManager';
+// abortAll 与 createController/unregisterController 同源，统一静态导入：
+// 同一模块既静态又动态导入会让 Rollup 无法把它拆进独立 chunk（混合导入警告）。
+// 语义不变：401/403 仍然只发 'auth:expired' 信号，由 App 级监听器统一处置。
+import { createController, unregisterController, abortAll } from '../utils/requestManager';
 
 const createTimeoutController = (timeout) => {
   const controller = createController();
@@ -19,7 +22,7 @@ const ensureOk = async (res, action) => {
     err.route = res.url;
     err.body = body;
     if (res.status === 401 || res.status === 403) {
-      try { const { abortAll } = await import('../utils/requestManager'); abortAll('auth'); } catch (e) {}
+      try { abortAll('auth'); } catch (e) {}
       // 401 只发信号（abortAll → 'auth:expired'），统一由 App 级监听器处置：
       // 不碰 localStorage（本地身份已废除）/ cookie（HttpOnly，删不掉）/ 硬跳转（会打风暴）。
     }

@@ -15,7 +15,9 @@ const options = [
 
 
 import { listAllMachineBrefInformation, getDetailInformation } from '../api/machine_api';
-import { isValidName, isValidImageName } from '../utils/validateCmdArg';
+// anyUnsafe 与 isValidName 同源，统一静态导入：Apply 里原本对 validateCmdArg 同时
+// 静态 + 动态导入，Rollup 因此无法把该模块拆出独立 chunk（混合导入警告）。
+import { isValidName, anyUnsafe } from '../utils/validateCmdArg';
 import { createContainer } from '../api/container_api';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import ConfirmModal from '../components/ConfirmModal';
@@ -322,11 +324,13 @@ const Apply = () => {
                   const name = vals.NAME || '';
                   const image = vals.image || '';
                   const pub = vals.public_key || '';
-                  // lazy import to avoid bundler warnings
-                  import('../utils/validateCmdArg').then(mod => {
-                    const unsafe = mod.anyUnsafe(name, image, pub);
-                    setAddContainerUnsafe(Boolean(unsafe));
-                  }).catch(() => setAddContainerUnsafe(false));
+                  // 静态导入后同步校验；保留原动态分支的失败兜底：校验函数自身异常时
+                  // 置 false（未检出风险），与旧代码 .catch(() => setAddContainerUnsafe(false)) 一致
+                  try {
+                    setAddContainerUnsafe(Boolean(anyUnsafe(name, image, pub)));
+                  } catch {
+                    setAddContainerUnsafe(false);
+                  }
 
                   // check numeric limits against machine's max values and show errors
                   const errs = {};

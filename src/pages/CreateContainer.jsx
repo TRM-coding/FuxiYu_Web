@@ -31,31 +31,72 @@ const normalizeImage = (image = {}) => {
   };
 };
 
-// 配额行：滑条为主、读数加粗、窄输入框为辅（与「编辑机器」弹窗同一套交互语言）
-const QuotaRow = ({ label, unit, limit, value, min = 1, onChange, disabled }) => {
-  const lmt = typeof limit === 'number' && limit > 0 ? limit : null;
-  const locked = disabled || lmt == null;
+// ── 限额语义：三层上限不能混为一谈 ──
+//   硬件容量      = 机器物理规格（cpu_core_number / memory_size_gb / gpu_number）
+//   机器配置限额  = 管理员在机器详情页设定的可分配上限（max_*）
+//   本次可申请上限 = 机器配置限额再叠加本次容器的约束（共享内存不得超过本次申请内存）
+// 取值语义：数值（含 0）是已知上限，0 表示该项不可分配；null/undefined/非数才是「未知」。
+// 未知不能伪装成无限，也不能拿硬件容量顶上。
+const knownLimit = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// 收敛到有效上限；上限未知时收敛到最小值（不假定无限）。
+const clampQuota = (v, limit, min) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return min;
+  if (limit == null) return min;
+  return Math.min(Math.max(n, min), Math.max(limit, min));
+};
+
+const limitText = (limit, unit) => (limit == null ? '未知' : `${limit} ${unit}`);
+
+// 配额行：滑条为主、数字输入为辅，两者的 min/max/step 完全一致，取值统一走同一收敛函数。
+// 头部固定给出「当前申请值」与「本次可申请上限」，元信息再区分硬件容量与机器配置限额。
+const QuotaRow = ({
+  rowKey, label, unit, min = 1, value,
+  effectiveLimit, machineLimit, capacity, detail,
+  onChange, disabled, disabledHint,
+}) => {
+  const known = effectiveLimit != null;
+  const max = known ? Math.max(effectiveLimit, min) : min;
+  const locked = disabled || !known;
+  const shown = value == null ? min : value;
+  const lockedHint = disabled && disabledHint
+    ? disabledHint
+    : (!known
+      ? '机器配置限额未获取到，暂不可调整'
+      : (effectiveLimit <= 0 ? '本机该项不可分配' : ''));
   return (
-    <div className="cc-quota-row">
+    <div className="cc-quota-row" data-quota={rowKey}>
       <div className="cc-quota-row-head">
         <label className="cc-field-label">{label}</label>
-        <Typography.Text type="secondary" className="cc-quota-limit">上限 {lmt != null ? `${lmt} ${unit}` : '—'}</Typography.Text>
+      </div>
+      <div className="cc-quota-row-figures">
+        <span>当前申请 <b className="cc-mono">{shown} {unit}</b></span>
+        <span>本次可申请上限 <b className="cc-mono">{limitText(effectiveLimit, unit)}</b></span>
+      </div>
+      <div className="cc-quota-row-meta">
+        <span>硬件容量 {limitText(capacity, unit)}</span>
+        <span>机器配置限额 {limitText(machineLimit, unit)}</span>
+        {detail && <span className="cc-quota-detail">{detail}</span>}
       </div>
       <div className="cc-quota-row-controls">
         <Slider
           className="cc-quota-slider"
           min={min}
-          max={lmt ?? min}
+          max={max}
           step={1}
-          value={value ?? min}
+          value={shown}
           onChange={onChange}
           disabled={locked}
         />
-        <span className="cc-quota-value">{value ?? min} {unit}</span>
         <InputNumber
           className="cc-quota-input"
           min={min}
-          max={lmt}
+          max={max}
           step={1}
           precision={0}
           value={value}
@@ -63,32 +104,31 @@ const QuotaRow = ({ label, unit, limit, value, min = 1, onChange, disabled }) =>
           disabled={locked}
         />
       </div>
+      {lockedHint ? <Typography.Text type="secondary" className="cc-quota-hint">{lockedHint}</Typography.Text> : null}
     </div>
   );
 };
 
 // 机器资源计量条（与「机器管理」rail 同款语义色：CPU 蓝 / 内存绿 / GPU 紫）
-const ResourceMeter = ({ label, cur, max, unit = '', tone = 'cpu' }) => {
-  const maxN = Number(max || 0);
-  const pct = maxN > 0 ? Math.min(Math.round((Number(cur || 0) / maxN) * 100), 100) : 0;
+// 左边是硬件容量（物理规格），右边是机器配置限额（可分配）；条子画的是两者的配置比例，
+// 不是实时空闲量。
+const ResourceMeter = ({ label, capacity, allocatable, unit = '', tone = 'cpu' }) => {
+  const cap = knownLimit(capacity);
+  const alloc = knownLimit(allocatable);
+  const pct = cap != null && cap > 0 && alloc != null
+    ? Math.min(Math.round((alloc / cap) * 100), 100)
+    : 0;
   return (
     <span className="cc-machine-meter">
       <span className="cc-machine-meter-head">
         <span>{label}</span>
-        <span className="cc-mono">{cur ?? '-'}{unit} / {max ?? '-'}{unit}</span>
+        <span className="cc-mono">硬件 {cap == null ? '未知' : `${cap}${unit}`} · 可分配 {alloc == null ? '未知' : `${alloc}${unit}`}</span>
       </span>
       <span className="cc-machine-meter-track">
         <span className={`cc-machine-meter-fill ${tone}`} style={{ width: `${pct}%` }} />
       </span>
     </span>
   );
-};
-
-const clampNum = (v, max, min) => {
-  if (v == null) return null;
-  const n = Number(v);
-  const top = typeof max === 'number' && max > 0 ? max : n;
-  return Math.min(Math.max(n, min), Math.max(top, min));
 };
 
 const CreateContainer = () => {
@@ -123,6 +163,7 @@ const CreateContainer = () => {
   const [sharedGb, setSharedGb] = useState(null);
   const [publicKey, setPublicKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [quotaError, setQuotaError] = useState(null);
 
   // 代建门禁：持有 container:manage 才显示 ROOT 用户选择器
   const [hasManage, setHasManage] = useState(false);
@@ -195,8 +236,9 @@ const CreateContainer = () => {
             gpu_type: detail.gpu_type ?? '',
             max_cpu_core_number: detail.max_cpu_core_number ?? null,
             max_memory_gb: detail.max_memory_gb ?? null,
-            max_gpu_number: detail.max_gpu_number ?? 0,
-            max_shared_gb: detail.max_shared_gb ?? 0,
+            // 0 是「已知的 0 上限（不可分配）」，null 才是「未知」——不能让 null 落成 0
+            max_gpu_number: detail.max_gpu_number ?? null,
+            max_shared_gb: detail.max_shared_gb ?? null,
           };
         } catch (err) {
           console.warn('detail fetch failed for machine', mid, err?.message);
@@ -242,6 +284,24 @@ const CreateContainer = () => {
   // 仅运行中的机器可创建（维护/离线机器不可选）
   const onlineMachines = machines.filter(m => (m.machine_status || '').toLowerCase() === 'online');
 
+  // 切换机器：四项配额一起收敛进新机器的机器配置限额（未知上限收敛到最小值），
+  // 共享内存还要同时受「本次申请内存」约束，避免留下必然被后端拒绝的旧值。
+  const computeQuotaForMachine = (m) => {
+    const isGpu = (m.machine_type || '').toUpperCase() === 'GPU';
+    const cpuLimit = knownLimit(m.max_cpu_core_number);
+    const memLimit = knownLimit(m.max_memory_gb);
+    const gpuLimitNext = isGpu ? knownLimit(m.max_gpu_number) : 0;
+    const sharedLimit = knownLimit(m.max_shared_gb);
+    const nextMemory = clampQuota(memoryGb ?? 1, memLimit, 1);
+    const nextSharedTop = sharedLimit == null ? null : Math.min(sharedLimit, nextMemory);
+    return {
+      cpu: clampQuota(cpuCount ?? 1, cpuLimit, 1),
+      gpu: gpuLimitNext == null ? 0 : clampQuota(gpuCount ?? 1, gpuLimitNext, 0),
+      memory: nextMemory,
+      shared: clampQuota(sharedGb ?? 0, nextSharedTop, 0),
+    };
+  };
+
   // 选择机器：配额初始化/收敛进新机器的上限；CPU 机器 GPU 恒为 0。
   // 代建者：拉取该机器已授权用户作为 ROOT 用户候选，默认当前用户。
   const handleSelectMachine = async (m) => {
@@ -252,16 +312,18 @@ const CreateContainer = () => {
       setCpuCount(1);
       setMemoryGb(1);
       setSharedGb(0);
+      setQuotaError(null);
       setRootUsers([]);
       setOwnerUserId(null);
       return;
     }
     setSelectedMachine(m);
-    const isGpu = (m.machine_type || '').toUpperCase() === 'GPU';
-    setGpuCount(!isGpu || (m.max_gpu_number ?? 0) <= 0 ? 0 : clampNum(gpuCount ?? 1, m.max_gpu_number, 0));
-    setCpuCount(clampNum(cpuCount ?? 1, m.max_cpu_core_number, 1));
-    setMemoryGb(clampNum(memoryGb ?? 1, m.max_memory_gb, 1));
-    setSharedGb(clampNum(sharedGb ?? 0, m.max_shared_gb, 0));
+    const nextQuota = computeQuotaForMachine(m);
+    setGpuCount(nextQuota.gpu);
+    setCpuCount(nextQuota.cpu);
+    setMemoryGb(nextQuota.memory);
+    setSharedGb(nextQuota.shared);
+    setQuotaError(null);
     if (!hasManage) return;
     setRootUsersLoading(true);
     try {
@@ -295,7 +357,70 @@ const CreateContainer = () => {
   };
 
   const machineType = (selectedMachine?.machine_type || '').toUpperCase();
-  const gpuLimit = machineType === 'GPU' ? (selectedMachine?.max_gpu_number ?? 0) : 0;
+  const isGpuMachine = machineType === 'GPU';
+
+  // 机器物理规格（硬件容量）
+  const hardwareCapacity = {
+    cpu: knownLimit(selectedMachine?.cpu_core_number),
+    memory: knownLimit(selectedMachine?.memory_size_gb),
+    gpu: knownLimit(selectedMachine?.gpu_number),
+  };
+
+  // 机器配置限额（管理员设定的 max_*）：0 是「已知不可分配」，null 是「未知」
+  const machineLimits = {
+    cpu: knownLimit(selectedMachine?.max_cpu_core_number),
+    memory: knownLimit(selectedMachine?.max_memory_gb),
+    gpu: selectedMachine ? (isGpuMachine ? knownLimit(selectedMachine?.max_gpu_number) : 0) : null,
+    shared: knownLimit(selectedMachine?.max_shared_gb),
+  };
+
+  // 本次可申请上限：共享内存再叠加本次申请内存的约束 → min(max_shared_gb, 本次 MEMORY)
+  const effectiveLimits = {
+    cpu: machineLimits.cpu,
+    memory: machineLimits.memory,
+    gpu: machineLimits.gpu,
+    shared: machineLimits.shared == null
+      ? null
+      : Math.min(machineLimits.shared, knownLimit(memoryGb) ?? machineLimits.shared),
+  };
+
+  // 降内存/切机器后重算共享内存：已有值超过有效上限就收敛到上限，
+  // 不留一个提交必然被后端拒绝的组合。
+  useEffect(() => {
+    if (!selectedMachine) return;
+    if (effectiveLimits.shared == null) {
+      if (sharedGb) setSharedGb(0);
+      return;
+    }
+    if (sharedGb != null && sharedGb > effectiveLimits.shared) setSharedGb(effectiveLimits.shared);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMachine, memoryGb, sharedGb, effectiveLimits.shared]);
+
+  // 滑条与数字输入走同一个收敛函数，保证两者读数与上口径一致
+  const makeQuotaChange = (key, setter, min) => (next) => {
+    setter(clampQuota(next, effectiveLimits[key], min));
+    setQuotaError(null);
+  };
+
+  // 提交前超限检查：只有已知上限才判超限；未知上限的行已锁在最小值，不会造出超限 payload。
+  const collectQuotaViolations = () => {
+    const rows = [
+      { key: 'gpu', label: 'GPU 数', unit: '块', value: gpuCount ?? 0 },
+      { key: 'cpu', label: 'CPU 核数', unit: '核', value: cpuCount ?? 1 },
+      { key: 'memory', label: '内存', unit: 'GB', value: memoryGb ?? 1 },
+      { key: 'shared', label: '共享内存', unit: 'GB', value: sharedGb ?? 0 },
+    ];
+    const violations = rows
+      .filter(r => effectiveLimits[r.key] != null && Number(r.value) > Number(effectiveLimits[r.key]))
+      .map(r => `${r.label} 当前申请 ${r.value} ${r.unit}，本次可申请上限 ${effectiveLimits[r.key]} ${r.unit}`);
+    // 交叉约束单独兜底：共享内存不得超过本次申请内存（不依赖机器是否返回 max_shared_gb）
+    const sharedN = Number(sharedGb || 0);
+    const memoryN = Number(memoryGb || 0);
+    if (sharedN > memoryN) {
+      violations.push(`共享内存 当前申请 ${sharedN} GB，不得超过本次申请内存 ${memoryN} GB`);
+    }
+    return violations;
+  };
 
   const handleSubmit = async () => {
     if (!selectedImage || !selectedMachine) {
@@ -312,8 +437,22 @@ const CreateContainer = () => {
       setNameInvalid(true);
       return;
     }
+    // 超限就不发请求：把申请值与上限一并说清楚，避免后端再拒一次
+    const violations = collectQuotaViolations();
+    if (violations.length > 0) {
+      const text = violations.join('；');
+      setQuotaError(text);
+      message.warning(`配额超出本次可申请上限：${text}`);
+      return;
+    }
+    setQuotaError(null);
     const machineId = selectedMachine.machine_id ?? selectedMachine.id;
-    const gpuList = gpuCount > 0 ? Array.from({ length: gpuCount }, (_, i) => i) : [];
+    // payload 再按有效上限收敛一次（与页面读数同口径），保证发出去的组合一定在限额内
+    const safeGpu = clampQuota(gpuCount ?? 0, effectiveLimits.gpu, 0);
+    const safeCpu = clampQuota(cpuCount ?? 1, effectiveLimits.cpu, 1);
+    const safeMemory = clampQuota(memoryGb ?? 1, effectiveLimits.memory, 1);
+    const safeShared = clampQuota(sharedGb ?? 0, Math.min(effectiveLimits.shared ?? safeMemory, safeMemory), 0);
+    const gpuList = safeGpu > 0 ? Array.from({ length: safeGpu }, (_, i) => i) : [];
     const payload = {
       // 普通用户不发 owner_user_id，后端归一为自己；代建者显式指定归属用户
       ...(hasManage && ownerUserId ? { owner_user_id: ownerUserId } : {}),
@@ -323,10 +462,10 @@ const CreateContainer = () => {
       image_id: selectedImage.image_id,
       container: {
         GPU_LIST: gpuList,
-        CPU_NUMBER: cpuCount || 1,
-        MEMORY: memoryGb || 1,
+        CPU_NUMBER: safeCpu,
+        MEMORY: safeMemory,
         NAME: name.trim(),
-        shared_memory: sharedGb || 0,
+        shared_memory: safeShared,
       },
       public_key: publicKey || '',
     };
@@ -432,9 +571,9 @@ const CreateContainer = () => {
                     <span className="cc-machine-spec">{m.machine_ip} · {m.machine_type}</span>
                     <span className="cc-machine-status"><i className="cc-dot" />运行中</span>
                     <span className="cc-machine-meters">
-                      <ResourceMeter label="CPU" cur={m.cpu_core_number} max={m.max_cpu_core_number} unit="核" />
-                      <ResourceMeter label="内存" cur={m.memory_size_gb} max={m.max_memory_gb} unit="G" tone="memory" />
-                      {isGpu && <ResourceMeter label="GPU" cur={m.gpu_number} max={m.max_gpu_number} tone="gpu" />}
+                      <ResourceMeter label="CPU" capacity={m.cpu_core_number} allocatable={m.max_cpu_core_number} unit="核" />
+                      <ResourceMeter label="内存" capacity={m.memory_size_gb} allocatable={m.max_memory_gb} unit="G" tone="memory" />
+                      {isGpu && <ResourceMeter label="GPU" capacity={m.gpu_number} allocatable={m.max_gpu_number} tone="gpu" />}
                     </span>
                   </button>
                 );
@@ -450,7 +589,7 @@ const CreateContainer = () => {
               <span className="cc-step-no">03</span>
               <Typography.Text strong className="cc-panel-title">输入配置</Typography.Text>
             </div>
-            <Typography.Text type="secondary" className="cc-panel-sub">配额上限随所选机器自动约束</Typography.Text>
+            <Typography.Text type="secondary" className="cc-panel-sub">上限随机器配置限额与本次申请内存联动，不是实时空闲量</Typography.Text>
           </div>
 
           <div className="cc-form-groups">
@@ -518,30 +657,47 @@ const CreateContainer = () => {
             >
               <div className="cc-quota-grid">
                 <QuotaRow
+                  rowKey="gpu"
                   label="GPU 数" unit="块"
-                  limit={gpuLimit} value={gpuCount} min={0}
-                  onChange={setGpuCount}
-                  disabled={!selectedMachine || machineType !== 'GPU'}
+                  effectiveLimit={effectiveLimits.gpu} machineLimit={machineLimits.gpu} capacity={hardwareCapacity.gpu}
+                  value={gpuCount} min={0}
+                  onChange={makeQuotaChange('gpu', setGpuCount, 0)}
+                  disabled={!selectedMachine || !isGpuMachine}
+                  disabledHint={!selectedMachine ? '请先选择机器' : '本机为 CPU 机器，不提供 GPU'}
                 />
                 <QuotaRow
+                  rowKey="cpu"
                   label="CPU 核数" unit="核"
-                  limit={selectedMachine?.max_cpu_core_number ?? null} value={cpuCount} min={1}
-                  onChange={setCpuCount}
+                  effectiveLimit={effectiveLimits.cpu} machineLimit={machineLimits.cpu} capacity={hardwareCapacity.cpu}
+                  value={cpuCount} min={1}
+                  onChange={makeQuotaChange('cpu', setCpuCount, 1)}
                   disabled={!selectedMachine}
+                  disabledHint="请先选择机器"
                 />
                 <QuotaRow
+                  rowKey="memory"
                   label="内存" unit="GB"
-                  limit={selectedMachine?.max_memory_gb ?? null} value={memoryGb} min={1}
-                  onChange={setMemoryGb}
+                  effectiveLimit={effectiveLimits.memory} machineLimit={machineLimits.memory} capacity={hardwareCapacity.memory}
+                  value={memoryGb} min={1}
+                  onChange={makeQuotaChange('memory', setMemoryGb, 1)}
                   disabled={!selectedMachine}
+                  disabledHint="请先选择机器"
                 />
                 <QuotaRow
+                  rowKey="shared"
                   label="共享内存" unit="GB"
-                  limit={selectedMachine?.max_shared_gb ?? 0} value={sharedGb} min={0}
-                  onChange={setSharedGb}
+                  effectiveLimit={effectiveLimits.shared} machineLimit={machineLimits.shared} capacity={hardwareCapacity.memory}
+                  detail={`共享内存不得超过本次申请内存 ${memoryGb ?? '-'} GB，故上限取机器配置限额与该值的较小者`}
+                  value={sharedGb} min={0}
+                  onChange={makeQuotaChange('shared', setSharedGb, 0)}
                   disabled={!selectedMachine}
+                  disabledHint="请先选择机器"
                 />
               </div>
+              <div className="cc-quota-legend">
+                硬件容量＝机器物理规格；机器配置限额＝管理员在机器详情页设定的可分配上限；本次可申请上限＝机器配置限额再叠加本次申请的限制。以上均为配置上限，非实时空闲量。
+              </div>
+              {quotaError ? <div className="cc-quota-error" role="alert">{quotaError}</div> : null}
             </Card>
           </div>
 
@@ -550,7 +706,7 @@ const CreateContainer = () => {
             <div className="cc-summary">
               <span className="cc-summary-item">环境 <b className="cc-mono">{selectedImage?.name || selectedImage?.base_image || '—'}</b></span>
               <span className="cc-summary-item">机器 <b className="cc-mono">{selectedMachine?.machine_name || '—'}</b></span>
-              <span className="cc-summary-item">配额 <b className="cc-mono">{gpuCount || 0} GPU / {cpuCount || 1} 核 / {memoryGb || 1}G</b></span>
+              <span className="cc-summary-item">配额 <b className="cc-mono">{gpuCount || 0} GPU / {cpuCount || 1} 核 / {memoryGb || 1}G / 共享 {sharedGb || 0}G</b></span>
             </div>
             <Button
               type="primary"

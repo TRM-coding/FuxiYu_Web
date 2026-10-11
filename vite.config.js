@@ -54,5 +54,21 @@ export default defineConfig(({ mode }) => {
       setupFiles: './src/test/setup.js',
       globals: true,
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined
+            if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
+              return 'vendor-react'
+            }
+            if (/[\\/]node_modules[\\/]three[\\/]examples[\\/]/.test(id)) return 'vendor-three-addons'
+            if (/[\\/]node_modules[\\/]three[\\/]build[\\/]three\.module\.js/.test(id)) return 'vendor-three-webgl'
+            if (/[\\/]node_modules[\\/]three[\\/]/.test(id)) return 'vendor-three-core'
+            return undefined
+          },
+        },
+      },
+    },
   }
 })

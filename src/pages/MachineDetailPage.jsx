@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Col, Input, message, Modal, Row, Select, Slider, Spin, Switch, Tag, Typography } from 'antd';
+import { Button, Col, Input, InputNumber, message, Modal, Row, Select, Slider, Spin, Switch, Tag, Typography } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, DesktopOutlined, EditOutlined, ReloadOutlined, SafetyCertificateOutlined, SaveOutlined } from '@ant-design/icons';
 import { getDetailInformation, getMachineStatus, removeMachine, renewMachineTrust, setMachineMaintenance, updateMachine } from '../api/machine_api';
 import { POLL_TIMEOUT } from '../configs/backend_config';
@@ -14,6 +14,25 @@ import { getMachineStatusDisplay } from '../utils/statusDisplay';
 import './DetailPages.css';
 
 const GPU_COLORS = ['#1677ff', '#13a06f', '#7c3aed', '#f59e0b', '#ef4444', '#0f766e'];
+
+// 限额编辑的取值口径（与创建页同一套语义）：
+//   硬件容量 = 机器物理规格；机器配置限额 = 这里编辑的 max_*；
+//   数值（含 0）是已知上限，null/undefined/非数才是「未知」，未知不假定无限。
+const knownLimit = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// 把输入收敛进 [min, max]；上限未知（不是有限数）时只保底 min，不加假上界。
+const clampInt = (v, min, max) => {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return min;
+  const top = Number.isFinite(Number(max)) && Number(max) >= min ? Number(max) : n;
+  return Math.min(Math.max(n, min), Math.max(top, min));
+};
+
+const limitText = (limit, unit) => (limit == null ? '未知' : `${limit} ${unit}`);
 
 const addHistoryPoint = (history, snapshot) => {
   if (!snapshot) return history;
@@ -56,6 +75,8 @@ const MachineDetailPage = () => {
   const [editBasicVisible, setEditBasicVisible] = useState(false);
   const [basicDraft, setBasicDraft] = useState(null);
   const [savingBasic, setSavingBasic] = useState(false);
+  // 降低内存上限时共享上限被自动下调过：给出可见提示，避免用户以为值没变
+  const [sharedAutoReduced, setSharedAutoReduced] = useState(false);
   const limitsInitializedRef = useRef(false);
 
   const openEditBasic = () => {
@@ -186,10 +207,14 @@ const MachineDetailPage = () => {
   useEffect(() => {
     if (!machine || limitsInitializedRef.current) return;
     limitsInitializedRef.current = true;
+    // 机器配置限额不得超过硬件容量：共享内存上限还不得超过本机内存限额
+    const hardwareCpu = knownLimit(machine.cpu_core_number) ?? 1;
+    const hardwareMemory = knownLimit(machine.memory_size_gb) ?? 1;
+    const maxMemory = clampInt(machine.max_memory_gb ?? hardwareMemory, 1, hardwareMemory);
     setLimitDraft({
-      max_cpu_core_number: machine.max_cpu_core_number ?? machine.cpu_core_number ?? 1,
-      max_memory_gb: machine.max_memory_gb ?? machine.memory_size_gb ?? 1,
-      max_shared_gb: machine.max_shared_gb ?? 0,
+      max_cpu_core_number: clampInt(machine.max_cpu_core_number ?? hardwareCpu, 1, hardwareCpu),
+      max_memory_gb: maxMemory,
+      max_shared_gb: clampInt(machine.max_shared_gb ?? 0, 0, maxMemory),
       // 磁盘上限（语义收敛 2026-08）：max_disk_size_gb 是容器磁盘可用上限；未设置回退分区容量
       max_disk_size_gb: machine.max_disk_size_gb ?? machine.disk_size_gb ?? 0,
     });
@@ -232,14 +257,49 @@ const MachineDetailPage = () => {
     });
   };
 
+  // 各限额的收敛口径：与滑条 min/max 完全一致，数字输入与滑条共用同一处理函数。
+  const hardwareCpu = knownLimit(machine?.cpu_core_number) ?? 1;
+  const hardwareMemory = knownLimit(machine?.memory_size_gb) ?? 1;
+  const hardwareDisk = knownLimit(machine?.disk_size_gb);
+  const sharedLimitMax = knownLimit(limitDraft?.max_memory_gb) ?? hardwareMemory;
+
+  const changeCpuLimit = (v) => setLimitDraft(d => ({ ...d, max_cpu_core_number: clampInt(v, 1, hardwareCpu) }));
+
+  // 降低内存限额时同步收敛共享内存限额：共享内存不得超过本机内存限额。
+  // 收敛发生在用户眼前（读数即时变化 + 提示），不是悄悄改写用户要保存的值。
+  const changeMemoryLimit = (v) => {
+    const nextMaxMemory = clampInt(v, 1, hardwareMemory);
+    const currentShared = clampInt(limitDraft?.max_shared_gb ?? 0, 0, sharedLimitMax);
+    setSharedAutoReduced(currentShared > nextMaxMemory);
+    setLimitDraft(d => (d ? {
+      ...d,
+      max_memory_gb: nextMaxMemory,
+      max_shared_gb: clampInt(d.max_shared_gb ?? 0, 0, nextMaxMemory),
+    } : d));
+  };
+
+  const changeSharedLimit = (v) => {
+    setSharedAutoReduced(false);
+    setLimitDraft(d => (d ? { ...d, max_shared_gb: clampInt(v, 0, sharedLimitMax) } : d));
+  };
+
+  const changeDiskLimit = (v) => setLimitDraft(d => (
+    d ? { ...d, max_disk_size_gb: clampInt(v, 0, hardwareDisk ?? undefined) } : d
+  ));
+
   const saveLimits = async () => {
     if (!limitDraft) return;
     setSavingLimits(true);
+    // 保存前再收敛一次：不提交超过硬件容量、或 max_shared_gb 大于 max_memory_gb 的 payload
+    const safeCpu = clampInt(limitDraft.max_cpu_core_number, 1, hardwareCpu);
+    const safeMemory = clampInt(limitDraft.max_memory_gb, 1, hardwareMemory);
+    const safeShared = clampInt(limitDraft.max_shared_gb ?? 0, 0, safeMemory);
+    const safeDisk = clampInt(limitDraft.max_disk_size_gb ?? 0, 0, hardwareDisk ?? undefined);
     const payload = {
-      max_cpu_core_number: limitDraft.max_cpu_core_number,
-      max_memory_gb: limitDraft.max_memory_gb,
-      max_shared_gb: limitDraft.max_shared_gb,
-      max_disk_size_gb: limitDraft.max_disk_size_gb,
+      max_cpu_core_number: safeCpu,
+      max_memory_gb: safeMemory,
+      max_shared_gb: safeShared,
+      max_disk_size_gb: safeDisk,
       gpu_allow_list: Array.from(selectedGpuIndices).sort((a, b) => a - b),
     };
     try {
@@ -487,49 +547,105 @@ const MachineDetailPage = () => {
                 <div className="machine-limit-card">
                   <div className="machine-limit-card-head">
                     <h2>硬件分配限制</h2>
-                    <Typography.Text type="secondary">上限随机器实际硬件自动约束</Typography.Text>
+                    <Typography.Text type="secondary">机器配置限额不得高于硬件容量；共享内存上限还不得高于本机内存限额</Typography.Text>
                   </div>
                   <div className="machine-limit-sliders">
-                    <div className="machine-limit-slider">
-                      <label>CPU 上限 <b className="cc-mono">{limitDraft?.max_cpu_core_number ?? '-'} 核</b></label>
-                      <Slider
-                        min={1}
-                        max={machine?.cpu_core_number || 1}
-                        step={1}
-                        value={limitDraft?.max_cpu_core_number ?? 1}
-                        onChange={v => setLimitDraft(d => ({ ...d, max_cpu_core_number: v }))}
-                      />
+                    <div className="machine-limit-slider" data-limit="cpu">
+                      <label>CPU 上限 <b className="cc-mono">{limitText(limitDraft?.max_cpu_core_number, '核')}</b></label>
+                      <div className="machine-limit-control">
+                        <Slider
+                          min={1}
+                          max={hardwareCpu}
+                          step={1}
+                          value={limitDraft?.max_cpu_core_number ?? 1}
+                          onChange={changeCpuLimit}
+                        />
+                        <InputNumber
+                          className="machine-limit-input"
+                          min={1}
+                          max={hardwareCpu}
+                          step={1}
+                          precision={0}
+                          value={limitDraft?.max_cpu_core_number ?? 1}
+                          onChange={changeCpuLimit}
+                        />
+                      </div>
+                      <span className="machine-limit-capacity">硬件容量 {limitText(knownLimit(machine?.cpu_core_number), '核')}</span>
                     </div>
-                    <div className="machine-limit-slider">
-                      <label>内存上限 <b className="cc-mono">{limitDraft?.max_memory_gb ?? '-'} GB</b></label>
-                      <Slider
-                        min={1}
-                        max={machine?.memory_size_gb || 1}
-                        step={1}
-                        value={limitDraft?.max_memory_gb ?? 1}
-                        onChange={v => setLimitDraft(d => ({ ...d, max_memory_gb: v }))}
-                      />
+                    <div className="machine-limit-slider" data-limit="memory">
+                      <label>内存上限 <b className="cc-mono">{limitText(limitDraft?.max_memory_gb, 'GB')}</b></label>
+                      <div className="machine-limit-control">
+                        <Slider
+                          min={1}
+                          max={hardwareMemory}
+                          step={1}
+                          value={limitDraft?.max_memory_gb ?? 1}
+                          onChange={changeMemoryLimit}
+                        />
+                        <InputNumber
+                          className="machine-limit-input"
+                          min={1}
+                          max={hardwareMemory}
+                          step={1}
+                          precision={0}
+                          value={limitDraft?.max_memory_gb ?? 1}
+                          onChange={changeMemoryLimit}
+                        />
+                      </div>
+                      <span className="machine-limit-capacity">硬件容量 {limitText(knownLimit(machine?.memory_size_gb), 'GB')}</span>
                     </div>
-                    <div className="machine-limit-slider">
-                      <label>共享内存上限 <b className="cc-mono">{limitDraft?.max_shared_gb ?? '-'} GB</b></label>
-                      <Slider
-                        min={0}
-                        max={8}
-                        step={1}
-                        value={limitDraft?.max_shared_gb ?? 0}
-                        onChange={v => setLimitDraft(d => ({ ...d, max_shared_gb: v }))}
-                      />
+                    <div className="machine-limit-slider" data-limit="shared">
+                      <label>共享内存上限 <b className="cc-mono">{limitText(limitDraft?.max_shared_gb, 'GB')}</b></label>
+                      {/* 上限取本次编辑的 max_memory_gb（不再固定 8GB），并同样收敛本机内存限额 */}
+                      <div className="machine-limit-control">
+                        <Slider
+                          min={0}
+                          max={sharedLimitMax}
+                          step={1}
+                          value={limitDraft?.max_shared_gb ?? 0}
+                          onChange={changeSharedLimit}
+                        />
+                        <InputNumber
+                          className="machine-limit-input"
+                          min={0}
+                          max={sharedLimitMax}
+                          step={1}
+                          precision={0}
+                          value={limitDraft?.max_shared_gb ?? 0}
+                          onChange={changeSharedLimit}
+                        />
+                      </div>
+                      <span className="machine-limit-capacity">
+                        不得高于本次内存上限 {limitText(knownLimit(limitDraft?.max_memory_gb), 'GB')} · 硬件内存 {limitText(knownLimit(machine?.memory_size_gb), 'GB')}
+                      </span>
+                      {sharedAutoReduced ? (
+                        <span className="machine-limit-note" role="status">
+                          已将共享内存上限下调到 {limitText(knownLimit(limitDraft?.max_shared_gb), 'GB')}，使其不超过本次内存上限
+                        </span>
+                      ) : null}
                     </div>
-                    <div className="machine-limit-slider">
-                      <label>磁盘上限 <b className="cc-mono">{limitDraft?.max_disk_size_gb ?? '-'} GB</b></label>
+                    <div className="machine-limit-slider" data-limit="disk">
+                      <label>磁盘上限 <b className="cc-mono">{limitText(limitDraft?.max_disk_size_gb, 'GB')}</b></label>
                       {/* 滑条范围参照 mount 所在分区容量（disk_size_gb）；值即 max_disk_size_gb（容器磁盘可用上限） */}
-                      <Slider
-                        min={0}
-                        max={machine?.disk_size_gb || 1}
-                        step={1}
-                        value={limitDraft?.max_disk_size_gb ?? 0}
-                        onChange={v => setLimitDraft(d => ({ ...d, max_disk_size_gb: v }))}
-                      />
+                      <div className="machine-limit-control">
+                        <Slider
+                          min={0}
+                          max={hardwareDisk ?? Math.max(1, limitDraft?.max_disk_size_gb ?? 0)}
+                          step={1}
+                          value={limitDraft?.max_disk_size_gb ?? 0}
+                          onChange={changeDiskLimit}
+                        />
+                        <InputNumber
+                          className="machine-limit-input"
+                          min={0}
+                          max={hardwareDisk ?? Math.max(1, limitDraft?.max_disk_size_gb ?? 0)}
+                          step={1}
+                          precision={0}
+                          value={limitDraft?.max_disk_size_gb ?? 0}
+                          onChange={changeDiskLimit}
+                        />
+                      </div>
+                      <span className="machine-limit-capacity">硬件容量 {limitText(hardwareDisk, 'GB')}</span>
                     </div>
                   </div>
                 </div>

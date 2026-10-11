@@ -344,11 +344,56 @@
 .cc-quota-row-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: 8px;
 }
 
-.cc-quota-limit {
+/* 申请值与本次可申请上限：同一行并排，避免把上限读成实时空闲量 */
+.cc-quota-row-figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: #595959;
+}
+
+.cc-quota-row-figures .cc-mono {
+  color: #262626;
+}
+
+/* 元信息：硬件容量 / 机器配置限额 / 派生说明，弱化展示 */
+.cc-quota-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  font-size: 11px;
+  color: #8c8c8c;
+}
+
+.cc-quota-detail {
+  color: #8c8c8c;
+}
+
+.cc-quota-hint {
+  font-size: 11px;
+}
+
+.cc-quota-legend {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px dashed #e7eaf0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #8c8c8c;
+}
+
+.cc-quota-error {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid #ffccc7;
+  border-radius: 4px;
+  background: #fff2f0;
+  color: #a8071a;
   font-size: 12px;
 }
 
@@ -362,16 +407,6 @@
   flex: 1;
   min-width: 0;
   margin-inline: 0;
-}
-
-.cc-quota-value {
-  min-width: 46px;
-  text-align: right;
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: #262626;
-  flex: 0 0 auto;
 }
 
 .cc-quota-input {
