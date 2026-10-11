@@ -1,46 +1,97 @@
-# 文件结构说明
-* /src 下存放所有源代码
-* /api 中统一封装与后端交互的代码
-* /assets 存放静态文件（GLB，图标等）
-* /pages 为每个页面具体的源码
-* /routes 中定义了路由方法，使用这种路由可以不用刷新页面，并且多个页面可以共享同一个导航栏
-* /layouts 文件夹定义了两类页面布局，一类是主页面（需要导航栏的）一类是非主页面（登录注册等不需要导航栏的）
+# 伏羲 · Fuxi-Yu
 
-# 修改注意事项
-* 刘苏和卫煜文你们分别完成pages中安排好的页面，不要动routes（如果必须要动在群里说一声）
-* 剩下的我来维护，components中会提供一些你们会用到的比如表格类的组件
+Fuxi-Yu 是面向高校与实验室算力管理场景的容器化平台。Web 是伏羲平台的浏览器前端，提供用户登录注册、容器与镜像自助管理，以及机器、用户、公告、权限和审计日志的管理界面。
 
+当前版本使用 React、React Router 与 Ant Design 构建界面，使用 Vite 开发和打包，使用 Vitest 验证交互。
 
-# 更新日志
-### 2025-11-11
-* TRM:增加表格，导航栏统一组件
-* TRM:完成基本的登录注册跳转页面示例
-* TRM:完成各主页面的跳转示例
+## 快速上手
 
-### 2025-11-16
-* Chester:增加申请页搜索栏
-* Chester:增加申请页表格，提供部分占位符
-* Chester:完成申请页的布局设计
+### 1. 安装依赖
 
-### 2025-11-18
-* Chester:增加我的容器表格，提供部分占位符
-* Chester:完成我的容器的页面编写
+安装与仓库依赖兼容的 Node.js 和 npm，在仓库根目录执行：
 
-### 2025-12-7
-* Chester:修正了我的容器、申请页表格的部分错误
-* Chester:完成了AdminNavbar的编写，调整了部分命名范式
-* Chester:完成了管理用户部分的编写（未引入.css）
+```bash
+npm ci
+```
 
+`npm ci` 按 `package-lock.json` 安装依赖，便于开发与构建环境保持一致。
 
-### 2025-12-8
-* Chester:调整了顶部导航条整体设计（用户/管理员均有变动）
-* Chester:统一了管理用户部分的表格布局
+### 2. 配置环境
 
-### 2025-12-10
-* Chester:新增了编辑用户“下拉框”
-* Chester:新增了一个可复用的二次确认弹窗
+可参考 `.env.example` 创建 `.env`。开发代理常用配置：
 
-### 2025-12-14
-* Chester:设置了Sticky样式到大部分搜索栏（将在merge后对新的页面也做同样改动）
-* Chester:修正了部分旧页面的冗余显示
-* Chester:关联了部分二次确认弹窗
+```bash
+CTRL_IP=127.0.0.1
+CTRL_PORT=5000
+```
+
+浏览器向当前站点的 `/api` 发起请求，Vite 开发代理将请求转发到 `https://CTRL_IP:CTRL_PORT`。填写裸 IP 与端口即可；这些配置决定代理目标，不会让浏览器直接连接 Node。
+
+### 3. 启动开发服务
+
+```bash
+npm run dev
+```
+
+默认访问地址：
+
+```text
+https://localhost:5173
+```
+
+启动前会检查 `certs/web.pem` 与 `certs/web-key.pem`，缺失时生成开发自签证书。已有证书会保留；本地自签证书首次访问时需在浏览器中确认信任。
+
+### 4. 构建与预览
+
+```bash
+npm run build
+npm run preview
+```
+
+构建产物位于 `dist/`，预览地址以终端输出为准。正式部署时，静态站点需要将同源 `/api` 请求转发给 Ctrl，并保持登录 cookie 的传递。
+
+### 5. 运行检查
+
+```bash
+npm test
+npm run lint
+```
+
+交互开发可使用 `npm run test:watch`。构建、测试与 lint 是独立检查，构建成功不表示其余检查通过。
+
+Node 26 的实验 Web Storage 与当前 jsdom 测试配置存在冲突。若使用该版本，运行测试时关闭实验 Web Storage：
+
+```bash
+NODE_OPTIONS=--no-experimental-webstorage npm test
+```
+
+PowerShell 对应命令：
+
+```powershell
+$env:NODE_OPTIONS = '--no-experimental-webstorage'
+npm test
+```
+
+## 目录结构
+
+```text
+src/api/             # Ctrl API 请求与错误处理
+src/pages/           # 页面及页面状态
+src/routes/          # 路由装配
+src/layouts/         # 用户与管理界面布局
+src/components/      # 共用界面组件
+src/contexts/        # 身份与权限快照
+src/configs/         # API 路径、超时与网络配置
+src/utils/           # 容器状态、校验及通用工具
+src/assets/          # 图标、模型等静态资源
+src/test/            # Vitest 交互测试
+scripts/             # 本地开发证书脚本
+openspec/specs/      # 按页面组织的行为契约
+vite.config.js       # 开发代理、HTTPS 与测试配置
+```
+
+## 开发约定
+
+后端请求统一放在 src/api 中，页面使用 PermissionContext 提供的身份与权限快照。权限菜单、操作入口和 Ctrl 的接口鉴权应采用一致的契约；共享交互与状态判定放在组件或工具中，避免在不同页面维护多套规则。
+
+当前页面行为见 [OpenSpec](openspec/specs/)。跨仓库已知问题统一记录在 [Global QUESTIONS](../FuxiYu_Global/QUESTIONS.md)，旧文档保留在 Global 的 bak 中。
