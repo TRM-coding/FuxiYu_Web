@@ -17,12 +17,17 @@
 
 ### Requirement: CreateContainer 主流程
 
-页面 SHALL 保持以下已实现的交互及数据职责：镜像使用 image_id；详情读取 max_cpu_core_number/max_memory_gb/max_gpu_number/max_shared_gb 设定滑条；payload 传 CPU_NUMBER/MEMORY/GPU_LIST/shared_memory。
+页面 SHALL 保持以下已实现的交互及数据职责：镜像使用 image_id；详情读取 max_cpu_core_number/max_memory_gb/max_gpu_number/max_shared_gb 设定滑条；payload 传 CPU_NUMBER/MEMORY/GPU_LIST/shared_memory；环境模板列表只保留 status 为 ready 的模板，已选中项不再是 ready 时清空选择。
 
 #### Scenario: 内存 4 GB、共享内存 8 GB 且单项机器上限允许
 
 - **WHEN** 内存 4 GB、共享内存 8 GB 且单项机器上限允许
 - **THEN** 当前页面会提交组合；Ctrl 因共享内存超过请求内存拒绝，该交叉约束缺口见 QUESTIONS
+
+#### Scenario: 模板不在可用集合内
+
+- **WHEN** 模板 brief 列表包含 draft 或 disabled 模板
+- **THEN** 页面不展示也不允许选中它们；已选中的模板变为非 ready 时选择被清空
 
 ### Requirement: CreateContainer 构建归属
 

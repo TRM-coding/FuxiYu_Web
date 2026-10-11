@@ -17,12 +17,17 @@
 
 ### Requirement: MachineDetailPage 主流程
 
-页面 SHALL 保持以下已实现的交互及数据职责：加载硬件和限制并轮询 machine_status/is_maintenance/runtime_snapshot；编辑基本信息可显式 port=null；维护开关独立于 online/offline。
+页面 SHALL 保持以下已实现的交互及数据职责：加载硬件和限制并轮询 machine_status/is_maintenance/runtime_snapshot；编辑基本信息可显式 port=null；维护开关独立于 online/offline；machine:manage 用户可发起修复连接（重钉信任锚），执行前二次确认。
 
 #### Scenario: 保存未修改端口的基本信息
 
 - **WHEN** 保存未修改端口的基本信息
 - **THEN** 当前详情 response_model 漏 port，页面可能发送 null 清空既有端口；该缺陷已 API 复现并记录
+
+#### Scenario: 确认后修复连接
+
+- **WHEN** 具备 machine:manage 的用户在机器详情页点击修复连接并确认
+- **THEN** 调用 renew_machine_trust 端点；成功后提示连接信任已重建并按响应补充是否重发身份牌、身份牌是否与对端不一致，随后静默刷新详情；失败经 showErrorModal 反馈；无该权限时不展示入口。该入口只修复既有机器行的信任锚，不重建机器档案
 
 ### Requirement: MachineDetailPage 构建归属
 
