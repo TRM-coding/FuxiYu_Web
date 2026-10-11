@@ -95,23 +95,13 @@ WEB_PORT=5173
 
 同时确认 `CTRL_IP` 与 `CTRL_PORT` 指向实际 Ctrl 服务；这里只填裸 IP 和端口。若旧配置或 shell 中还有 `VITE_ENABLE_SSL`，移除它或设为 `true`，因为兼容键优先于 `ENABLE_SSL`。上游默认 HTTPS，Web 默认兼容上游自签证书，受信任证书环境可设置 `CTRL_TLS_VERIFY=true` 开启上游校验。只有 Ctrl 确实使用 HTTP 时才显式配置 `CTRL_SCHEME=http`。
 
-### 2. 准备证书与构建
+### 2. 构建
 
 ```bash
-npm run gen-cert
 npm run build
 ```
 
-证书脚本会保留已有 `certs/web.pem` 和 `certs/web-key.pem`。如果提示旧证书缺少当前 `WEB_IP`，先确认它是需要替换的自签证书，再备份并重新生成：
-
-```bash
-backup_dir="certs/bak/$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$backup_dir"
-mv certs/web.pem certs/web-key.pem "$backup_dir/"
-npm run gen-cert
-```
-
-自备受信任证书也使用这两个文件名，并应包含实际访问 IP 或域名。私钥留在服务器。
+`npm start`（以及 PM2 的 `run start`）会先由 `prestart` 自动运行证书脚本：`certs/web.pem` 与 `certs/web-key.pem` 成对缺失时生成自签证书，已有完整一对时保留原文件；常规流程不需要手动执行 `npm run gen-cert`。只有单个文件时启动会明确失败且不覆盖现存文件，需先备份补齐后再启动。自备受信任证书也使用这两个文件名，并应包含实际访问 IP 或域名；私钥留在服务器。
 
 ### 3. 先前台验证
 
@@ -129,6 +119,16 @@ curl -k -i https://127.0.0.1:5173/api/users/me/permissions
 首页应返回 200；未登录的权限请求应返回 Ctrl 的 401 JSON，不能返回首页 HTML。502 表示 Web 无法连接 Ctrl，504 表示代理超时，需检查上游地址、协议和服务状态。`-k` 仅用于这次自签环境的连通检查。
 
 浏览器使用 **`https://192.168.5.230:5173/`**。确认能登录、刷新页面并查看容器后，在运行 `npm start` 的终端按 Ctrl+C。
+
+如果启动日志提示旧证书缺少当前 `WEB_IP`（或实际访问地址发生变化），这是主动更换证书的场景：先按 Ctrl+C 停掉前台进程，确认它是需要替换的自签证书，再备份并重新生成，然后重新 `npm start`；证书脚本不会自动覆盖已有文件。
+
+```bash
+backup_dir="certs/bak/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$backup_dir"
+mv certs/web.pem certs/web-key.pem "$backup_dir/"
+npm run gen-cert
+npm start
+```
 
 ### 4. 交给 PM2 托管
 
