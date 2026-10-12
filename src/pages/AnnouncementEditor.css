@@ -1,0 +1,13 @@
+.ann-editor-root {
+  padding: 0;
+}
+
+.ann-editor-top {
+  margin-bottom: 0;
+}
+
+.ann-editor-textarea {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}

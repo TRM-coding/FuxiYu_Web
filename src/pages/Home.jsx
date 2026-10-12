@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined } from '@ant-design/icons';
-import { Flex, Typography, Row, Col, Button, Input, Space, Table, Tag, message } from 'antd';
+import { Flex, Typography, Row, Col, Button, Input, Space, Table, Tag, message, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
 import TableComponent from '../components/TableComponent';
 import { Radio } from 'antd';
 import ConfirmModal from '../components/ConfirmModal';
 import EditUserModal from '../components/EditUserModal';
-import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
+import { parseSshTimeToDate, formatDuration } from '../utils/timeFormat';
+import { getContainerActionState, getRoleActionSet } from '../utils/containerActions';
 import { startContainerStatusHeartbeat } from '../utils/heartbeat';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -81,64 +83,54 @@ const Home = () => {
   const [containers, setContainers] = useState(initialContainers);
   const [loadingContainers, setLoadingContainers] = useState(false);
   const [sshRefreshingMap, setSshRefreshingMap] = useState({});
+  const [longTermRemaining, setLongTermRemaining] = useState(null);
+  const [longTermLimit, setLongTermLimit] = useState(null);
+  const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
 
-  const parseSshTimeToDate = (raw) => {
-    if (!raw || typeof raw !== 'string') return null;
-    const t = raw.trim();
-    const d0 = new Date(t);
-    if (!Number.isNaN(d0.getTime())) return d0;
 
-    // fallback A: parse syslog-like prefix, e.g. "Mar 20 10:35:20 ..."
-    const m = t.match(/^([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2})/);
-    if (m) {
-      const year = new Date().getFullYear();
-      const d1 = new Date(`${m[1]} ${m[2]} ${year} ${m[3]}`);
-      if (!Number.isNaN(d1.getTime())) return d1;
-    }
+  const formatBeijingDateTime = (date) => date.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    hour12: false,
+  });
 
-    // fallback B: parse `last` output snippet, e.g. "... Fri Mar 20 12:39 ..."
-    const m2 = t.match(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2})(?::(\d{2}))?\b/);
-    if (m2) {
-      const year = new Date().getFullYear();
-      const hhmmss = `${m2[3]}:${m2[4] || '00'}`;
-      const d2 = new Date(`${m2[1]} ${m2[2]} ${year} ${hhmmss}`);
-      if (!Number.isNaN(d2.getTime())) return d2;
-    }
-    return null;
-  };
 
   const formatLastSshTime = (raw) => {
-    if (!raw) return '-';
+    if (!raw) return '从未登录';
     const d = parseSshTimeToDate(raw);
     if (!d) return String(raw);
-    return d.toLocaleString();
+    return formatBeijingDateTime(d);
   };
 
   const formatCleanupCountdown = (raw, record = null) => {
+    // 长期容器被冻结 → 显示升级倒计时
+    if (record?.is_long_term === true && record?.freeze_days_frozen != null) {
+      const daysFrozen = Number(record.freeze_days_frozen);
+      const escalationDays = Number(record.freeze_escalation_days) || 7;
+      const remaining = escalationDays - daysFrozen;
+      if (remaining <= 0) return '即将清除';
+      if (record.freeze_grace_until) return `宽限中 · 冻结第${daysFrozen}天`;
+      return `冻结第${daysFrozen}天 (${remaining}天后清除)`;
+    }
+    if (record?.is_long_term === true) return '长期容器';
+    if (!raw && (!record || record.cleanup_status === 'unknown' || record.seconds_until_cleanup == null)) {
+      return '从未登录';
+    }
     // Prefer backend-calculated fields (authoritative and format-independent).
     if (record && typeof record === 'object') {
       const status = record.cleanup_status;
       const seconds = Number(record.seconds_until_cleanup);
       if (status === 'due') return '可清理';
       if (Number.isFinite(seconds) && seconds >= 0) {
-        const hours = Math.ceil(seconds / 3600);
-        const days = Math.floor(hours / 24);
-        const remainHours = hours % 24;
-        if (days > 0) return `${days}天${remainHours}小时`;
-        return `${hours}小时`;
+        return formatDuration(seconds);
       }
     }
 
     const d = parseSshTimeToDate(raw);
-    if (!d) return '-';
+    if (!d) return '从未登录';
     const expireAt = d.getTime() + SSH_CLEANUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
     const diff = expireAt - Date.now();
     if (diff <= 0) return '可清理';
-    const hours = Math.ceil(diff / (60 * 60 * 1000));
-    const days = Math.floor(hours / 24);
-    const remainHours = hours % 24;
-    if (days > 0) return `${days}天${remainHours}小时`;
-    return `${hours}小时`;
+    return formatDuration(Math.floor(diff / 1000));
   };
 
   const refreshSshTimeForContainer = async (containerId, options = {}) => {
@@ -207,12 +199,26 @@ const Home = () => {
           machine_id: c.machine_id ? String(c.machine_id) : null,
           machine_ip: c.machine_ip || '',
           accounts: c.accounts || [],
+          is_long_term: c.is_long_term === true,
           last_ssh_login_time: c.last_ssh_login_time ?? null,
           cleanup_after_days: c.cleanup_after_days ?? null,
           cleanup_at: c.cleanup_at ?? null,
           seconds_until_cleanup: c.seconds_until_cleanup ?? null,
           cleanup_status: c.cleanup_status ?? null,
+          disk_total_gb: c.disk_total_gb ?? null,
+          disk_limit_gb: c.disk_limit_gb ?? null,
+          disk_usage_percent: c.disk_usage_percent ?? null,
+          freeze_first_frozen_at: c.freeze_first_frozen_at ?? null,
+          freeze_grace_until: c.freeze_grace_until ?? null,
+          freeze_days_frozen: c.freeze_days_frozen ?? null,
+          freeze_escalation_days: c.freeze_escalation_days ?? null,
         }));
+        if (Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_remaining')) {
+          setLongTermRemaining(Number(res.long_term_container_remaining));
+        }
+        if (Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_limit')) {
+          setLongTermLimit(Number(res.long_term_container_limit));
+        }
         if (mounted) setContainers(mapped);
         if (mounted) await refreshSshTimeForAllContainers(mapped);
       } catch (err) {
@@ -225,6 +231,38 @@ const Home = () => {
     load();
     return () => { mounted = false; };
   }, [currentUserId]);
+
+  const handleLongTermChange = async (record, checked) => {
+    const cid = record?.key || record?.container_id;
+    if (!cid) return;
+    const currentlyLongTerm = record?.is_long_term === true;
+    if (checked && !currentlyLongTerm && Number(longTermRemaining) <= 0) return;
+
+    setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: true }));
+    try {
+      const res = await setLongTermContainer({ container_id: Number(cid), is_long_term: checked });
+      const nextIsLongTerm = res?.is_long_term === true;
+      setContainers(prev => prev.map(c => (
+        String(c.key) === String(cid)
+          ? { ...c, is_long_term: nextIsLongTerm }
+          : c
+      )));
+      const remainingByUser = res?.long_term_container_remaining_by_user || {};
+      const nextRemaining = remainingByUser?.[String(currentUserId)] ?? remainingByUser?.[Number(currentUserId)];
+      if (nextRemaining !== undefined) {
+        setLongTermRemaining(Number(nextRemaining));
+      } else if (checked && !currentlyLongTerm) {
+        setLongTermRemaining(prev => (prev === null ? prev : Math.max(0, Number(prev) - 1)));
+      } else if (!checked && currentlyLongTerm) {
+        setLongTermRemaining(prev => (prev === null ? prev : Number(prev) + 1));
+      }
+      message.success(nextIsLongTerm ? '已设为长期容器' : '已取消长期容器');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '设置长期容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: false }));
+    }
+  };
 
   // If navigated here with a startHeartbeat request (from Apply), start the heartbeat and refresh list when ONLINE
   const location = useLocation();
@@ -448,21 +486,25 @@ const Home = () => {
   };
 
   // helpers
-  const getRoleForUser = (accounts, username) => {
+  const getRoleForUser = (accounts, username, userId = null) => {
     if (!accounts) return null;
     if (Array.isArray(accounts)) {
       for (const item of accounts) {
         if (Array.isArray(item)) {
           if (item[0] === username) return item[1];
         } else if (item && typeof item === 'object') {
+          if (userId !== null && item.user_id !== undefined && String(item.user_id) === String(userId)) return item.type ?? item.role ?? null;
           if ((item.name ?? item.username) === username) return item.type ?? item.role ?? null;
         }
       }
     } else if (accounts && typeof accounts === 'object') {
+      if (userId !== null && accounts.user_id !== undefined && String(accounts.user_id) === String(userId)) return accounts.type ?? accounts.role ?? null;
       if ((accounts.name ?? accounts.username) === username) return accounts.type ?? accounts.role ?? null;
     }
     return null;
   };
+
+  const isRootRole = (role) => String(role || '').toUpperCase() === 'ROOT'; // eslint-disable-line no-unused-vars
 
   const openConfirm = (type, data) => {
     // hide parent modal (detail/edit) if open and remember which
@@ -525,6 +567,16 @@ const Home = () => {
         message.success(`已变更 ${data.username} 的角色`);
       } else if (type === 'invite') {
         message.success(`已发送邀请`);
+      } else if (type === 'stop') {
+        // stop container (high-risk)
+        const cid = data?.record?.key || data?.record?.container_id;
+        await handleStopContainer(data.record);
+        message.success(`容器 ${data.record.container_name} 停止请求已发送`);
+      } else if (type === 'restart') {
+        // restart container (high-risk)
+        const cid = data?.record?.key || data?.record?.container_id;
+        await handleRestartContainer(data.record);
+        message.success(`容器 ${data.record.container_name} 重启请求已发送`);
       }
     } catch (err) {
       console.error('modal action failed', err);
@@ -559,7 +611,7 @@ const Home = () => {
         cpu_number: detail.cpu_number || container.cpu_number || 0,
         gpu_number: detail.gpu_number || container.gpu_number || 0,
         memory_gb: detail.memory_gb || container.memory_gb || 0,
-        swap_gb: detail.swap_gb || container.swap_gb || 0,
+        shared_gb: detail.shared_gb || container.shared_gb || 0,
         owners: detail.owners || detail.owner_list || container.owners || [],
         accounts: detail.accounts || detail.account_list || container.accounts || []
       };
@@ -663,6 +715,31 @@ const Home = () => {
         iconColor: '#52c41a',
         confirmText: '确认邀请'
       }
+      ,
+      stop: {
+        title: '确认停止容器',
+        message: `确定要停止容器 ${data?.record?.container_name} 吗？`,
+        content: (
+          <div className="home-modal-danger">
+            <Typography.Text type="danger">停止容器是高风险操作，可能导致服务中断或数据不可用。</Typography.Text>
+          </div>
+        ),
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认停止'
+      },
+      restart: {
+        title: '确认重启容器',
+        message: `确定要重启容器 ${data?.record?.container_name} 吗？`,
+        content: (
+          <div className="home-modal-danger">
+            <Typography.Text type="danger">重启容器是高风险操作，可能会中断正在运行的任务。</Typography.Text>
+          </div>
+        ),
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认重启'
+      }
     };
     
     return configs[type] || {};
@@ -686,28 +763,34 @@ const Home = () => {
       <div className="home-root">
         <div ref={statsBarRef} style={statsBarStyle} className="home-hero home-auto-hide-bar">
           <Row gutter={16} className="home-row-bottom">
-            <Col xs={12} sm={12} md={6}>
+            <Col xs={12} sm={12} md={5}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">总容器数</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-blue">{containers.length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={12} sm={12} md={6}>
+            <Col xs={12} sm={12} md={5}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">运行中</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-green">{containers.filter(c => c.container_status === 'online').length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={12} sm={12} md={6}>
+            <Col xs={12} sm={12} md={4}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">异常</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-warning">{containers.filter(c => c.container_status === 'failed').length}</Typography.Title>
               </div>
             </Col>
-            <Col xs={12} sm={12} md={6}>
+            <Col xs={12} sm={12} md={5}>
               <div className="home-stat-card">
                 <Typography.Text type="secondary" className="home-stat-label">离线</Typography.Text>
                 <Typography.Title level={2} className="home-stat-number home-red">{containers.filter(c => c.container_status === 'offline').length}</Typography.Title>
+              </div>
+            </Col>
+            <Col xs={12} sm={12} md={5}>
+              <div className="home-stat-card">
+                <Typography.Text type="secondary" className="home-stat-label">长期容器</Typography.Text>
+                <Typography.Title level={2} className="home-stat-number home-purple">{containers.filter(c => c.is_long_term === true).length}</Typography.Title>
               </div>
             </Col>
           </Row>
@@ -721,9 +804,12 @@ const Home = () => {
               title="容器状态"
               dataIndex="container_status"
               key="container_status"
-              render={status => {
-                let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
-                let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status;
+              render={(status, record) => {
+                if (record?.display_status === 'host_offline') {
+                  return <Tag color="default">宿主机离线</Tag>;
+                }
+                let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'paused' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
+                let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'paused' ? '磁盘已冻结' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status;
                 return <Tag color={color}>{text}</Tag>;
               }}
             />
@@ -741,18 +827,51 @@ const Home = () => {
             />
             <Column title="端口" dataIndex="port" key="port" />
             <Column
+              title="磁盘用量"
+              dataIndex="disk_usage_percent"
+              key="disk_usage_percent"
+              render={(_, record) => {
+                const pct = record.disk_usage_percent;
+                const total = record.disk_total_gb;
+                const limit = record.disk_limit_gb;
+                if (total == null) return <Typography.Text type="secondary">-</Typography.Text>;
+                const color = pct >= 100 ? '#ff4d4f' : pct >= 80 ? '#faad14' : '#52c41a';
+                return (
+                  <div style={{ minWidth: 80 }}>
+                    <div style={{ fontSize: 12, marginBottom: 2 }}>{total}G / {limit != null ? `${limit}G` : '-'}</div>
+                    <div style={{ background: '#f0f0f0', borderRadius: 2, height: 4, width: '100%', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(pct || 0, 100)}%`, height: '100%', background: color, borderRadius: 2 }} />
+                    </div>
+                  </div>
+                );
+              }}
+            />
+            <Column
               title="操作"
               key="action"
               render={(_, record) => {
-                const myRole = getRoleForUser(record.accounts, currentUserName);
-                const status = (record?.container_status || '').toLowerCase();
-                const startDisabled = status !== 'offline';
-                const restartDisabled = status !== 'online';
-                const stopDisabled = status !== 'online';
+                const myRole = getRoleForUser(record.accounts, currentUserName, currentUserId);
+                const actionState = getContainerActionState(record?.container_status, record?.display_status);
+                const roleActions = getRoleActionSet(myRole);
+                const startDisabled = !actionState.canStart;
+                const restartDisabled = !actionState.canRestart;
+                const stopDisabled = !actionState.canStop;
                 const sshRefreshLoading = !!sshRefreshingMap[String(record?.key)];
+                const longTermChecked = record?.is_long_term === true;
+                const longTermLoading = !!longTermUpdatingMap[String(record?.key)];
+                const longTermDisabled = longTermLoading || (!longTermChecked && longTermRemaining !== null && Number(longTermRemaining) <= 0);
 
                 const ActionButtons = (
                   <Space size="small">
+                    {roleActions.showLongTerm ? (
+                      <Checkbox
+                        checked={longTermChecked}
+                        disabled={longTermDisabled}
+                        onChange={e => handleLongTermChange(record, e.target.checked)}
+                      >
+                        长期容器
+                      </Checkbox>
+                    ) : null}
                       <a
                         onClick={() => { if (!startDisabled) handleStartContainer(record); }}
                         className={startDisabled ? 'home-action-link home-action-disabled' : 'home-action-link'}
@@ -760,13 +879,13 @@ const Home = () => {
                         启动
                       </a>
                       <a
-                        onClick={() => { if (!restartDisabled) handleRestartContainer(record); }}
+                        onClick={() => { if (!restartDisabled) openConfirm('restart', { record }); }}
                         className={restartDisabled ? 'home-action-link home-action-disabled' : 'home-action-link'}
                       >
                         重启
                       </a>
                       <a
-                        onClick={() => { if (!stopDisabled) handleStopContainer(record); }}
+                        onClick={() => { if (!stopDisabled) openConfirm('stop', { record }); }}
                         className={stopDisabled ? 'home-action-link home-action-disabled' : 'home-action-link home-action-stop'}
                       >
                         停止
@@ -782,7 +901,7 @@ const Home = () => {
 
                 // Show 查看详情 first, then role-specific links, then the action buttons
                 const detailLink = <a onClick={() => openContainerDetail(record)}>查看详情</a>;
-                if (myRole === 'ADMIN') {
+                if (roleActions.showInvite) {
                   return (
                     <Space size="middle">
                       {detailLink}
@@ -792,7 +911,7 @@ const Home = () => {
                     </Space>
                   );
                 }
-                if (myRole === 'COLLABORATOR') {
+                if (roleActions.showLeave) {
                   return (
                     <Space size="middle">
                       {detailLink}

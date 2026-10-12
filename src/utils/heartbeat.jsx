@@ -1,6 +1,5 @@
 // Web heartbeat utility: poll Ctrl for container status until RUNNING
 import { BACKEND_ORIGIN, REQUEST_TIMEOUT } from '../configs/backend_config';
-import { getAuthToken } from './authToken';
 
 export function startContainerStatusHeartbeat({ machine_id, container_name, onRunning, onTerminal, terminalState = 'online', timeout = 180000, interval = 3000 }) {
   let stopped = false;
@@ -19,10 +18,7 @@ export function startContainerStatusHeartbeat({ machine_id, container_name, onRu
     try {
       const controller = new AbortController();
       const to = setTimeout(() => controller.abort(), REQUEST_TIMEOUT || 5000);
-      // include token header if present so backend auth passes
-      const token = getAuthToken();
       const headers = { 'Content-Type': 'application/json' };
-      if (token) headers.token = token;
       const url = new URL('/api/containers/container_status', BACKEND_ORIGIN).toString();
       const res = await fetch(url, {
         method: 'POST',
@@ -74,9 +70,7 @@ export function startMachineStatusHeartbeat({ machine_id, onTerminal, terminalSt
     try {
       const controller = new AbortController();
       const to = setTimeout(() => controller.abort(), REQUEST_TIMEOUT || 5000);
-      const token = getAuthToken();
       const headers = { 'Content-Type': 'application/json' };
-      if (token) headers.token = token;
       const url = new URL('/api/machines/list_all_machine_bref_information', BACKEND_ORIGIN).toString();
       const res = await fetch(url, {
         method: 'POST',

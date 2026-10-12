@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Button, Typography, Row, Col, Space, Tag, Avatar } from 'antd';
-import { SettingOutlined, GlobalOutlined, ClockCircleOutlined, TeamOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { SettingOutlined, GlobalOutlined, ClockCircleOutlined, TeamOutlined, EditOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import './ContainerDetailModal.css';
 
 const ROLE = {
@@ -19,7 +19,7 @@ const getAvatarUrl = (username) => `https://api.dicebear.com/7.x/miniavs/svg?see
 const formatRole = (role) => (ROLE_CONFIG[role] ? ROLE_CONFIG[role].label : role);
 const getRoleColor = (role) => (ROLE_CONFIG[role] ? ROLE_CONFIG[role].color : 'default');
 
-const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, usersList = [], currentUserName = null, currentUserId = null, forceSystemAdmin = false }) => {
+const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, onLeave, onUnpause, usersList = [], currentUserName = null, currentUserId = null, forceSystemAdmin = false, readOnly = false }) => {
   if (!container) return null;
 
   const accountsByRole = container.accounts?.reduce((acc, account) => {
@@ -33,7 +33,10 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
   // 使用 user_id 精确判断当前用户是否为 ROOT（避免 username 修改导致匹配失败）
   const isRoot = forceSystemAdmin || (container.accounts || []).some(acc => acc.role === ROLE.ROOT && String(acc.user_id) === String(currentUserId));
 
-  const statusColor = container.container_status === 'online'
+  const isHostOffline = container.display_status === 'host_offline';
+  const statusColor = isHostOffline
+    ? 'default'
+    : container.container_status === 'online'
     ? 'green'
     : container.container_status === 'offline'
       ? 'volcano'
@@ -43,10 +46,14 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
           ? 'cyan'
           : container.container_status === 'stopping'
             ? 'orange'
-            : container.container_status === 'failed'
-              ? 'red'
-              : 'default';
-   const statusText = container.container_status === 'online'
+            : container.container_status === 'paused'
+              ? 'volcano'
+              : container.container_status === 'failed'
+                ? 'red'
+                : 'default';
+   const statusText = isHostOffline
+    ? '宿主机离线'
+    : container.container_status === 'online'
     ? '运行中'
     : container.container_status === 'offline'
       ? '已停止'
@@ -56,21 +63,31 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
           ? '启动中'
           : container.container_status === 'stopping'
             ? '停止中'
-            : container.container_status === 'failed'
-              ? '异常'
-              : container.container_status;
+            : container.container_status === 'paused'
+              ? '磁盘已冻结'
+              : container.container_status === 'failed'
+                ? '异常'
+                : container.container_status;
 
   return (
     <Modal title="容器详细信息" open={visible} onCancel={onClose} width="min(750px, calc(100vw - 24px))" className="cdm-modal" footer={[
+      !readOnly && container.container_status === 'paused' && onUnpause ? (
+        <Button key="unpause" type="primary" icon={<PlayCircleOutlined />} onClick={() => onUnpause(container)}>解冻容器</Button>
+      ) : null,
+      !readOnly && container.container_status === 'paused' && !onUnpause ? (
+        <Typography.Text key="frozen-hint" type="secondary" style={{ marginRight: 12, alignSelf: 'center', fontSize: 12 }}>
+          磁盘已冻结，请联系管理员解冻
+        </Typography.Text>
+      ) : null,
       <Button key="close" onClick={onClose}>关闭</Button>,
-      isRoot ? (
+      !readOnly && (isRoot ? (
         <Button key="deleteContainer" danger icon={<DeleteOutlined />} onClick={() => onDelete && onDelete(container)}>删除容器</Button>
       ) : (
         <Button key="leave" icon={<DeleteOutlined />} disabled={container.container_status !== 'online'} onClick={() => onLeave && onLeave(container)}>解除关联</Button>
-      ),
-      isRoot ? (
+      )),
+      !readOnly && (isRoot ? (
         <Button key="edit" type="primary" icon={<EditOutlined />} disabled={container.container_status !== 'online'} onClick={() => { onEdit && onEdit(container); }}>编辑用户</Button>
-      ) : null
+      ) : null)
     ]}>
       <div className="cdm-body">
         <div className="cdm-header">
@@ -160,8 +177,8 @@ const ContainerDetailModal = ({ visible, container, onClose, onEdit, onDelete, o
               <Space align="start">
                 <GlobalOutlined className="cdm-icon" />
                 <div>
-                  <Typography.Text strong className="cdm-item-label">Swap (GB)</Typography.Text>
-                  <Typography.Text className="cdm-machine-text">{(container.swap_gb !== null && container.swap_gb !== undefined) ? String(container.swap_gb) : '-'}</Typography.Text>
+                  <Typography.Text strong className="cdm-item-label">共享 (GB)</Typography.Text>
+                  <Typography.Text className="cdm-machine-text">{(container.shared_gb !== null && container.shared_gb !== undefined) ? String(container.shared_gb) : '-'}</Typography.Text>
                 </div>
               </Space>
             </Col>

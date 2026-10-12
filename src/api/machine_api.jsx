@@ -1,6 +1,5 @@
 import { BACKEND_ORIGIN, REQUEST_TIMEOUT, CREDENTIALS, API_ROUTES } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
-import { getAuthTokenHeader } from '../utils/authToken';
 
 const createTimeoutController = (timeout) => {
   const controller = createController();
@@ -28,8 +27,6 @@ const ensureOk = async (res, action) => {
       try { abortAll('auth'); } catch (e) {}
       if (typeof window !== 'undefined' && res.status === 401) {
         try {
-          localStorage.removeItem('authToken');
-          sessionStorage.removeItem('authToken');
           localStorage.removeItem('currentUserId');
           localStorage.removeItem('currentUserName');
           document.cookie = 'auth_token=; Max-Age=0; path=/';
@@ -49,8 +46,7 @@ export const addMachine = async (machineData = {}, timeout = null) => {
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        ...getAuthTokenHeader(),
+        'Content-Type': 'application/json',  
       },
       body: JSON.stringify(machineData),
       signal: controller.signal,
@@ -76,7 +72,6 @@ export const removeMachine = async (machine_ids = [], timeout = null) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthTokenHeader(),
       },
       body: JSON.stringify({ machine_ids }),
       signal: controller.signal,
@@ -102,7 +97,6 @@ export const updateMachine = async (machine_id = 0, fields = {}, timeout = null)
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthTokenHeader(),
       },
       body: JSON.stringify({ machine_id, fields }),
       signal: controller.signal,
@@ -128,7 +122,6 @@ export const getDetailInformation = async (machine_id = 0, timeout = null) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthTokenHeader(),
       },
       body: JSON.stringify({ machine_id }),
       signal: controller.signal,
@@ -153,8 +146,7 @@ export const listAllMachineBrefInformation = async ({ page_number = 1, page_size
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        ...getAuthTokenHeader(),
+        'Content-Type': 'application/json', 
       },
       body: JSON.stringify({ page_number, page_size }),
       signal: controller.signal,
@@ -181,7 +173,6 @@ export const addMachinePermission = async ({ machine_id, user_id } = {}, timeout
       method: 'POST',
       headers: {
         'Content-Type' : 'application/json',
-        ...getAuthTokenHeader(),
       },
       body: JSON.stringify({ machine_id, user_id }),
       signal: controller.signal,
@@ -206,9 +197,6 @@ export const listMachinePermissions = async (machine_id = 0, timeout = null) => 
     url.searchParams.set('machine_id', String(machine_id));
     const res = await fetch(url.toString(), {
       method: 'GET',
-      headers: {
-        ...getAuthTokenHeader(),
-      },
       signal: controller.signal,
       credentials: CREDENTIALS,
     });

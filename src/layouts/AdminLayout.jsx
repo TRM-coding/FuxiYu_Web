@@ -103,6 +103,11 @@ export default function AdminLayout() {
       >
         <Outlet />
       </main>
+
+      {/* 全局页脚：时区说明（如备案号一般存在于每页底部） */}
+      <footer style={{ textAlign: 'center', fontSize: '12px', color: '#8c8c8c', padding: '8px 20px 20px' }}>
+        本平台所有时间均以北京时间（UTC+8）显示
+      </footer>
     </div>
   );
 }

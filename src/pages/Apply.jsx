@@ -146,13 +146,23 @@ const Apply = () => {
     setAddContainerFieldErrors({});
     const mtype = (machine && (machine.machine_type || machine.machine_type === 0) ? (machine.machine_type || 'CPU') : 'CPU');
     setAddContainerMachineType((mtype || 'CPU').toUpperCase());
-    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SWAP_MEM: 0, GPU_LIST: [], gpu_number: 0 });
+    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SHARED_MEM: 0, GPU_LIST: [], gpu_number: 0 });
     setAddContainerVisible(true);
   };
 
   const handleAddContainerConfirm = async () => {
     try {
       const values = await addContainerForm.validateFields();
+      // client-side guard: prevent submitting when shared > memory
+      try {
+        const mem = Number(values.MEMORY || 0);
+        const shared = Number(values.SHARED_MEM || 0);
+        if (shared > mem) {
+          setAddContainerFieldErrors(prev => ({ ...(prev || {}), SHARED_MEM: `共享空间不得大于内存 (${mem} GB)` }));
+          message.error('共享空间不得大于内存');
+          return;
+        }
+      } catch (e) {}
       setAddContainerLoading(true);
       const machineId = values.machine_id || addContainerMachineId;
       // 使用状态中的 currentUserName 和 currentUserId
@@ -170,7 +180,7 @@ const Apply = () => {
         gpuList = values.GPU_LIST || [];
       }
 
-      const payload = {
+          const payload = {
         user_name: currentUserName || '',
         user_id: currentUserId || null,
         machine_id: machineId,
@@ -180,7 +190,7 @@ const Apply = () => {
           MEMORY: values.MEMORY || 1,
           NAME: values.NAME || `container-${Date.now()}`,
           image: values.image || '',
-          swap_memory: values.SWAP_MEM || 0
+              shared_memory: values.SHARED_MEM || 0
         },
         public_key: values.public_key || ''
       };
@@ -334,7 +344,8 @@ const Apply = () => {
             key="machine_status"
             render={status => {
               let color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : 'orange';
-              return <Tag color={color}>{status.toUpperCase()}</Tag>;
+              let text = status === 'online' ? '运行中' : status === 'offline' ? '已停止' : '维护中';
+              return <Tag color={color}>{text}</Tag>;
             }}
           />
           <Column
@@ -419,15 +430,17 @@ const Apply = () => {
                   const m = addContainerMachine || {};
                   const cpu = Number(vals.CPU_NUMBER || 0);
                   const mem = Number(vals.MEMORY || 0);
-                  const swap = Number(vals.SWAP_MEM || 0);
+                  const shared = Number(vals.SHARED_MEM || 0);
                   const gnum = Number(vals.gpu_number || 0);
                   const maxCpu = m.max_cpu_core_number ?? m.cpu_core_number ?? null;
                   const maxMem = m.max_memory_gb ?? m.memory_size_gb ?? null;
-                  const maxSwap = m.max_swap_gb ?? m.max_swap_gb ?? m.max_swap_gb ?? null;
+                  const maxShared = m.max_shared_gb ?? m.max_shared_gb ?? m.max_shared_gb ?? null;
                   const maxGpu = m.max_gpu_number ?? m.gpu_number ?? null;
                   if (maxCpu != null && cpu > Number(maxCpu)) errs.CPU_NUMBER = `超出最大 CPU (${maxCpu})`;
                   if (maxMem != null && mem > Number(maxMem)) errs.MEMORY = `超出最大内存 (${maxMem} GB)`;
-                  if (maxSwap != null && swap > Number(maxSwap)) errs.SWAP_MEM = `超出最大交换空间 (${maxSwap} GB)`;
+                  if (maxShared != null && shared > Number(maxShared)) errs.SHARED_MEM = `超出最大共享空间 (${maxShared} GB)`;
+                  // shared must not exceed requested memory
+                  if (shared > mem) errs.SHARED_MEM = `共享空间不得大于内存 (${mem} GB)`;
                   if (addContainerMachineType === 'GPU' && maxGpu != null && gnum > Number(maxGpu)) errs.gpu_number = `超出最大 GPU (${maxGpu})`;
                   setAddContainerFieldErrors(errs);
                 } catch (e) {
@@ -436,7 +449,7 @@ const Apply = () => {
                 }
               }}
           >
-            <Typography.Text type="secondary">请不要超过宿主机算力/内存/交换空间上限。</Typography.Text>
+            <Typography.Text type="secondary">请不要超过宿主机算力/内存/共享空间上限。</Typography.Text>
             <br />
             <br />
             <Row gutter={16}>
@@ -499,10 +512,10 @@ const Apply = () => {
                 </Col>
                 <Col span={12}>
                   <Form.Item
-                    name="SWAP_MEM"
-                    label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? addContainerMachine?.max_swap_gb ?? '-'})</span></span>}
-                    validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
-                    help={addContainerFieldErrors.SWAP_MEM || null}
+                    name="SHARED_MEM"
+                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_shared_gb ?? addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
+                    validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
+                    help={addContainerFieldErrors.SHARED_MEM || null}
                   >
                     <InputNumber min={0} style={{ width: '100%' }} />
                   </Form.Item>
@@ -514,10 +527,10 @@ const Apply = () => {
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item
-                    name="SWAP_MEM"
-                    label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? '-'})</span></span>}
-                    validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
-                    help={addContainerFieldErrors.SWAP_MEM || null}
+                    name="SHARED_MEM"
+                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
+                    validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
+                    help={addContainerFieldErrors.SHARED_MEM || null}
                   >
                     <InputNumber min={0} style={{ width: '100%' }} />
                   </Form.Item>

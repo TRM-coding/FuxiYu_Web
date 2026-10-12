@@ -1,0 +1,330 @@
+.admin-logs {
+  padding: 16px;
+  background: #f5f5f5;
+  min-height: 100%;
+}
+
+.admin-logs-filter {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.admin-logs-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.admin-logs-table {
+  background: #ffffff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+/* 详情展开：完整 JSON，不截断 */
+.admin-logs-detail {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: #fafafa;
+  border: 1px dashed #d9d9d9;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.admin-logs-detail-toolbar {
+  margin-bottom: 8px;
+}
+
+/* 前→后 对比视图 */
+.admin-logs-diff {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.admin-logs-diff-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.admin-logs-diff-row:last-child {
+  border-bottom: none;
+}
+
+.admin-logs-diff-row.is-changed {
+  background: #fafcff;
+}
+
+.diff-label {
+  flex: 0 0 130px;
+  color: #595959;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-val {
+  flex: 1;
+  min-width: 0;
+  font-family: Consolas, Monaco, monospace;
+  padding: 2px 8px;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+.diff-before {
+  background: #fff1f0;
+  color: #a8071a;
+  text-decoration: line-through;
+  opacity: 0.85;
+}
+
+.diff-after {
+  background: #f6ffed;
+  color: #237804;
+}
+
+.diff-arrow {
+  flex: 0 0 auto;
+  color: #bfbfbf;
+}
+
+/* 结构化键值视图 */
+.admin-logs-kv {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 4px 12px;
+}
+
+.admin-logs-kv-row {
+  display: flex;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12px;
+  border-bottom: 1px dashed #f5f5f5;
+}
+
+.admin-logs-kv-row:last-child {
+  border-bottom: none;
+}
+
+.kv-label {
+  flex: 0 0 130px;
+  color: #595959;
+}
+
+.kv-value {
+  flex: 1;
+  min-width: 0;
+  font-family: Consolas, Monaco, monospace;
+  color: #262626;
+  overflow-wrap: anywhere;
+}
+
+.admin-logs-error {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #cf1322;
+  background: #fff2f0;
+  border-top: 1px solid #ffccc7;
+}
+
+/* 周次导航 */
+.admin-logs-week {
+  margin-bottom: 8px;
+}
+
+/* 统计概览 */
+.admin-logs-stats {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+/* 左墙右数：绿墙自然宽度在左；数据（统计卡叠柱状图上方）在右。窄屏换行、绿墙自滚动。 */
+.als-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.als-wall-side {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.als-side {
+  flex: 1;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 统计卡（总操作数 / 成功 / 失败） */
+.admin-logs-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 6px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.admin-logs-stat-num {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #262626;
+}
+
+.admin-logs-stat-green .admin-logs-stat-num {
+  color: #389e0d;
+}
+
+.admin-logs-stat-red .admin-logs-stat-num {
+  color: #cf1322;
+}
+
+.admin-logs-stat-label {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* 三个关键操作的横向柱状图 */
+.admin-logs-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 绿墙：CSS Grid 固定尺寸网格（GitHub 贡献图同款）。
+   列 = 16px 星期标签列 + 52 个 11px 方格周列；行 = 14px 月份标签行 + 7 个 11px 方格。
+   方格恒为 11×11 正方形，任何容器宽度下都不拉伸；窄屏只横向滚动本区域。 */
+.als-wall-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.als-wall {
+  display: grid;
+  grid-template-columns: 16px repeat(52, 11px);
+  grid-template-rows: 14px repeat(7, 11px);
+  column-gap: 3px;
+  row-gap: 3px;
+}
+
+.als-wall-month {
+  font-size: 10px;
+  line-height: 14px;
+  color: #8c8c8c;
+  white-space: nowrap;
+}
+
+.als-wall-day {
+  font-size: 10px;
+  line-height: 11px;
+  color: #8c8c8c;
+  text-align: center;
+}
+
+.als-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+}
+
+.admin-logs-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-logs-bar-label {
+  flex: 0 0 96px; /* 6 个中文字 ≈ 72px，留出右对齐余量 */
+  font-size: 12px;
+  color: #595959;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-logs-bar-track {
+  flex: 1;
+  height: 8px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.admin-logs-bar-fill {
+  height: 100%;
+  background: #1677ff;
+  border-radius: 4px;
+}
+
+.admin-logs-bar-count {
+  flex: 0 0 32px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+
+/* 绿墙图例（置于绿墙右下，GitHub 同款） */
+.als-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #8c8c8c;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.als-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.als-legend-item .als-cell {
+  flex: 0 0 auto;
+}
+
+.als-lg-none {
+  background: #f0f0f0;
+  border: 1px solid #e0e0e0;
+}
+
+.als-lg-green {
+  background: #52c41a;
+}
+
+.als-lg-red {
+  background: #ff4d4f;
+}
+
+.als-lg-mix {
+  background: linear-gradient(135deg, #ff4d4f 0%, #ff4d4f 49%, #52c41a 51%, #52c41a 100%);
+}

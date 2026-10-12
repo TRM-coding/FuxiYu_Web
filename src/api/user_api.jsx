@@ -1,6 +1,5 @@
 import { BACKEND_ORIGIN, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
-import { getAuthTokenHeader } from '../utils/authToken';
 
 
 const createTimeoutController = (timeout) => {
@@ -28,8 +27,6 @@ const ensureOk = async (res, action) => {
       try { abortAll('auth'); } catch (e) {}
       if (typeof window !== 'undefined' && res.status === 401) {
         try {
-          localStorage.removeItem('authToken');
-          sessionStorage.removeItem('authToken');
           localStorage.removeItem('currentUserId');
           localStorage.removeItem('currentUserName');
           document.cookie = 'auth_token=; Max-Age=0; path=/';
@@ -42,14 +39,14 @@ const ensureOk = async (res, action) => {
   return res.json();
 };
 
-export const loginUser = async ({ username, password }, timeout = null) => {
+export const loginUser = async ({ username, password, remember }, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
     const url = new URL(API_ROUTES.LOGIN, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, remember }),
       signal: controller.signal,
       credentials: CREDENTIALS
     });
@@ -123,7 +120,7 @@ export const changePasswordUser = async ({ user_id, old_password, new_password }
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthTokenHeader(),
+        
       },
       body: JSON.stringify({ user_id, old_password, new_password }),
       signal: controller.signal,
@@ -149,7 +146,7 @@ export const updateUser = async ({ user_id, fields } = {}, timeout = null) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthTokenHeader(),
+        
       },
       body: JSON.stringify({ user_id, fields }),
       signal: controller.signal,
@@ -175,7 +172,7 @@ export const resetPassword = async ({ user_id } = {}, timeout = null) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthTokenHeader(),
+        
       },
       body: JSON.stringify({ user_id }),
       signal: controller.signal,
@@ -201,7 +198,7 @@ export const deleteUser = async (user_id = 0, timeout = null) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthTokenHeader(),
+        
       },
       body: JSON.stringify({ user_id }),
       signal: controller.signal,
@@ -227,7 +224,7 @@ export const getUserDetailInformation = async (user_id = 0, timeout = null) => {
     const res = await fetch(url.toString(), {
       method: 'GET',
       headers: {
-        ...getAuthTokenHeader(),
+        
       },
       signal: controller.signal,
       credentials: CREDENTIALS,
@@ -253,7 +250,7 @@ export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 
     const res = await fetch(url.toString(), {
       method: 'GET',
       headers: {
-        ...getAuthTokenHeader(),
+        
       },
       signal: controller.signal,
       credentials: CREDENTIALS,

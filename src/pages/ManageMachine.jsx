@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, addMachine, removeMachine, updateMachine, addMachinePermission, listMachinePermissions } from '../api/machine_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer } from '../api/container_api';
-import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined } from '@ant-design/icons';
+import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
+import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ClockCircleOutlined, SettingOutlined, GlobalOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined } from '@ant-design/icons';
 import { Typography, Row, Col, Button, Input, Space, Table, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Pagination, Slider, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import TableComponent from '../components/TableComponent';
@@ -17,6 +17,7 @@ const { Column } = Table;
 const { Option } = Select;
 
 import { startContainerStatusHeartbeat, startMachineStatusHeartbeat } from '../utils/heartbeat';
+import { parseSshTimeToDate, formatDuration } from '../utils/timeFormat';
 
 
 import './ManageMachine.css';
@@ -57,6 +58,46 @@ const ROLE_CONFIG = {
   }
 };
 
+const SSH_CLEANUP_WINDOW_DAYS = 7;
+
+// ── SSH 清理时间 辅助函数 ──────────────────────────────────────────
+// parseSshTimeToDate / formatDuration 由 ../utils/timeFormat 统一提供
+// （ISO 形串按 UTC 解析，syslog/last 形串按节点口径解析），此处不再重复定义。
+
+const formatBeijingDateTime = (date) => date.toLocaleString('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  hour12: false,
+});
+
+const formatLastSshTime = (raw) => {
+  if (!raw) return '从未登录';
+  const d = parseSshTimeToDate(raw);
+  if (!d) return String(raw);
+  return formatBeijingDateTime(d);
+};
+
+const formatCleanupCountdown = (raw, record = null) => {
+  if (record?.is_long_term === true) return '长期容器';
+  if (!raw && (!record || record.cleanup_status === 'unknown' || record.seconds_until_cleanup == null)) {
+    return '从未登录';
+  }
+  if (record && typeof record === 'object') {
+    const status = record.cleanup_status;
+    const seconds = Number(record.seconds_until_cleanup);
+    if (status === 'due') return '可清理';
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return formatDuration(seconds);
+    }
+  }
+
+  const d = parseSshTimeToDate(raw);
+  if (!d) return '从未登录';
+  const expireAt = d.getTime() + SSH_CLEANUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const diff = expireAt - Date.now();
+  if (diff <= 0) return '可清理';
+  return formatDuration(Math.floor(diff / 1000));
+};
+
 const ManageMachine = () => {
   // 机器搜索状态
   const [searchName, setSearchName] = useState('');
@@ -77,6 +118,8 @@ const ManageMachine = () => {
   const [containerSearch, setContainerSearch] = useState({});
   // containers per machine cache: { [machineId]: { loading: bool, data: [] } }
   const [containerMap, setContainerMap] = useState({});
+  const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
+  const [sshRefreshingMap, setSshRefreshingMap] = useState({});
   // cache machine's container names for top-level search: { [machineId]: string[] }
   const [machineContainerNamesMap, setMachineContainerNamesMap] = useState({});
   // top-level container-name search loading
@@ -198,6 +241,8 @@ const ManageMachine = () => {
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState(null);
+  // 高风险操作确认弹窗（停止/重启）
+  const [actionModal, setActionModal] = useState({ visible: false, type: '', loading: false, data: null });
   // 添加宿主机弹窗
   const [addHostVisible, setAddHostVisible] = useState(false);
   const [addHostLoading, setAddHostLoading] = useState(false);
@@ -223,6 +268,64 @@ const ManageMachine = () => {
   const [deleteTargetContainer, setDeleteTargetContainer] = useState(null);
   const [containerDeleteLoading, setContainerDeleteLoading] = useState(false);
 
+  const openActionConfirm = (type, data) => {
+    setActionModal({ visible: true, type, loading: false, data });
+  };
+
+  const closeActionModal = () => {
+    setActionModal({ visible: false, type: '', loading: false, data: null });
+  };
+
+  const handleActionConfirm = async () => {
+    setActionModal(prev => ({ ...prev, loading: true }));
+    try {
+      const { type, data } = actionModal;
+      if (type === 'stop') {
+        await handleStopContainer(data.record || data);
+        message.success(`容器 ${data.record?.container_name || ''} 停止请求已发送`);
+      } else if (type === 'restart') {
+        await handleRestartContainer(data.record || data);
+        message.success(`容器 ${data.record?.container_name || ''} 重启请求已发送`);
+      }
+    } catch (err) {
+      console.error('action confirm failed', err);
+      await showErrorModal({ message: err?.body || err || '操作失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setActionModal({ visible: false, type: '', loading: false, data: null });
+    }
+  };
+
+  const getActionModalConfig = () => {
+    const { type, data } = actionModal;
+    const configs = {
+      stop: {
+        title: '确认停止容器',
+        message: `确定要停止容器 ${data?.record?.container_name || ''} 吗？`,
+        content: (
+          <div className="home-modal-danger">
+            <Typography.Text type="danger">停止容器是高风险操作，可能导致服务中断或数据不可用。</Typography.Text>
+          </div>
+        ),
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认停止'
+      },
+      restart: {
+        title: '确认重启容器',
+        message: `确定要重启容器 ${data?.record?.container_name || ''} 吗？`,
+        content: (
+          <div className="home-modal-danger">
+            <Typography.Text type="danger">重启容器是高风险操作，可能会中断正在运行的任务。</Typography.Text>
+          </div>
+        ),
+        danger: true,
+        iconColor: '#ff4d4f',
+        confirmText: '确认重启'
+      }
+    };
+    return configs[type] || {};
+  };
+
   //加载机器列表
   const fetchMachinesFromApi = async () => {
     setMachinesLoading(true);
@@ -244,7 +347,7 @@ const ManageMachine = () => {
         max_memory_gb: null,
         max_gpu_number: null,
         max_cpu_core_number: null,
-        max_swap_gb: null,
+        max_shared_gb: null,
         gpu_number: null,
         gpu_type: null,
         disk_size_gb: null,
@@ -264,7 +367,7 @@ const ManageMachine = () => {
                 gpu_number: detail.gpu_number ?? it.gpu_number ?? 0,
                 gpu_type: detail.gpu_type ?? it.gpu_type ?? '',
                 disk_size_gb: detail.disk_size_gb ?? it.disk_size_gb,
-                max_swap_gb: detail.max_swap_gb ?? it.max_swap_gb,
+                max_shared_gb: detail.max_shared_gb ?? it.max_shared_gb,
                 max_memory_gb: detail.max_memory_gb ?? it.max_memory_gb,
                 max_gpu_number: detail.max_gpu_number ?? it.max_gpu_number ?? 0,
                 max_cpu_core_number: detail.max_cpu_core_number ?? it.max_cpu_core_number,
@@ -352,7 +455,19 @@ const ManageMachine = () => {
         machine_id: mid,
         machine_ip: c.machine_ip || '',
         owners: c.owners || [],
-        accounts: c.accounts || []
+        accounts: c.accounts || [],
+        is_long_term: c.is_long_term === true,
+        long_term_container_can_enable: c.long_term_container_can_enable !== false,
+        long_term_container_blocked_user_ids: c.long_term_container_blocked_user_ids || [],
+        long_term_container_remaining_by_user: c.long_term_container_remaining_by_user || {},
+        last_ssh_login_time: c.last_ssh_login_time ?? null,
+        cleanup_after_days: c.cleanup_after_days ?? null,
+        cleanup_at: c.cleanup_at ?? null,
+        seconds_until_cleanup: c.seconds_until_cleanup ?? null,
+        cleanup_status: c.cleanup_status ?? null,
+        disk_total_gb: c.disk_total_gb ?? null,
+        disk_limit_gb: c.disk_limit_gb ?? null,
+        disk_usage_percent: c.disk_usage_percent ?? null,
       }));
       setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: mapped, page: pageNumber, total_page: total_page, page_size: pageSize } }));
     } catch (err) {
@@ -362,7 +477,86 @@ const ManageMachine = () => {
     }
   };
 
-  // 顶部“容器名”搜索：按机器维度缓存容器名
+  const handleLongTermChange = async (containerRecord, checked) => {
+    const cid = containerRecord?.key || containerRecord?.container_id;
+    const mid = containerRecord?.machine_id;
+    if (!cid) return;
+    setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: true }));
+    try {
+      const res = await setLongTermContainer({ container_id: Number(cid), is_long_term: checked });
+      const nextIsLongTerm = res?.is_long_term === true;
+      const nextCanEnable = res?.long_term_container_can_enable !== false;
+      const nextBlockedUserIds = res?.long_term_container_blocked_user_ids || [];
+      const nextRemainingByUser = res?.long_term_container_remaining_by_user || {};
+      setContainerMap(prev => {
+        const machineEntry = prev[String(mid)];
+        if (!machineEntry) return prev;
+        return {
+          ...prev,
+          [String(mid)]: {
+            ...machineEntry,
+            data: (machineEntry.data || []).map(c => (
+              String(c.key) === String(cid)
+                ? {
+                  ...c,
+                  is_long_term: nextIsLongTerm,
+                  long_term_container_can_enable: nextCanEnable,
+                  long_term_container_blocked_user_ids: nextBlockedUserIds,
+                  long_term_container_remaining_by_user: nextRemainingByUser,
+                }
+                : c
+            )),
+          },
+        };
+      });
+      message.success(nextIsLongTerm ? '已设为长期容器' : '已取消长期容器');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '设置长期容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: false }));
+    }
+  };
+
+  // ── SSH 刷新 ─────────────────────────────────────────────
+
+  const refreshSshTimeForContainer = async (containerRecord) => {
+    const cid = containerRecord?.key || containerRecord?.container_id;
+    const mid = String(containerRecord?.machine_id || '');
+    if (!cid) return;
+    setSshRefreshingMap(prev => ({ ...prev, [String(cid)]: true }));
+    try {
+      const res = await refreshLastSshLoginTime(Number(cid));
+      const value = (res && Object.prototype.hasOwnProperty.call(res, 'last_ssh_login_time'))
+        ? res.last_ssh_login_time
+        : null;
+      const cleanup_after_days = res?.cleanup_after_days ?? null;
+      const cleanup_at = res?.cleanup_at ?? null;
+      const seconds_until_cleanup = res?.seconds_until_cleanup ?? null;
+      const cleanup_status = res?.cleanup_status ?? null;
+      setContainerMap(prev => {
+        const entry = prev[mid];
+        if (!entry) return prev;
+        return {
+          ...prev,
+          [mid]: {
+            ...entry,
+            data: (entry.data || []).map(c => (
+              String(c.key) === String(cid)
+                ? { ...c, last_ssh_login_time: value, cleanup_after_days, cleanup_at, seconds_until_cleanup, cleanup_status }
+                : c
+            )),
+          },
+        };
+      });
+      message.success('SSH 登录时间已刷新');
+    } catch (err) {
+      await showErrorModal({ message: err?.body || err || '刷新 SSH 登录时间失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+    } finally {
+      setSshRefreshingMap(prev => ({ ...prev, [String(cid)]: false }));
+    }
+  };
+
+  // 顶部”容器名”搜索：按机器维度缓存容器名
   useEffect(() => {
     const keyword = (searchContainerName || '').trim().toLowerCase();
     if (!keyword) {
@@ -407,8 +601,8 @@ const ManageMachine = () => {
 
   // 容器状态标签
   const renderContainerStatus = (status) => {
-    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
-    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status}</Tag>;
+    const color = status === 'online' ? 'green' : status === 'offline' ? 'volcano' : status === 'paused' ? 'volcano' : status === 'creating' ? 'blue' : status === 'starting' ? 'cyan' : status === 'stopping' ? 'orange' : status === 'failed' ? 'red' : 'default';
+    return <Tag color={color}>{status === 'online' ? '运行中' : status === 'offline' ? '已停止' : status === 'paused' ? '磁盘已冻结' : status === 'creating' ? '创建中' : status === 'starting' ? '启动中' : status === 'stopping' ? '停止中' : status === 'failed' ? '异常' : status}</Tag>;
   };
 
   // 切换展开状态并关联选中态
@@ -471,7 +665,7 @@ const ManageMachine = () => {
         cpu_number: detail.cpu_number ?? container.cpu_number ?? null,
         gpu_number: detail.gpu_number ?? container.gpu_number ?? 0,
         memory_gb: detail.memory_gb ?? container.memory_gb ?? 0,
-        swap_gb: detail.swap_gb ?? container.swap_gb ?? 0,
+        shared_gb: detail.shared_gb ?? container.shared_gb ?? 0,
         owners: detail.owners || detail.owner_list || container.owners || [],
         accounts: detail.accounts || detail.account_list || container.accounts || []
       };
@@ -575,7 +769,7 @@ const ManageMachine = () => {
   const openAddHostModal = () => {
     addHostForm.resetFields();
     // set defaults for add mode: default status = maintenance
-    addHostForm.setFieldsValue({ machine_status: 'maintenance', machine_type: 'CPU', gpu_number: 0, max_swap_gb: 0 });
+    addHostForm.setFieldsValue({ machine_status: 'maintenance', machine_type: 'CPU', gpu_number: 0, max_shared_gb: 0 });
     setIsEditMode(false);
     setEditTargetMachine(null);
     setAddHostVisible(true);
@@ -592,7 +786,7 @@ const ManageMachine = () => {
     const defaultUser = localStorage.getItem('currentUserName') || localStorage.getItem('currentUser') || '';
     const mtype = (machine && (machine.machine_type || machine.machine_type === 0) ? (machine.machine_type || 'CPU') : 'CPU');
     setAddContainerMachineType((mtype || 'CPU').toUpperCase());
-    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SWAP_MEM: 0, GPU_LIST: [], gpu_number: 0, root_user: defaultUser });
+    addContainerForm.setFieldsValue({ machine_id: mid, NAME: '', image: '', CPU_NUMBER: 1, MEMORY: 1, SHARED_MEM: 0, GPU_LIST: [], gpu_number: 0, root_user: defaultUser });
     setAddContainerVisible(true);
   };
 
@@ -600,6 +794,18 @@ const ManageMachine = () => {
   const handleAddContainerConfirm = async () => {
     try {
       const values = await addContainerForm.validateFields();
+      // quick client-side guard: shared must not exceed memory
+      try {
+        const mem = Number(values.MEMORY || 0);
+        const shared = Number(values.SHARED_MEM || 0);
+        if (shared > mem) {
+          setAddContainerFieldErrors(prev => ({ ...(prev || {}), SHARED_MEM: `共享空间不得大于内存 (${mem} GB)` }));
+          message.error('共享空间不得大于内存');
+          return;
+        }
+      } catch (e) {
+        // ignore parse errors and continue to server-side validation
+      }
       setAddContainerLoading(true);
       const machineId = values.machine_id || addContainerMachineId;
       const toAddUserName = values.root_user || localStorage.getItem('currentUserName') || '';
@@ -629,7 +835,7 @@ const ManageMachine = () => {
             MEMORY: values.MEMORY || 1,
             NAME: values.NAME || `container-${Date.now()}`,
             image: values.image || '',
-            swap_memory: values.SWAP_MEM || 0
+            shared_memory: values.SHARED_MEM || 0
           },
           public_key: values.public_key || ''
         };
@@ -736,7 +942,7 @@ const ManageMachine = () => {
         max_memory_gb: src.max_memory_gb ?? machine.max_memory_gb ?? 0,
         max_gpu_number: src.max_gpu_number ?? machine.max_gpu_number ?? 0,
         max_cpu_core_number: src.max_cpu_core_number ?? machine.max_cpu_core_number ?? 0,
-        max_swap_gb: src.max_swap_gb ?? machine.max_swap_gb ?? null,
+        max_shared_gb: src.max_shared_gb ?? machine.max_shared_gb ?? null,
         disk_size: src.disk_size_gb ?? machine.disk_size_gb ?? null,
         machine_description: src.machine_description || machine.machine_description || ''
       });
@@ -769,8 +975,7 @@ const ManageMachine = () => {
         max_memory_gb: values.max_memory_gb || 0,
         max_gpu_number: values.max_gpu_number || 0,
         max_cpu_core_number: values.max_cpu_core_number || 0,
-        max_swap_gb: values.max_swap_gb || null,
-        swap_size: values.swap_size || null,
+        max_shared_gb: values.max_shared_gb || null,
         disk_size: values.disk_size || null,
       };
 
@@ -795,7 +1000,7 @@ const ManageMachine = () => {
             max_memory_gb: payload.max_memory_gb,
             max_gpu_number: payload.max_gpu_number,
             max_cpu_core_number: payload.max_cpu_core_number,
-            max_swap_gb: payload.max_swap_gb,
+            max_shared_gb: payload.max_shared_gb,
             gpu_number: payload.gpu_number,
             gpu_type: payload.gpu_type,
             disk_size_gb: payload.disk_size,
@@ -934,6 +1139,21 @@ const ManageMachine = () => {
   };
 
   // 打开删除容器的确认弹窗
+  const handleUnpauseContainer = async (container) => {
+    const cid = Number(container?.key || container?.container_id);
+    if (!cid) return;
+    try {
+      await unpauseContainer(cid);
+      message.success('容器已解冻');
+      // refresh container list
+      const mid = container?.machine_id;
+      if (mid) fetchContainersForMachine(mid);
+    } catch (err) {
+      message.error('解冻失败');
+      await showErrorModal({ message: err?.body || err || '解冻失败' });
+    }
+  };
+
   const openDeleteContainerConfirm = (container) => {
     setDeleteTargetContainer(container);
     // 隐藏详情弹窗以展示二次确认
@@ -1239,11 +1459,43 @@ const ManageMachine = () => {
             <Column title="容器ID" dataIndex="key" key="key" />
             <Column title="容器名" dataIndex="container_name" key="container_name" />
             <Column title="端口" dataIndex="port" key="port" />
-            <Column 
-              title="状态" 
-              dataIndex="container_status" 
-              key="container_status" 
-              render={renderContainerStatus} 
+            <Column
+              title="状态"
+              dataIndex="container_status"
+              key="container_status"
+              render={renderContainerStatus}
+            />
+            <Column
+              title="上次SSH登录"
+              dataIndex="last_ssh_login_time"
+              key="last_ssh_login_time"
+              render={(_, record) => formatLastSshTime(record?.last_ssh_login_time)}
+            />
+            <Column
+              title="距清理时间"
+              dataIndex="ssh_cleanup_countdown"
+              key="ssh_cleanup_countdown"
+              render={(_, record) => formatCleanupCountdown(record?.last_ssh_login_time, record)}
+            />
+            <Column
+              title="磁盘用量"
+              dataIndex="disk_usage_percent"
+              key="disk_usage_percent"
+              render={(_, record) => {
+                const pct = record.disk_usage_percent;
+                const total = record.disk_total_gb;
+                const limit = record.disk_limit_gb;
+                if (total == null) return <Typography.Text type="secondary">-</Typography.Text>;
+                const color = pct >= 100 ? '#ff4d4f' : pct >= 80 ? '#faad14' : '#52c41a';
+                return (
+                  <div style={{ minWidth: 80 }}>
+                    <div style={{ fontSize: 12, marginBottom: 2 }}>{total}G / {limit != null ? `${limit}G` : '-'}</div>
+                    <div style={{ background: '#f0f0f0', borderRadius: 2, height: 4, width: '100%', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(pct || 0, 100)}%`, height: '100%', background: color, borderRadius: 2 }} />
+                    </div>
+                  </div>
+                );
+              }}
             />
             <Column
               title="操作"
@@ -1253,13 +1505,32 @@ const ManageMachine = () => {
                 const startDisabled = status !== 'offline';
                 const restartDisabled = status !== 'online';
                 const stopDisabled = status !== 'online';
+                const longTermLoading = !!longTermUpdatingMap[String(containerRecord?.key)];
+                const longTermChecked = containerRecord?.is_long_term === true;
+                const longTermDisabled = longTermLoading || (!longTermChecked && containerRecord?.long_term_container_can_enable === false);
+                const sshRefreshLoading = !!sshRefreshingMap[String(containerRecord?.key)];
                 return (
                   <Space size="middle">
+                    <Checkbox
+                      checked={longTermChecked}
+                      disabled={longTermDisabled}
+                      title={longTermDisabled && !longTermLoading ? '绑定用户已达到长期容器上限' : undefined}
+                      onChange={e => handleLongTermChange(containerRecord, e.target.checked)}
+                    >
+                      长期容器
+                    </Checkbox>
                     <Button type="primary" size="small" onClick={() => handleStartContainer(containerRecord)} disabled={startDisabled}>启动</Button>
-                    <Button danger size="small" onClick={() => handleStopContainer(containerRecord)} disabled={stopDisabled}>停止</Button>
-                    <Button size="small" onClick={() => handleRestartContainer(containerRecord)} disabled={restartDisabled}>重启</Button>
-                    <Button 
-                      size="small" 
+                    <Button danger size="small" onClick={() => openActionConfirm('stop', { record: containerRecord })} disabled={stopDisabled}>停止</Button>
+                    <Button size="small" onClick={() => openActionConfirm('restart', { record: containerRecord })} disabled={restartDisabled}>重启</Button>
+                    <Button
+                      size="small"
+                      onClick={() => refreshSshTimeForContainer(containerRecord)}
+                      loading={sshRefreshLoading}
+                    >
+                      刷新SSH
+                    </Button>
+                    <Button
+                      size="small"
                       type="primary"
                       ghost
                       onClick={() => openContainerDetail(containerRecord)}
@@ -1299,6 +1570,18 @@ const ManageMachine = () => {
 
   return (
     <>
+      <ConfirmModal
+        visible={actionModal.visible}
+        title={getActionModalConfig().title}
+        message={getActionModalConfig().message}
+        content={getActionModalConfig().content}
+        danger={getActionModalConfig().danger}
+        iconColor={getActionModalConfig().iconColor}
+        confirmText={getActionModalConfig().confirmText}
+        onConfirm={handleActionConfirm}
+        onCancel={closeActionModal}
+        loading={actionModal.loading}
+      />
       <div className="mm-root">
         {/* 1. 搜索区域 */}
         <div ref={searchBarRef} style={searchBarStyle} className="mm-search-bar mm-auto-hide-bar">
@@ -1403,7 +1686,7 @@ const ManageMachine = () => {
                 );
               }}
             />
-            <Column title="最大Swap(GB)" dataIndex="max_swap_gb" key="max_swap_gb" />
+            <Column title="最大共享(GB)" dataIndex="max_shared_gb" key="max_shared_gb" />
             <Column
               title="GPU数量"
               dataIndex="gpu_number"
@@ -1468,7 +1751,7 @@ const ManageMachine = () => {
           <Form
             form={addHostForm}
             layout="vertical"
-            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance', max_memory_gb: 0, max_gpu_number: 0, max_cpu_core_number: 0, max_swap_gb: 0, swap_size: 0 }}
+            initialValues={{ machine_type: 'CPU', gpu_number: 0, machine_status: 'maintenance', max_memory_gb: 0, max_gpu_number: 0, max_cpu_core_number: 0, max_shared_gb: 0 }}
               onValuesChange={(changedValues) => {
                 if (changedValues.machine_type) {
                   if (changedValues.machine_type !== 'GPU') {
@@ -1551,13 +1834,17 @@ const ManageMachine = () => {
                                     <span style={{ visibility: 'hidden' }}>占位</span>
                                   )}
                                 </div>
-                                <Slider
-                                  min={0}
-                                  max={Math.max(1, cpuMax)}
-                                  step={1}
-                                  value={typeof val === 'number' ? val : 0}
-                                  onChange={(v) => addHostForm.setFieldsValue({ max_cpu_core_number: v })}
-                                />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
+                                  <Slider
+                                    min={0}
+                                    max={Math.max(1, cpuMax)}
+                                    step={1}
+                                    value={typeof val === 'number' ? val : 0}
+                                    onChange={(v) => addHostForm.setFieldsValue({ max_cpu_core_number: v })}
+                                    style={{ flex: 1, minWidth: 0 }}
+                                  />
+                                  <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val} 核` : '0 核'}</div>
+                                </div>
                               </div>
                             </>
                           </Form.Item>
@@ -1600,13 +1887,17 @@ const ManageMachine = () => {
                                 <span style={{ visibility: 'hidden' }}>占位</span>
                               )}
                             </div>
-                            <Slider
-                              min={0}
-                              max={Math.max(1, memMax)}
-                              step={1}
-                              value={typeof val === 'number' ? val : 0}
-                              onChange={(v) => addHostForm.setFieldsValue({ max_memory_gb: v })}
-                            />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
+                              <Slider
+                                min={0}
+                                max={Math.max(1, memMax)}
+                                step={1}
+                                value={typeof val === 'number' ? val : 0}
+                                onChange={(v) => addHostForm.setFieldsValue({ max_memory_gb: v })}
+                                style={{ flex: 1, minWidth: 0 }}
+                              />
+                              <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val} GB` : '0 GB'}</div>
+                            </div>
                           </div>
                         </>
                       </Form.Item>
@@ -1639,14 +1930,18 @@ const ManageMachine = () => {
                                 <span style={{ visibility: 'hidden' }}>占位</span>
                               )}
                             </div>
-                            <Slider
-                              min={0}
-                              max={Math.max(0, gpuMax)}
-                              step={1}
-                              value={typeof val === 'number' ? val : 0}
-                              onChange={(v) => addHostForm.setFieldsValue({ max_gpu_number: v })}
-                              disabled={mt !== 'GPU'}
-                            />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
+                              <Slider
+                                min={0}
+                                max={Math.max(0, gpuMax)}
+                                step={1}
+                                value={typeof val === 'number' ? val : 0}
+                                onChange={(v) => addHostForm.setFieldsValue({ max_gpu_number: v })}
+                                disabled={mt !== 'GPU'}
+                                style={{ flex: 1, minWidth: 0 }}
+                              />
+                              <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val}` : '0'}</div>
+                            </div>
                           </div>
                         </>
                       </Form.Item>
@@ -1704,25 +1999,31 @@ const ManageMachine = () => {
                   <Form.Item shouldUpdate noStyle>
                     {() => {
                       const base = addHostForm.getFieldValue('memory_size') || 1;
-                      const val = addHostForm.getFieldValue('max_swap_gb') || 0;
+                      const val = addHostForm.getFieldValue('max_shared_gb') || 0;
+                      const maxMemoryField = addHostForm.getFieldValue('max_memory_gb');
+                      const sliderMax = (typeof maxMemoryField === 'number' && maxMemoryField > 0) ? Math.max(1, Math.floor(maxMemoryField)) : Math.max(1, Math.floor(base * 2));
                       return (
-                        <Form.Item name="max_swap_gb" label={`交换空间 最大允许分配（GB，整数）`}>
+                        <Form.Item name="max_shared_gb" label={`共享空间 最大允许分配（GB，整数）`}>
                           <>
                             <div onTouchStart={stopEventPropagation} onTouchMove={stopEventPropagation} onTouchEnd={stopEventPropagation} onPointerDown={stopEventPropagation} onPointerMove={stopEventPropagation}>
                               <div style={{ minHeight: 22, marginBottom: 8 }}>
-                                {(base > 0 && val > Math.floor(base * 2)) ? (
+                                {(sliderMax > 0 && val > Math.floor(sliderMax * 0.8)) ? (
                                   <Typography.Text style={{ color: '#ff4d4f' }}>过量分配性能是危险的！预留一些性能给控制系统。</Typography.Text>
                                 ) : (
                                   <span style={{ visibility: 'hidden' }}>占位</span>
                                 )}
                               </div>
-                              <Slider
-                                min={0}
-                                max={Math.max(1, Math.floor(base * 2))}
-                                step={1}
-                                value={typeof val === 'number' ? val : 0}
-                                onChange={(v) => addHostForm.setFieldsValue({ max_swap_gb: v })}
-                              />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
+                                <Slider
+                                  min={0}
+                                  max={sliderMax}
+                                  step={1}
+                                  value={typeof val === 'number' ? val : 0}
+                                  onChange={(v) => addHostForm.setFieldsValue({ max_shared_gb: v })}
+                                  style={{ flex: 1, minWidth: 0 }}
+                                />
+                                <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 600 }}>{typeof val === 'number' ? `${val} GB` : '0 GB'}</div>
+                              </div>
                             </div>
                           </>
                         </Form.Item>
@@ -1730,11 +2031,7 @@ const ManageMachine = () => {
                     }}
                   </Form.Item>
                 </Col>
-                <Col xs={24} sm={6} md={6} lg={6} xl={6}>
-                  <Form.Item name="swap_size" label="交换空间 (GB)">
-                    <InputNumber min={0} style={{ width: '100%', maxWidth: 110 }} />
-                  </Form.Item>
-                </Col>
+                {/* removed individual shared_size field per API; only slider `max_shared_gb` is used */}
               </Row>
 
             <Row>
@@ -1752,7 +2049,13 @@ const ManageMachine = () => {
       <ConfirmModal
         visible={deleteConfirmVisible}
         title="确认删除宿主机"
-        message={deleteTargetMachine ? `请确认以下信息并删除宿主机 ${deleteTargetMachine.machine_name || deleteTargetMachine.key}` : '确认删除该宿主机？'}
+        icon={<DesktopOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />}
+        message={deleteTargetMachine ? (
+          <div>
+            <div className="mm-delete-headline">你即将删除的是：<span className="mm-delete-headline-type">机器</span></div>
+            <div className="mm-delete-name">名称：{deleteTargetMachine.machine_name || deleteTargetMachine.key}</div>
+          </div>
+        ) : '确认删除该宿主机？'}
         content={
           deleteTargetMachine ? (
             <div className="mm-danger-box">
@@ -1796,7 +2099,13 @@ const ManageMachine = () => {
       <ConfirmModal
         visible={containerDeleteConfirmVisible}
         title="确认删除容器"
-        message={deleteTargetContainer ? `请确认以下信息并删除容器 ${deleteTargetContainer.container_name || deleteTargetContainer.key}` : '确认删除该容器？'}
+        icon={<ContainerOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />}
+        message={deleteTargetContainer ? (
+          <div>
+            <div className="mm-delete-headline">你即将删除的是：<span className="mm-delete-headline-type">容器</span></div>
+            <div className="mm-delete-name">名称：{deleteTargetContainer.container_name || deleteTargetContainer.key}</div>
+          </div>
+        ) : '确认删除该容器？'}
         content={
           deleteTargetContainer ? (
             <div className="mm-danger-box">
@@ -1834,6 +2143,7 @@ const ManageMachine = () => {
         container={selectedContainer}
         onClose={closeAllModals}
         onEdit={openEditModal}
+        onUnpause={handleUnpauseContainer}
         onDelete={openDeleteContainerConfirm}
         usersList={usersList}
         currentUserName={localStorage.getItem('currentUserName')}
@@ -1928,7 +2238,7 @@ const ManageMachine = () => {
           <Form
             form={addContainerForm}
             layout="vertical"
-            initialValues={{ CPU_NUMBER: 1, MEMORY: 1, SWAP_MEM: 0, GPU_LIST: [], gpu_number: 0 }}
+            initialValues={{ CPU_NUMBER: 1, MEMORY: 1, SHARED_MEM: 0, GPU_LIST: [], gpu_number: 0 }}
             onValuesChange={(_changed, allVals) => {
               try {
                 const vals = allVals || addContainerForm.getFieldsValue();
@@ -1943,15 +2253,17 @@ const ManageMachine = () => {
                 const m = addContainerMachine || {};
                 const cpu = Number(vals.CPU_NUMBER || 0);
                 const mem = Number(vals.MEMORY || 0);
-                const swap = Number(vals.SWAP_MEM || 0);
+                const shared = Number(vals.SHARED_MEM || 0);
                 const gnum = Number(vals.gpu_number || 0);
                 const maxCpu = m.max_cpu_core_number ?? m.cpu_core_number ?? null;
                 const maxMem = m.max_memory_gb ?? m.memory_size_gb ?? null;
-                const maxSwap = m.max_swap_gb ?? m.max_swap_gb ?? null;
+                const maxShared = m.max_shared_gb ?? m.max_shared_gb ?? null;
                 const maxGpu = m.max_gpu_number ?? m.gpu_number ?? null;
                 if (maxCpu != null && cpu > Number(maxCpu)) errs.CPU_NUMBER = `超出最大 CPU (${maxCpu})`;
                 if (maxMem != null && mem > Number(maxMem)) errs.MEMORY = `超出最大内存 (${maxMem} GB)`;
-                if (maxSwap != null && swap > Number(maxSwap)) errs.SWAP_MEM = `超出最大交换空间 (${maxSwap} GB)`;
+                // shared should also not exceed requested memory
+                if (maxShared != null && shared > Number(maxShared)) errs.SHARED_MEM = `超出最大共享空间 (${maxShared} GB)`;
+                if (shared > mem) errs.SHARED_MEM = `共享空间不得大于内存 (${mem} GB)`;
                 if ((addContainerMachineType || '').toUpperCase() === 'GPU' && maxGpu != null && gnum > Number(maxGpu)) errs.gpu_number = `超出最大 GPU (${maxGpu})`;
                 setAddContainerFieldErrors(errs);
               } catch (e) {
@@ -1977,7 +2289,7 @@ const ManageMachine = () => {
               </Col>
             </Row>
 
-            <Typography.Text type="secondary">请注意：下面的资源参数用于校验并限制容器申请，请不要超过宿主机的算力/内存/交换空间上限。</Typography.Text>
+            <Typography.Text type="secondary">请注意：下面的资源参数用于校验并限制容器申请，请不要超过宿主机的算力/内存/共享空间上限。</Typography.Text>
             <br />
             <br />
 
@@ -2019,10 +2331,10 @@ const ManageMachine = () => {
                 </Col>
                 <Col span={12}>
                   <Form.Item
-                    name="SWAP_MEM"
-                    label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? addContainerMachine?.max_swap_gb ?? '-'})</span></span>}
-                    validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
-                    help={addContainerFieldErrors.SWAP_MEM || null}
+                    name="SHARED_MEM"
+                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_shared_gb ?? addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
+                    validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
+                    help={addContainerFieldErrors.SHARED_MEM || null}
                   >
                     <InputNumber min={0} className="mm-width-100" />
                   </Form.Item>
@@ -2034,10 +2346,10 @@ const ManageMachine = () => {
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item
-                    name="SWAP_MEM"
-                    label={<span>交换空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_swap_gb ?? '-'})</span></span>}
-                    validateStatus={addContainerFieldErrors.SWAP_MEM ? 'error' : undefined}
-                    help={addContainerFieldErrors.SWAP_MEM || null}
+                    name="SHARED_MEM"
+                    label={<span>共享空间 (GB) <span style={{ color: '#888', fontSize: 12 }}> (限: {addContainerMachine?.max_shared_gb ?? '-'})</span></span>}
+                    validateStatus={addContainerFieldErrors.SHARED_MEM ? 'error' : undefined}
+                    help={addContainerFieldErrors.SHARED_MEM || null}
                   >
                     <InputNumber min={0} className="mm-width-100" />
                   </Form.Item>

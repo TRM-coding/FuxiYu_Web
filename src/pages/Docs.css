@@ -1,0 +1,167 @@
+.docs-wrap {
+  padding: 16px;
+  background: #f5f5f5;
+  min-height: 100%;
+}
+
+.docs-card {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.docs-title {
+  margin-bottom: 4px;
+}
+
+.docs-section {
+  margin-top: 28px;
+}
+
+/* ── 按钮 / 弹窗 / 输入框逐项说明 ─────────────────────────── */
+
+.guide-item {
+  padding: 10px 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #ffffff;
+  margin-top: 12px;
+}
+
+.guide-title {
+  font-size: 13px;
+  font-weight: bold;
+  color: #262626;
+  margin-bottom: 6px;
+}
+
+.guide-field {
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+/* 句子内嵌控件（按钮 / 标签 / 复选框 / 下拉）与文字对齐 */
+.guide-field .ant-btn,
+.guide-field .ant-tag,
+.guide-field .ant-checkbox-wrapper,
+.guide-field .ant-radio-group,
+.guide-field .ant-select {
+  margin: 0 2px;
+  vertical-align: middle;
+}
+
+/* 行内代码高亮（路径 / 密码 / 账号等技术内容） */
+.guide-code {
+  margin: 0 2px;
+  padding: 1px 6px;
+  border: 1px solid #f0d5b4;
+  border-radius: 4px;
+  background: #fff7e6;
+  color: #d46b08;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+}
+
+/* ── 权限状态机示意图 ─────────────────────────── */
+.role-flow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 14px;
+}
+
+.role-flow-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  max-width: 720px;
+}
+
+.role-flow-center {
+  justify-content: center;
+}
+
+.role-flow-box {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.role-flow-box ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.role-flow-box li {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #595959;
+}
+
+.role-flow-mid {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 4px;
+  text-align: center;
+}
+
+.role-flow-down {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.role-flow-arrows {
+  font-size: 20px;
+  line-height: 1;
+  color: #1677ff;
+}
+
+.role-flow-arrows-v {
+  display: none;
+}
+
+.role-flow-label {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* 小屏：状态盒纵向排列，横向箭头换成纵向 */
+@media (max-width: 768px) {
+  .role-flow-row {
+    flex-direction: column;
+  }
+
+  .role-flow-arrows-h {
+    display: none;
+  }
+
+  .role-flow-arrows-v {
+    display: block;
+  }
+}
+
+.guide-field-label {
+  color: #595959;
+}
+
+.guide-field-text {
+  color: #8c8c8c;
+}
+
+.docs-status-table {
+  margin-top: 16px;
+}
+
+.docs-alert {
+  margin-top: 16px;
+}

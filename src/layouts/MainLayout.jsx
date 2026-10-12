@@ -12,12 +12,12 @@ export default function MainLayout() {
   const touchStartTimeRef = useRef(0)
   const [menuResetToken, setMenuResetToken] = useState(0)
 
-  const swipePaths = useMemo(() => ['/index', '/index/apply', '/index/about'], [])
+  const swipePaths = useMemo(() => ['/index', '/index/apply', '/index/docs'], [])
 
   const normalizePath = (pathname) => {
     if (pathname === '/index') return '/index'
     if (pathname.startsWith('/index/apply')) return '/index/apply'
-    if (pathname.startsWith('/index/about')) return '/index/about'
+    if (pathname.startsWith('/index/docs')) return '/index/docs'
     return pathname
   }
 
@@ -106,6 +106,11 @@ export default function MainLayout() {
       >
         <Outlet /> {/* 渲染嵌套的子路由内容 */}
       </main>
+
+      {/* 全局页脚：时区说明（如备案号一般存在于每页底部） */}
+      <footer style={{ textAlign: 'center', fontSize: '12px', color: '#8c8c8c', padding: '8px 20px 20px' }}>
+        本平台所有时间均以北京时间（UTC+8）显示
+      </footer>
     </div>
   )
 }

@@ -1,8 +1,6 @@
 // Helper to handle authentication/authorization error navigation and cleanup
 export function clearAuth() {
   try {
-    localStorage.removeItem('authToken');
-    sessionStorage.removeItem('authToken');
     localStorage.removeItem('currentUserId');
     localStorage.removeItem('currentUserName');
     document.cookie = 'auth_token=; Max-Age=0; path=/';
