@@ -34,6 +34,11 @@ const clampInt = (v, min, max) => {
 
 const limitText = (limit, unit) => (limit == null ? '未知' : `${limit} ${unit}`);
 
+// 区分逐机配置与平台默认，不猜测默认端口数值。
+const describeMachinePort = (port) => (
+  port === null || port === undefined || port === '' ? '未配置（平台默认）' : String(port)
+);
+
 const addHistoryPoint = (history, snapshot) => {
   if (!snapshot) return history;
   const gpus = Array.isArray(snapshot.gpu) ? snapshot.gpu : [];
@@ -105,12 +110,15 @@ const MachineDetailPage = () => {
         }
       }
       const port = trimmedPort === '' ? null : Number(trimmedPort);
-      await updateMachine(Number(machineId), {
+      // port 显式传 null = 清空自定义端口、回落平台默认。详情没加载出来时草稿端口是空串，
+      // 这时提交 null 会把机器上真实配置的端口清掉——只有拿到详情才允许改动端口键。
+      const fields = {
         machine_name: basicDraft.machine_name,
         machine_type: basicDraft.machine_type,
         machine_ip: basicDraft.machine_ip,
-        port,
-      });
+      };
+      if (machine) fields.port = port;
+      await updateMachine(Number(machineId), fields);
       if (Boolean(basicDraft.is_maintenance) !== (machine?.is_maintenance === true)) {
         await setMachineMaintenance(Number(machineId), Boolean(basicDraft.is_maintenance));
       }
@@ -445,7 +453,7 @@ const MachineDetailPage = () => {
               <div className="detail-subtitle">
                 <span>ID {machineId}</span>
                 <CopyChip value={machine?.machine_ip || ''}>{machine?.machine_ip || '-'}</CopyChip>
-                <Tag>{machine?.port ? `端口 ${machine.port}` : '端口 默认'}</Tag>
+                <Tag>{`端口 ${describeMachinePort(machine?.port)}`}</Tag>
                 <Tag>{(machine?.machine_type || 'CPU').toUpperCase()}</Tag>
                 <Tag color={collectedAt ? 'blue' : 'default'}>采集 {formatSnapshotTime(collectedAt)}</Tag>
               </div>

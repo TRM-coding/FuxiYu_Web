@@ -37,7 +37,17 @@ const ensureOk = async (res, action) => {
 		}
 		throw err;
 	}
-	return res.json();
+	const body = await res.json();
+	// HTTP 2xx 但业务 success=0 不是成功：后端成功一律 success=1，_error 才会给 0。
+	if (body && typeof body === 'object' && !Array.isArray(body)
+		&& (body.success === 0 || body.success === false)) {
+		const err = new Error(`${action} failed: ${body.message || 'business failure'}`);
+		err.status = res.status;
+		err.route = res.url;
+		err.body = body;
+		throw err;
+	}
+	return body;
 };
 
 export const createContainer = async (payload = {}, timeout = null) => {

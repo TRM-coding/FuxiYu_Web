@@ -3,6 +3,11 @@ import { Modal, Button, Typography, Row, Col, Space, Tag } from 'antd';
 import { GlobalOutlined, ClockCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import './ContainerDetailModal.css';
 
+// 与独立详情页保持同一端口展示语义。
+const describeMachinePort = (port) => (
+  port === null || port === undefined || port === '' ? '未配置（平台默认）' : String(port)
+);
+
 const MachineDetailModal = ({ visible, machine, onClose, loading = false }) => {
   if (!machine) return null;
 
@@ -117,6 +122,10 @@ const MachineDetailModal = ({ visible, machine, onClose, loading = false }) => {
             <Col xs={24} sm={12} md={12}>
               <Typography.Text strong className="cdm-item-label">磁盘 (GB)</Typography.Text>
               <div><Typography.Text className="cdm-machine-text">{machine.disk_size_gb ?? '-'}</Typography.Text></div>
+            </Col>
+            <Col xs={24} sm={12} md={12}>
+              <Typography.Text strong className="cdm-item-label">Node 端口</Typography.Text>
+              <div><Typography.Text className="cdm-machine-text">{describeMachinePort(machine.port)}</Typography.Text></div>
             </Col>
           </Row>
         </div>

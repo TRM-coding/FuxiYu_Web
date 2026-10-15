@@ -4,6 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('antd', async (importOriginal) => {
+  const antd = await importOriginal();
+  return { ...antd, message: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } };
+});
+
 vi.mock('../contexts/PermissionContext', () => ({
   usePermission: () => ({
     loaded: true,
@@ -21,9 +26,56 @@ vi.mock('../utils/showErrorModal', () => ({
   default: vi.fn(),
 }));
 
-import { getRbacMatrix, updateRbacGroupEntities } from '../api/rbac_api';
+import { message } from 'antd';
+import { createRbacGroup, getRbacMatrix, updateRbacGroupEntities } from '../api/rbac_api';
 import showErrorModal from '../utils/showErrorModal';
 import RbacMatrix from '../pages/RbacMatrix';
+
+/** 覆盖方法实体通配（含 manage）、同域 manage 派生、资源通配与无权限四类场景。 */
+const ENTITIES = [
+  { id: 1, code: 'machine:view', name: '机器查看' },
+  { id: 2, code: 'machine:register', name: '机器接入' },
+  { id: 3, code: 'machine:manage', name: '机器管理' },
+  { id: 4, code: 'container:create', name: '创建容器' },
+  { id: 5, code: 'container:operation', name: '容器操作' },
+  { id: 6, code: 'container:manage', name: '容器管理' },
+  { id: 7, code: 'image:manage', name: '镜像管理' },
+  { id: 8, code: 'settings:manage', name: '系统设置管理' },
+  { id: 9, code: 'bypass_auth_entity', name: '权限通配' },
+  { id: 10, code: 'bypass_resource', name: '资源通配' },
+];
+
+const GROUPS = [
+  { id: 10, name: 'user', description: '基础用户组', entity_codes: ['machine:view'], locked_entity_codes: [] },
+  {
+    id: 11,
+    name: 'operator',
+    description: '运维组',
+    entity_codes: ['bypass_auth_entity'],
+    locked_entity_codes: ['bypass_auth_entity'],
+  },
+  {
+    id: 12,
+    name: 'container_manager',
+    description: '容器管理员',
+    entity_codes: ['container:manage'],
+    locked_entity_codes: [],
+  },
+  {
+    id: 13,
+    name: 'entity_only',
+    description: '仅方法通配',
+    entity_codes: ['bypass_auth_entity'],
+    locked_entity_codes: [],
+  },
+  {
+    id: 14,
+    name: 'locked_manager',
+    description: '锁定管理',
+    entity_codes: ['container:manage'],
+    locked_entity_codes: ['container:manage'],
+  },
+];
 
 const LocationProbe = () => {
   const location = useLocation();
@@ -59,27 +111,27 @@ describe('RbacMatrix', () => {
   beforeEach(() => {
     getRbacMatrix.mockReset();
     updateRbacGroupEntities.mockReset();
+    createRbacGroup.mockReset();
     showErrorModal.mockReset();
+    message.success.mockReset();
+    message.warning.mockReset();
+    message.error.mockReset();
     localStorage.clear();
-    getRbacMatrix.mockResolvedValue({
+    getRbacMatrix.mockResolvedValue({ success: 1, entities: ENTITIES, groups: GROUPS });
+    // 回显提交内容，便于断言「保存的 entity_codes 是否明确含/不含直接 manage」。
+    updateRbacGroupEntities.mockImplementation(({ group_id, entity_codes }) => Promise.resolve({
       success: 1,
-      entities: [
-        { id: 1, code: 'machine:view', name: '机器查看' },
-        { id: 2, code: 'machine:manage', name: '机器管理' },
-        { id: 3, code: 'container:create', name: '创建容器' },
-        { id: 4, code: 'container:operation', name: '容器操作' },
-        { id: 5, code: 'container:manage', name: '容器管理' },
-        { id: 6, code: 'bypass_auth_entity', name: '权限通配' },
-        { id: 7, code: 'bypass_resource', name: '资源通配' },
-      ],
-      groups: [
-        { id: 10, name: 'user', description: '基础用户组', entity_codes: ['machine:view'], locked_entity_codes: [] },
-        { id: 11, name: 'operator', description: '运维组', entity_codes: ['bypass_auth_entity'], locked_entity_codes: ['bypass_auth_entity'] },
-      ],
-    });
-    updateRbacGroupEntities.mockResolvedValue({
+      group: {
+        id: group_id,
+        name: GROUPS.find(group => group.id === group_id)?.name || 'group',
+        description: '',
+        entity_codes,
+        locked_entity_codes: GROUPS.find(group => group.id === group_id)?.locked_entity_codes || [],
+      },
+    }));
+    createRbacGroup.mockResolvedValue({
       success: 1,
-      group: { id: 10, name: 'user', description: '基础用户组', entity_codes: ['machine:view', 'container:create'], locked_entity_codes: [] },
+      group: { id: 99, name: 'teacher2', description: '', entity_codes: ['machine:view'], locked_entity_codes: [] },
     });
   });
 
@@ -96,7 +148,12 @@ describe('RbacMatrix', () => {
     expect(screen.getAllByText('user').length).toBeGreaterThan(0);
     expect(screen.getByText('机器')).toBeInTheDocument();
     expect(screen.getByText('容器')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '开启 container:create' })).toHaveClass('rbac-permission-chip-off');
+
+    // 未赋予：container:manage 显示未启用且可点
+    const manageChip = screen.getByRole('button', { name: '开启 container:manage' });
+    expect(manageChip).toHaveClass('rbac-permission-chip-off');
+    expect(manageChip).toHaveTextContent('未启用');
+    expect(manageChip).not.toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: '开启 container:create' }));
     await user.click(screen.getByRole('button', { name: /保存/ }));
@@ -107,7 +164,7 @@ describe('RbacMatrix', () => {
     }));
   });
 
-  it('shows manage as covering lower permissions in the same entity group', async () => {
+  it('同域 manage 派生域内普通权限点，manage 自身与跨域不受影响', async () => {
     const user = userEvent.setup();
 
     render(
@@ -117,23 +174,122 @@ describe('RbacMatrix', () => {
     );
 
     await waitForMatrixReady();
+    await user.click(screen.getByRole('button', { name: /container_manager/ }));
 
-    await user.click(screen.getByRole('button', { name: '开启 container:create' }));
-    await user.click(screen.getByRole('button', { name: '开启 container:manage' }));
+    const manageChip = await screen.findByRole('button', { name: '关闭 container:manage' });
+    expect(manageChip).toHaveClass('rbac-permission-chip-on');
+    expect(manageChip).not.toHaveClass('rbac-permission-chip-covered');
+    expect(manageChip).toHaveTextContent('启用');
 
-    const createButton = screen.getByRole('button', { name: '关闭 container:create' });
-    expect(createButton).toHaveClass('rbac-permission-chip-covered');
-    expect(createButton).toBeDisabled();
+    const createChip = screen.getByRole('button', { name: '开启 container:create' });
+    expect(createChip).toHaveClass('rbac-permission-chip-covered');
+    expect(createChip).toHaveClass('rbac-permission-chip-covered-manage');
+    expect(createChip).toBeDisabled();
+    expect(createChip).toHaveTextContent('管理覆盖');
 
-    await user.click(screen.getByRole('button', { name: /保存/ }));
+    expect(screen.getByRole('button', { name: '开启 container:operation' }))
+      .toHaveClass('rbac-permission-chip-covered-manage');
 
-    await waitFor(() => expect(updateRbacGroupEntities).toHaveBeenCalledWith({
-      group_id: 10,
-      entity_codes: expect.arrayContaining(['machine:view', 'container:create', 'container:manage']),
-    }));
+    // 跨域：machine:view 不因 container:manage 被覆盖
+    const crossDomain = screen.getByRole('button', { name: '开启 machine:view' });
+    expect(crossDomain).not.toHaveClass('rbac-permission-chip-covered');
+    expect(crossDomain).not.toBeDisabled();
   });
 
-  it('shows bypass hierarchy without expanding into a sparse table', async () => {
+  it('bypass_auth_entity 覆盖 manage 与跨域 manage，但不派生 bypass_resource', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <RbacMatrix />
+      </MemoryRouter>,
+    );
+
+    await waitForMatrixReady();
+    await user.click(screen.getByRole('button', { name: '开启 bypass_auth_entity' }));
+
+    expect(screen.getByRole('button', { name: '关闭 bypass_auth_entity' }))
+      .toHaveClass('rbac-permission-chip-on');
+
+    // 方法通配覆盖的 manage 仍可直接勾选（直持 manage 才扩资源范围），故不 disabled
+    for (const code of ['machine:manage', 'container:manage', 'image:manage', 'settings:manage']) {
+      const chip = screen.getByRole('button', { name: `开启 ${code}` });
+      expect(chip).toHaveClass('rbac-permission-chip-covered');
+      expect(chip).toHaveClass('rbac-permission-chip-covered-auth');
+      expect(chip).not.toHaveClass('rbac-permission-chip-covered-manage');
+      expect(chip).toHaveClass('rbac-permission-chip-grantable');
+      expect(chip).not.toBeDisabled();
+      expect(chip).toHaveTextContent('实体通配');
+    }
+
+    // 纯方法派生点（非 manage）仍只读
+    const derivedOnlyChip = screen.getByRole('button', { name: '开启 container:create' });
+    expect(derivedOnlyChip).toHaveClass('rbac-permission-chip-covered-auth');
+    expect(derivedOnlyChip).not.toHaveClass('rbac-permission-chip-grantable');
+    expect(derivedOnlyChip).toBeDisabled();
+
+    // 直接赋予优先：machine:view 仍显示「启用」，不被通配改写成派生覆盖
+    const directChip = screen.getByRole('button', { name: '关闭 machine:view' });
+    expect(directChip).toHaveClass('rbac-permission-chip-on');
+    expect(directChip).not.toHaveClass('rbac-permission-chip-covered');
+    expect(directChip).toHaveTextContent('启用');
+
+    // bypass_resource 不被方法实体通配派生
+    const resourceChip = screen.getByRole('button', { name: '开启 bypass_resource' });
+    expect(resourceChip).not.toHaveClass('rbac-permission-chip-covered');
+    expect(resourceChip).not.toBeDisabled();
+  });
+
+  it('仅方法通配的组可直接授予/撤销 manage 以扩大资源范围', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <RbacMatrix />
+      </MemoryRouter>,
+    );
+
+    await waitForMatrixReady();
+    await user.click(screen.getByRole('button', { name: /entity_only/ }));
+
+    const manageChip = await screen.findByRole('button', { name: '开启 container:manage' });
+    expect(manageChip).toHaveClass('rbac-permission-chip-covered-auth');
+    expect(manageChip).toHaveClass('rbac-permission-chip-grantable');
+    expect(manageChip).not.toBeDisabled();
+    expect(manageChip).toHaveAttribute('title', expect.stringContaining('直接勾选'));
+
+    // 直接授予：chip 转为直接「启用」，不再是派生覆盖
+    await user.click(manageChip);
+    const grantedChip = screen.getByRole('button', { name: '关闭 container:manage' });
+    expect(grantedChip).toHaveClass('rbac-permission-chip-on');
+    expect(grantedChip).not.toHaveClass('rbac-permission-chip-covered');
+    expect(grantedChip).toHaveTextContent('启用');
+
+    await user.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() => expect(updateRbacGroupEntities).toHaveBeenCalledWith({
+      group_id: 13,
+      entity_codes: expect.arrayContaining(['bypass_auth_entity', 'container:manage']),
+    }));
+
+    // 撤销直接 manage：回到方法覆盖，仍可再次授予
+    await user.click(screen.getByRole('button', { name: '关闭 container:manage' }));
+    const revokedChip = screen.getByRole('button', { name: '开启 container:manage' });
+    expect(revokedChip).toHaveClass('rbac-permission-chip-covered-auth');
+    expect(revokedChip).toHaveClass('rbac-permission-chip-grantable');
+    expect(revokedChip).not.toBeDisabled();
+    expect(revokedChip).toHaveTextContent('实体通配');
+
+    // 再直接授予 image:manage 并保存：只含新直持项，不含已撤销的 container:manage
+    await user.click(screen.getByRole('button', { name: '开启 image:manage' }));
+    await user.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() => expect(updateRbacGroupEntities).toHaveBeenLastCalledWith({
+      group_id: 13,
+      entity_codes: expect.arrayContaining(['bypass_auth_entity', 'image:manage']),
+    }));
+    expect(updateRbacGroupEntities.mock.calls.at(-1)[0].entity_codes).not.toContain('container:manage');
+  });
+
+  it('locked 与 bypass_resource 的不可派生语义不受可授予 manage 影响', async () => {
     const user = userEvent.setup();
 
     render(
@@ -144,19 +300,90 @@ describe('RbacMatrix', () => {
 
     await waitForMatrixReady();
 
-    await user.click(screen.getByRole('button', { name: '开启 bypass_auth_entity' }));
+    // operator：locked bypass 仍锁定不可动
+    await user.click(screen.getByRole('button', { name: /operator/ }));
+    const lockedBypass = await screen.findByRole('button', { name: '关闭 bypass_auth_entity' });
+    expect(lockedBypass).toHaveClass('rbac-permission-chip-locked');
+    expect(lockedBypass).toBeDisabled();
+    expect(lockedBypass).toHaveTextContent('锁定');
 
-    const createButton = screen.getByRole('button', { name: '开启 container:create' });
-    const manageButton = screen.getByRole('button', { name: '开启 container:manage' });
-    expect(createButton).toHaveClass('rbac-permission-chip-covered');
-    expect(createButton).toBeDisabled();
-    expect(manageButton).not.toHaveClass('rbac-permission-chip-covered');
-    expect(manageButton).not.toBeDisabled();
+    // 仅方法通配组：bypass_resource 仍不被派生
+    await user.click(screen.getByRole('button', { name: /entity_only/ }));
+    const resourceChip = screen.getByRole('button', { name: '开启 bypass_resource' });
+    expect(resourceChip).not.toHaveClass('rbac-permission-chip-covered');
+    expect(resourceChip).not.toHaveClass('rbac-permission-chip-grantable');
+    expect(resourceChip).not.toBeDisabled();
 
+    // locked manage 不可直接撤销
+    await user.click(screen.getByRole('button', { name: /locked_manager/ }));
+    const lockedManage = screen.getByRole('button', { name: '关闭 container:manage' });
+    expect(lockedManage).toHaveClass('rbac-permission-chip-locked');
+    expect(lockedManage).toBeDisabled();
+    expect(lockedManage).toHaveTextContent('锁定');
+  });
+
+  it('bypass_resource 仅资源通配语义，不覆盖任何方法权限点', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <RbacMatrix />
+      </MemoryRouter>,
+    );
+
+    await waitForMatrixReady();
     await user.click(screen.getByRole('button', { name: '开启 bypass_resource' }));
 
-    expect(screen.getByRole('button', { name: '开启 container:manage' })).toHaveClass('rbac-permission-chip-covered');
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    const resourceChip = screen.getByRole('button', { name: '关闭 bypass_resource' });
+    expect(resourceChip).toHaveClass('rbac-permission-chip-on');
+    expect(resourceChip).toHaveAttribute('title', expect.stringContaining('资源通配'));
+
+    for (const code of ['machine:manage', 'container:create', 'container:manage', 'image:manage', 'settings:manage']) {
+      const chip = screen.getByRole('button', { name: `开启 ${code}` });
+      expect(chip).not.toHaveClass('rbac-permission-chip-covered');
+      expect(chip).not.toBeDisabled();
+      expect(chip).toHaveTextContent('未启用');
+    }
+
+    expect(screen.getByRole('button', { name: '开启 bypass_auth_entity' }))
+      .not.toHaveClass('rbac-permission-chip-covered');
+  });
+
+  it('创建角色前按 Ctrl 组名规则校验并给出反馈', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <RbacMatrix />
+      </MemoryRouter>,
+    );
+
+    await waitForMatrixReady();
+    await user.click(screen.getByRole('button', { name: /创建新角色/ }));
+
+    const nameInput = screen.getByPlaceholderText('角色名称');
+    await user.type(nameInput, '1bad');
+    expect(await screen.findByRole('alert')).toHaveTextContent('角色名称必须以英文字母开头');
+
+    await user.click(screen.getByRole('button', { name: /保存/ }));
+    expect(createRbacGroup).not.toHaveBeenCalled();
+    expect(message.warning).toHaveBeenCalledWith('角色名称必须以英文字母开头');
+
+    await user.clear(nameInput);
+    await user.type(nameInput, 'a');
+    expect(await screen.findByRole('alert')).toHaveTextContent('角色名称至少 2 个字符');
+
+    await user.clear(nameInput);
+    await user.type(nameInput, 'teacher2');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() => expect(createRbacGroup).toHaveBeenCalledWith({
+      name: 'teacher2',
+      description: '',
+      entity_codes: expect.arrayContaining(['machine:view']),
+    }));
+    expect(message.success).toHaveBeenCalledWith('角色已创建');
   });
 
   // ── 业务 403：留在本页 + 显示后端原因；401 仍交给全局 ──────────────────────
@@ -205,7 +432,7 @@ describe('RbacMatrix', () => {
     expect(screen.getByTestId('path')).toHaveTextContent('/admin/rbac');
     expect(localStorage.getItem('currentUserName')).toBe('op1');
     // 没有「权限已保存」的成功提示
-    expect(screen.queryByText('权限已保存')).not.toBeInTheDocument();
+    expect(message.success).not.toHaveBeenCalledWith('权限已保存');
   });
 
   it('读取矩阵 401：仍走全局认证处理（回登录页 + 清历史本地身份）', async () => {

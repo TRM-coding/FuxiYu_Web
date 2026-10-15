@@ -9,6 +9,18 @@ const createTimeoutController = (timeout) => {
   return { controller, timer };
 };
 
+// 保留有效的逐机配置端口，缺值不补默认数值。
+export const normalizeMachinePort = (port) => {
+  if (port === null || port === undefined || port === '') return null;
+  const n = Number(port);
+  return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : null;
+};
+
+export const normalizeMachineDetail = (detail) => {
+  if (!detail || typeof detail !== 'object') return detail;
+  return { ...detail, port: normalizeMachinePort(detail.port) };
+};
+
 const ensureOk = async (res, action) => {
   if (!res.ok) {
     // try to parse JSON body first
@@ -175,7 +187,7 @@ export const getDetailInformation = async (machine_id = 0, timeout = null) => {
     clearTimeout(timer);
     const result = await ensureOk(res, 'Get machine detail');
     unregisterController(controller);
-    return result;
+    return normalizeMachineDetail(result);
   } catch (err) {
     clearTimeout(timer);
     try { unregisterController(controller); } catch (e) {}

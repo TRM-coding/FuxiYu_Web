@@ -5,6 +5,16 @@ import { useNavigate } from 'react-router-dom';
 import { createRbacGroup, getRbacMatrix, updateRbacGroupEntities } from '../api/rbac_api';
 import { usePermission } from '../contexts/PermissionContext';
 import { handleAuthError } from '../utils/authHelpers';
+import {
+  COVERAGE_BYPASS_AUTH,
+  COVERAGE_LABELS,
+  COVERAGE_MANAGE,
+  COVERAGE_TITLES,
+  entityAction,
+  entityCoverage,
+  entityDomain,
+  validateGroupName,
+} from '../utils/rbacMatrix';
 import showErrorModal from '../utils/showErrorModal';
 import './RbacMatrix.css';
 
@@ -33,8 +43,6 @@ const ACTION_LABELS = {
 
 const ACTION_ORDER = ['view', 'create', 'register', 'operation', 'edit', 'manage', 'bypass_resource', 'bypass_auth_entity'];
 const DANGER_CODES = new Set(['bypass_auth_entity', 'bypass_resource', 'rbac:manage', 'settings:manage']);
-const BYPASS_AUTH_ENTITY = 'bypass_auth_entity';
-const BYPASS_RESOURCE = 'bypass_resource';
 const actionRank = action => {
   const index = ACTION_ORDER.indexOf(action);
   return index === -1 ? 999 : index;
@@ -47,18 +55,6 @@ const sameCodeSet = (a, b) => {
   const right = normalizeCodes(b).sort();
   if (left.length !== right.length) return false;
   return left.every((code, index) => code === right[index]);
-};
-
-const entityDomain = (code) => {
-  const normalized = String(code || '');
-  if (normalized.startsWith('bypass_')) return 'bypass';
-  return normalized.split(':', 1)[0] || 'other';
-};
-
-const entityAction = (code) => {
-  const normalized = String(code || '');
-  if (normalized.startsWith('bypass_')) return normalized;
-  return normalized.includes(':') ? normalized.split(':')[1] : normalized;
 };
 
 const buildPermissionSections = (entities) => {
@@ -84,21 +80,6 @@ const buildPermissionSections = (entities) => {
       return left.code.localeCompare(right.code);
     }),
   }));
-};
-
-const isBypassCode = code => code === BYPASS_AUTH_ENTITY || code === BYPASS_RESOURCE;
-
-const entityCoverage = (entity, currentCodeSet) => {
-  const code = String(entity?.code || '');
-  if (!code || isBypassCode(code)) return null;
-  const hasAuthBypass = currentCodeSet.has(BYPASS_AUTH_ENTITY);
-  const hasResourceBypass = currentCodeSet.has(BYPASS_RESOURCE);
-  if (hasAuthBypass && hasResourceBypass) return 'bypass';
-  const action = entityAction(code);
-  if (hasAuthBypass && action !== 'manage') return 'bypass_auth';
-  const manageCode = `${entityDomain(code)}:manage`;
-  if (action !== 'manage' && currentCodeSet.has(manageCode)) return 'manage';
-  return null;
 };
 
 export default function RbacMatrix() {
@@ -169,7 +150,12 @@ export default function RbacMatrix() {
   const currentLockedCodes = creating ? [] : (selectedGroup?.locked_entity_codes || []);
   const currentLockedSet = useMemo(() => new Set(currentLockedCodes), [currentLockedCodes]);
   const permissionSections = useMemo(() => buildPermissionSections(entities), [entities]);
+  const validCodeSet = useMemo(() => new Set(entities.map(entity => entity.code)), [entities]);
   const currentCodeSet = useMemo(() => new Set(currentCodes), [currentCodes]);
+  const newGroupNameError = useMemo(
+    () => (creating && newGroupName.trim() ? validateGroupName(newGroupName).message : null),
+    [creating, newGroupName],
+  );
   const selectedDirty = !creating && selectedGroup ? !sameCodeSet(draft[selectedGroupId], selectedGroup.entity_codes) : false;
   const newDirty = creating && (newGroupName.trim() || newGroupDescription.trim() || !sameCodeSet(draft.__new__, []));
 
@@ -216,9 +202,12 @@ export default function RbacMatrix() {
   };
 
   const saveCurrent = async () => {
-    if (creating && !newGroupName.trim()) {
-      message.warning('请填写角色名称');
-      return;
+    if (creating) {
+      const nameCheck = validateGroupName(newGroupName);
+      if (!nameCheck.ok) {
+        message.warning(nameCheck.message);
+        return;
+      }
     }
     if (!creating && !selectedGroup) return;
     setSaving(true);
@@ -326,18 +315,26 @@ export default function RbacMatrix() {
               <div className="rbac-editor-head">
                 {creating ? (
                   <div className="rbac-new-role-fields">
-                    <Input
-                      value={newGroupName}
-                      placeholder="角色名称"
-                      onChange={(event) => setNewGroupName(event.target.value)}
-                      disabled={saving}
-                    />
-                    <Input
-                      value={newGroupDescription}
-                      placeholder="角色说明"
-                      onChange={(event) => setNewGroupDescription(event.target.value)}
-                      disabled={saving}
-                    />
+                    <div className="rbac-field">
+                      <Input
+                        value={newGroupName}
+                        placeholder="角色名称"
+                        status={newGroupNameError ? 'error' : undefined}
+                        onChange={(event) => setNewGroupName(event.target.value)}
+                        disabled={saving}
+                      />
+                      {newGroupNameError ? (
+                        <span className="rbac-field-error" role="alert">{newGroupNameError}</span>
+                      ) : null}
+                    </div>
+                    <div className="rbac-field">
+                      <Input
+                        value={newGroupDescription}
+                        placeholder="角色说明"
+                        onChange={(event) => setNewGroupDescription(event.target.value)}
+                        disabled={saving}
+                      />
+                    </div>
                   </div>
                 ) : (
                   <div>
@@ -365,9 +362,19 @@ export default function RbacMatrix() {
                           const enabled = currentCodeSet.has(entity.code);
                           const locked = currentLockedSet.has(entity.code);
                           const danger = DANGER_CODES.has(entity.code);
-                          const coverage = entityCoverage(entity, currentCodeSet);
+                          const coverage = entityCoverage(entity, currentCodeSet, validCodeSet);
+                          const coverageLabel = coverage ? COVERAGE_LABELS[coverage] : null;
+                          // 方法通配覆盖的 *:manage 只是方法层允许；Ctrl 只有直持
+                          // {type}:manage 才扩资源范围，所以这类 chip 仍可直接勾选/取消。
+                          const manageGrantable = coverage === COVERAGE_BYPASS_AUTH && entity.action === 'manage';
+                          const derivedOnly = Boolean(coverage) && !manageGrantable;
                           const actionLabel = ACTION_LABELS[entity.action] || entity.action;
                           const description = entity.description || entity.name || entity.code;
+                          const coverageTitle = coverage
+                            ? (manageGrantable
+                                ? `${COVERAGE_TITLES[coverage]}；直接勾选才会把该管理权限写入本组（资源类管理权限据此扩大资源范围）`
+                                : COVERAGE_TITLES[coverage])
+                            : description;
                           return (
                             <button
                               className={[
@@ -377,17 +384,20 @@ export default function RbacMatrix() {
                                 danger ? 'rbac-permission-chip-danger' : '',
                                 locked ? 'rbac-permission-chip-locked' : '',
                                 coverage ? 'rbac-permission-chip-covered' : '',
+                                coverage === COVERAGE_BYPASS_AUTH ? 'rbac-permission-chip-covered-auth' : '',
+                                coverage === COVERAGE_MANAGE ? 'rbac-permission-chip-covered-manage' : '',
+                                manageGrantable ? 'rbac-permission-chip-grantable' : '',
                               ].filter(Boolean).join(' ')}
                               type="button"
                               key={entity.code}
                               aria-label={`${enabled ? '关闭' : '开启'} ${entity.code}`}
-                              title={`${entity.code}\n${coverage ? '已由高阶权限覆盖' : description}`}
+                              title={`${entity.code}\n${coverageTitle}`}
                               onClick={() => updateCurrentDraft(entity.code)}
-                              disabled={saving || locked || Boolean(coverage)}
+                              disabled={saving || locked || derivedOnly}
                             >
                               <span className="rbac-chip-label">{actionLabel}</span>
                               <span className="rbac-chip-state">
-                                {locked ? '锁定' : coverage ? '覆盖' : enabled ? '启用' : '未启用'}
+                                {locked ? '锁定' : coverageLabel || (enabled ? '启用' : '未启用')}
                               </span>
                             </button>
                           );
@@ -400,7 +410,8 @@ export default function RbacMatrix() {
               <div className="rbac-permission-legend">
                 <span><i className="rbac-legend-on" />已开启</span>
                 <span><i className="rbac-legend-off" />未开启</span>
-                <span><i className="rbac-legend-covered" />高阶覆盖</span>
+                <span><i className="rbac-legend-covered rbac-legend-covered-auth" />实体通配覆盖（管理点可再直接授予）</span>
+                <span><i className="rbac-legend-covered rbac-legend-covered-manage" />管理派生覆盖</span>
                 <span><i className="rbac-legend-locked" />锁定</span>
               </div>
             </section>

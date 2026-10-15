@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -24,6 +24,13 @@ vi.mock('../utils/showErrorModal', () => ({
 import { listDeletedContainers, resurrectDeletedContainer } from '../api/container_api';
 import showErrorModal from '../utils/showErrorModal';
 import DeletedContainers from '../pages/DeletedContainers';
+
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+};
 
 describe('DeletedContainers', () => {
   beforeEach(() => {
@@ -172,5 +179,262 @@ describe('DeletedContainers', () => {
     expect(screen.queryByText('容器恢复请求已发送')).toBeNull();
     expect(listDeletedContainers).toHaveBeenCalledTimes(1);
     expect(screen.getByText('deleted-train')).toBeInTheDocument();
+  });
+
+  it('当前页为空但 total>0 时仍保留分页入口', async () => {
+    listDeletedContainers.mockReset();
+    listDeletedContainers.mockResolvedValue({ success: 1, records: [], total_number: 5, total_page: 1 });
+
+    render(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('暂无已删除容器')).toBeInTheDocument();
+    // Table 仍在（空文案走 locale.emptyText），分页入口没有被 Empty 顶掉
+    expect(document.querySelector('.ant-table')).not.toBeNull();
+    expect(document.querySelector('.ant-pagination')).not.toBeNull();
+  });
+
+  it('清空当前页最后一条后按新 total 回到有效页，而不是一律回第一页', async () => {
+    const user = userEvent.setup();
+    const row1 = {
+      deleted_id: 1,
+      container_name: 'keep-1',
+      mount_path: '/m/1',
+      mount_cleanup_id: 11,
+      removed_at: '2026-09-01T10:00:00',
+      cleaned_at: null,
+      data_recoverable: true,
+      snapshot: { accounts: [] },
+    };
+    const row2 = {
+      deleted_id: 2,
+      container_name: 'last-2',
+      mount_path: '/m/2',
+      mount_cleanup_id: 12,
+      removed_at: '2026-09-02T10:00:00',
+      cleaned_at: null,
+      data_recoverable: true,
+      snapshot: { accounts: [] },
+    };
+    let restored = false;
+    listDeletedContainers.mockReset();
+    listDeletedContainers.mockImplementation(async ({ page_number }) => {
+      if (page_number === 2) {
+        return restored
+          ? { success: 1, records: [], total_number: 20, total_page: 1 }
+          : { success: 1, records: [row2], total_number: 21, total_page: 2 };
+      }
+      return { success: 1, records: [row1], total_number: restored ? 20 : 21, total_page: restored ? 1 : 2 };
+    });
+    resurrectDeletedContainer.mockReset();
+    resurrectDeletedContainer.mockImplementation(async () => {
+      restored = true;
+      return { success: 1, container_id: 99 };
+    });
+
+    render(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('keep-1')).toBeInTheDocument();
+    await user.click(document.querySelector('.ant-pagination-item-2 a'));
+    expect(await screen.findByText('last-2')).toBeInTheDocument();
+
+    const row = screen.getByText('last-2').closest('tr');
+    await user.click(within(row).getByRole('button', { name: /恢复/ }));
+    const confirmButtons = screen.getAllByRole('button', { name: /恢\s*复/ });
+    await user.click(confirmButtons[confirmButtons.length - 1]);
+
+    // 第 2 页已空且 total_page=1 → 只回退一次到第 1 页
+    await waitFor(() => {
+      const pages = listDeletedContainers.mock.calls.map(call => call[0].page_number);
+      expect(pages[pages.length - 1]).toBe(1);
+    });
+    expect(await screen.findByText('keep-1')).toBeInTheDocument();
+  });
+
+  it('动作在途时切换页码：动作完成后跟随当前页刷新', async () => {
+    const user = userEvent.setup();
+    const gate = deferred();
+    const row1 = { deleted_id: 1, container_name: 'row-1', mount_cleanup_id: 11, mount_path: '/m/1', removed_at: '2026-09-01T10:00:00', data_recoverable: true, snapshot: { accounts: [] } };
+    const row2 = { deleted_id: 2, container_name: 'row-2', mount_cleanup_id: 12, mount_path: '/m/2', removed_at: '2026-09-02T10:00:00', data_recoverable: true, snapshot: { accounts: [] } };
+
+    listDeletedContainers.mockReset();
+    listDeletedContainers.mockImplementation(async ({ page_number }) => (
+      page_number === 1
+        ? { success: 1, records: [row1], total_number: 21, total_page: 2 }
+        : { success: 1, records: [row2], total_number: 21, total_page: 2 }
+    ));
+    resurrectDeletedContainer.mockReset();
+    resurrectDeletedContainer.mockReturnValue(gate.promise);
+
+    render(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('row-1')).toBeInTheDocument();
+    const row = screen.getByText('row-1').closest('tr');
+    await user.click(within(row).getByRole('button', { name: /恢复/ }));
+    const confirmButtons = screen.getAllByRole('button', { name: /恢\s*复/ });
+    await user.click(confirmButtons[confirmButtons.length - 1]);
+
+    // 动作未完成时切到第 2 页
+    await user.click(document.querySelector('.ant-pagination-item-2 a'));
+    expect(await screen.findByText('row-2')).toBeInTheDocument();
+
+    gate.resolve({ success: 1, container_id: 42 });
+
+    await waitFor(() => {
+      const pages = listDeletedContainers.mock.calls.map(call => call[0].page_number);
+      // 动作完成后的刷新落在当前页 2，而不是发起动作时的第 1 页
+      expect(pages[pages.length - 1]).toBe(2);
+      expect(pages.filter(p => p === 1)).toHaveLength(1);
+    });
+  });
+
+  it('迟到响应不覆盖新页', async () => {
+    const p2 = deferred();
+    const p3 = deferred();
+    const row1 = { deleted_id: 1, container_name: 'row-1', mount_cleanup_id: 11, mount_path: '/m/1', removed_at: '2026-09-01T10:00:00', data_recoverable: true, snapshot: { accounts: [] } };
+    const row2 = { deleted_id: 2, container_name: 'row-2', mount_cleanup_id: 12, mount_path: '/m/2', removed_at: '2026-09-02T10:00:00', data_recoverable: true, snapshot: { accounts: [] } };
+    const row3 = { deleted_id: 3, container_name: 'row-3', mount_cleanup_id: 13, mount_path: '/m/3', removed_at: '2026-09-03T10:00:00', data_recoverable: true, snapshot: { accounts: [] } };
+
+    listDeletedContainers.mockReset();
+    listDeletedContainers.mockImplementation(({ page_number }) => {
+      if (page_number === 2) return p2.promise;
+      if (page_number === 3) return p3.promise;
+      // 41/20 → 3 页，元数据自洽
+      return Promise.resolve({ success: 1, records: [row1], total_number: 41, total_page: 3 });
+    });
+
+    render(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('row-1')).toBeInTheDocument();
+    // 第 2 页请求处于 pending（loading 会临时禁用指针），用 fireEvent 触发分页点击
+    fireEvent.click(document.querySelector('.ant-pagination-item-2 a'));
+    fireEvent.click(document.querySelector('.ant-pagination-item-3 a'));
+
+    p3.resolve({ success: 1, records: [row3], total_number: 41, total_page: 3 });
+    expect(await screen.findByText('row-3')).toBeInTheDocument();
+
+    // 页面 2 的迟到响应必须被丢弃
+    p2.resolve({ success: 1, records: [row2], total_number: 41, total_page: 3 });
+    await waitFor(() => expect(screen.queryByText('row-2')).toBeNull());
+    expect(screen.getByText('row-3')).toBeInTheDocument();
+  });
+
+  it('第二页为空但仍在有效页范围内时保留分页入口，可回翻', async () => {
+    const user = userEvent.setup();
+    const row1 = { deleted_id: 1, container_name: 'row-1', mount_cleanup_id: 11, mount_path: '/m/1', removed_at: '2026-09-01T10:00:00', data_recoverable: true, snapshot: { accounts: [] } };
+
+    listDeletedContainers.mockReset();
+    listDeletedContainers.mockImplementation(async ({ page_number }) => (
+      page_number === 2
+        ? { success: 1, records: [], total_number: 21, total_page: 2 }
+        : { success: 1, records: [row1], total_number: 21, total_page: 2 }
+    ));
+
+    render(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('row-1')).toBeInTheDocument();
+    await user.click(document.querySelector('.ant-pagination-item-2 a'));
+
+    // 第 2 页确属有效页（total_page=2），空页也保留 Table 与分页
+    expect(await screen.findByText('暂无已删除容器')).toBeInTheDocument();
+    expect(document.querySelector('.ant-pagination-item-1')).not.toBeNull();
+
+    await user.click(document.querySelector('.ant-pagination-item-1 a'));
+    expect(await screen.findByText('row-1')).toBeInTheDocument();
+  });
+
+  it('第 3 页缩到第 2 页时回到第 2 页，而不是一律回第一页', async () => {
+    const user = userEvent.setup();
+    const row1 = { deleted_id: 1, container_name: 'row-1', mount_cleanup_id: 11, mount_path: '/m/1', removed_at: '2026-09-01T10:00:00', data_recoverable: true, snapshot: { accounts: [] } };
+    const row2 = { deleted_id: 2, container_name: 'row-2', mount_cleanup_id: 12, mount_path: '/m/2', removed_at: '2026-09-02T10:00:00', data_recoverable: true, snapshot: { accounts: [] } };
+    const row3 = { deleted_id: 3, container_name: 'row-3', mount_cleanup_id: 13, mount_path: '/m/3', removed_at: '2026-09-03T10:00:00', data_recoverable: true, snapshot: { accounts: [] } };
+    let restored = false;
+
+    listDeletedContainers.mockReset();
+    listDeletedContainers.mockImplementation(async ({ page_number }) => {
+      const total_number = restored ? 40 : 41;
+      const total_page = restored ? 2 : 3;
+      if (page_number === 3) {
+        return restored
+          ? { success: 1, records: [], total_number, total_page }
+          : { success: 1, records: [row3], total_number, total_page };
+      }
+      return { success: 1, records: page_number === 2 ? [row2] : [row1], total_number, total_page };
+    });
+    resurrectDeletedContainer.mockReset();
+    resurrectDeletedContainer.mockImplementation(async () => {
+      restored = true;
+      return { success: 1, container_id: 99 };
+    });
+
+    render(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('row-1')).toBeInTheDocument();
+    await user.click(document.querySelector('.ant-pagination-item-3 a'));
+    expect(await screen.findByText('row-3')).toBeInTheDocument();
+
+    const row = screen.getByText('row-3').closest('tr');
+    await user.click(within(row).getByRole('button', { name: /恢复/ }));
+    const confirmButtons = screen.getAllByRole('button', { name: /恢\s*复/ });
+    await user.click(confirmButtons[confirmButtons.length - 1]);
+
+    // 41/20 → 3 页；恢复最后一条后 40/20 → 2 页：回退到第 2 页而非第 1 页
+    await waitFor(() => {
+      const pages = listDeletedContainers.mock.calls.map(call => call[0].page_number);
+      expect(pages[pages.length - 1]).toBe(2);
+    });
+    expect(await screen.findByText('row-2')).toBeInTheDocument();
+  });
+
+  it('total_page 缺失/0 但 total_number 仍支持当前页时保留当前页', async () => {
+    const user = userEvent.setup();
+    const row1 = { deleted_id: 1, container_name: 'row-1', mount_cleanup_id: 11, mount_path: '/m/1', removed_at: '2026-09-01T10:00:00', data_recoverable: true, snapshot: { accounts: [] } };
+
+    listDeletedContainers.mockReset();
+    listDeletedContainers.mockImplementation(async ({ page_number }) => (
+      page_number === 2
+        // total_page 缺失（0）；40/20 仍支持第 2 页，不得武断回第 1 页
+        ? { success: 1, records: [], total_number: 40, total_page: 0 }
+        : { success: 1, records: [row1], total_number: 40, total_page: 2 }
+    ));
+
+    render(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('row-1')).toBeInTheDocument();
+    await user.click(document.querySelector('.ant-pagination-item-2 a'));
+
+    expect(await screen.findByText('暂无已删除容器')).toBeInTheDocument();
+    await waitFor(() => {
+      const pages = listDeletedContainers.mock.calls.map(call => call[0].page_number);
+      expect(pages[pages.length - 1]).toBe(2);
+    });
+    expect(document.querySelector('.ant-pagination-item-1')).not.toBeNull();
   });
 });

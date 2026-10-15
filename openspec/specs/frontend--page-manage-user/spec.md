@@ -2,7 +2,7 @@
 
 ## Purpose
 
-用户检索、资料及权限组、容器归属管理。本文件是 Web chester-next 6c5f04d2a7f1 在 2026-10-11 的代码逆向基线，按页面或已有页面组件组织路由、权限、API 与状态行为。已知交互和接口差异统一见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)，此记录不表示对应问题已经修复。
+定义用户管理、权限组替换、容器关联与子列表展示。用户统计和容器角色、限额等业务字段参与静默刷新，轮询保留当前分页上下文，组存在性与自锁规则仍由后端校验。
 
 ## Requirements
 
@@ -33,6 +33,14 @@
 - **WHEN** 对本基线执行 `npm run build`
 - **THEN** Vite 完成构建并输出页面级与 `ModelViewer` 的异步 chunk；`src/utils/requestManager.jsx` 与 `src/utils/validateCmdArg.jsx` 统一为静态导入后，预期不再出现「同一模块既被静态又被动态导入」的 Rollup 警告；具体 chunk 体积与警告清单属构建验收观测，记入本轮验收报告，不作为本规格固化的历史指标
 
+### Requirement: ManageUser 静默刷新覆盖身份与容器操作字段
+
+用户列表及容器子列表的刷新指纹 SHALL 覆盖实际用于身份展示、用户资源统计、角色权限、磁盘与分配限额和状态操作的字段。单独业务字段变化 SHALL 可触发更新，语义无关的集合顺序变化 SHALL 保持比较稳定；静默轮询 SHALL 维持当前子列表页码与筛选。
+
+#### Scenario: 用户或关联容器业务字段变化
+- **WHEN** 用户展示字段、资源统计或关联容器的角色、限额改变，而其他指纹字段不变
+- **THEN** 列表接收新状态，权限和资源展示不沿用旧值，静默轮询保留当前页
+
 ## Source references
 
 - [src/pages/ManageUser.jsx](../../../src/pages/ManageUser.jsx)；[src/routes/index.jsx](../../../src/routes/index.jsx)。
@@ -50,4 +58,3 @@
 - 页面直接依赖：`../utils/detailFormat`。
 - 页面直接依赖：`../utils/listRefresh`。
 - [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：本次既有 21 个测试文件、123 个测试通过；页面测试是否直接覆盖见 Global QUESTIONS。
-

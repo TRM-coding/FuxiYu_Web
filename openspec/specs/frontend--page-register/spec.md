@@ -2,7 +2,7 @@
 
 ## Purpose
 
-学校邮箱验证码申请与注册。本文件是 Web chester-next 6c5f04d2a7f1 在 2026-10-11 的代码逆向基线，按页面或已有页面组件组织路由、权限、API 与状态行为。已知交互和接口差异统一见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)，此记录不表示对应问题已经修复。
+定义学校邮箱验证码申请、注册提交和具体错误反馈。注册失败保留页面与可修正输入，允许在验证码有效期内重试，消费与有效性最终由后端事务和业务规则裁决。
 
 ## Requirements
 
@@ -17,12 +17,11 @@
 
 ### Requirement: Register 主流程
 
-页面 SHALL 保持以下已实现的交互及数据职责：申请验证码后提交 username/password/email/graduation_year/registration_code；前端校验和后端错误分别呈现。
+页面 SHALL 申请验证码后提交 username/password/email/graduation_year/registration_code，分别呈现前端校验与后端具体错误。注册失败 SHALL 保持页面与可修正输入，允许在验证码有效期内修正后重试；MUST NOT 因一次注册冲突强制认定验证码已消费。过期或错误验证码仍按后端响应处理。
 
 #### Scenario: 验证码验证失败或注册冲突
-
 - **WHEN** 验证码验证失败或注册冲突
-- **THEN** 保持注册页面并呈现接口失败；验证码消费与注册独立事务造成的重试问题见 QUESTIONS
+- **THEN** 保持页面并显示具体失败；冲突不消耗有效验证码，用户可修正输入后重试
 
 ### Requirement: Register 构建归属
 
@@ -59,4 +58,3 @@
 - 页面直接依赖：`../api/user_api`。
 - 页面直接依赖：`../utils/showErrorModal`。
 - [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：本次既有 21 个测试文件、123 个测试通过；页面测试是否直接覆盖见 Global QUESTIONS。
-

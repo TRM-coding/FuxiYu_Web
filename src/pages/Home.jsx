@@ -34,6 +34,15 @@ const Desc = props => (
 // will be populated from backend
 const initialContainers = [];
 
+// 确认弹窗类型 → 失败标题：错误统一由 handleModalConfirm 展示，动作处理器只负责上抛。
+const MODAL_ACTION_ERROR_TITLES = {
+  start: '启动容器失败',
+  stop: '停止容器失败',
+  restart: '重启容器失败',
+  delete: '删除容器失败',
+  leave: '退出容器失败',
+};
+
 const Home = () => {
   const [value3, setValue3] = useState('Any');
   const [position, setPosition] = useState('end');
@@ -454,134 +463,126 @@ const Home = () => {
     closeEditModal();
   };
 
-  // 这里 start/stop/restart 的实现都只是前端模拟，实际应该调用对应的 API 来操作容器，并根据结果来更新状态和提示用户
+  // start/stop/restart 的接口返回是「受理/处理中」（Ctrl 等到 Node 受理后返回 success=1 的
+  // “request sent”），不是终态。发送中只用确认弹窗按钮 loading；明确受理后才置中间态并启动心跳。
+  // 失败保留原列表状态并上抛，由 handleModalConfirm 统一展示错误；返回 true 表示已受理。
   const handleStartContainer = async (record) => {
     const cid = record?.key;
-    if ((record?.effective_status || '').toLowerCase() !== 'offline') return;
+    if ((record?.effective_status || '').toLowerCase() !== 'offline') return false;
     try {
-      // optimistic UI
-      markContainerTransition(record, 'starting', 'online');
-      patchContainerStatus(cid, 'starting');
-      message.loading({ content: `正在启动 ${record.container_name}...`, key: `start-${cid}` });
       await startContainer(Number(cid));
-      // start web-side heartbeat to wait until controller reports ONLINE
-      try {
-        startContainerStatusHeartbeat({
-          machine_id: record.machine_id,
-          container_name: record.container_name,
-          container_id: cid,
-          terminalState: 'online',
-          onTerminal: (data) => {
-            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
-            if (st === 'failed') {
-              clearContainerTransition(cid);
-              patchContainerStatus(cid, 'failed');
-              message.error({ content: `容器 ${record.container_name} 创建失败`, key: `start-${cid}`, duration: 4 });
-              return;
-            }
-            clearContainerTransition(cid);
-            patchContainerStatus(cid, 'online');
-            message.success({ content: `容器 ${record.container_name} 已启动`, key: `start-${cid}`, duration: 2 });
-          }
-        });
-      } catch (e) {
-        message.success({ content: `启动指令已发送`, key: `start-${cid}`, duration: 2 });
-      }
     } catch (e) {
       console.error('start container failed', e);
-      // revert state
-      clearContainerTransition(cid);
-      patchContainerStatus(cid, 'offline');
-      try { await showErrorModal({ message: e?.body || e || '启动失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
-      message.error('启动失败');
+      message.error({ content: '启动失败', key: `start-${cid}` });
+      throw e;
     }
+    markContainerTransition(record, 'starting', 'online');
+    patchContainerStatus(cid, 'starting');
+    // start web-side heartbeat to wait until controller reports ONLINE
+    try {
+      startContainerStatusHeartbeat({
+        machine_id: record.machine_id,
+        container_name: record.container_name,
+        container_id: cid,
+        terminalState: 'online',
+        onTerminal: (data) => {
+          const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
+          if (st === 'failed') {
+            clearContainerTransition(cid);
+            patchContainerStatus(cid, 'failed');
+            message.error({ content: `容器 ${record.container_name} 创建失败`, key: `start-${cid}`, duration: 4 });
+            return;
+          }
+          clearContainerTransition(cid);
+          patchContainerStatus(cid, 'online');
+          message.success({ content: `容器 ${record.container_name} 已启动`, key: `start-${cid}`, duration: 2 });
+        }
+      });
+    } catch (e) {
+      message.success({ content: `启动指令已发送`, key: `start-${cid}`, duration: 2 });
+    }
+    return true;
   };
 
   const handleStopContainer = async (record) => {
     const cid = record?.key;
-    if ((record?.effective_status || '').toLowerCase() !== 'online') return;
+    if ((record?.effective_status || '').toLowerCase() !== 'online') return false;
     try {
-      markContainerTransition(record, 'stopping', 'offline');
-      patchContainerStatus(cid, 'stopping');
-      message.loading({ content: `正在停止 ${record.container_name}...`, key: `stop-${cid}` });
       await stopContainer(Number(cid));
-      try {
-        startContainerStatusHeartbeat({
-          machine_id: record.machine_id,
-          container_name: record.container_name,
-          container_id: cid,
-          terminalState: 'offline',
-          onTerminal: (data) => {
-            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
-            if (st === 'failed') {
-              clearContainerTransition(cid);
-              patchContainerStatus(cid, 'failed');
-              message.error({ content: `容器 ${record.container_name} 状态异常`, key: `stop-${cid}`, duration: 4 });
-              return;
-            }
-            clearContainerTransition(cid);
-            patchContainerStatus(cid, 'offline');
-            message.success({ content: `容器 ${record.container_name} 已停止`, key: `stop-${cid}`, duration: 2 });
-          }
-        });
-      } catch (e) {
-        message.success({ content: `停止指令已发送`, key: `stop-${cid}`, duration: 2 });
-      }
     } catch (e) {
       console.error('stop container failed', e);
-      // revert state
-      clearContainerTransition(cid);
-      patchContainerStatus(cid, 'online');
-      try { await showErrorModal({ message: e?.body || e || '停止失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
-      message.error('停止失败');
+      message.error({ content: '停止失败', key: `stop-${cid}` });
+      throw e;
     }
+    markContainerTransition(record, 'stopping', 'offline');
+    patchContainerStatus(cid, 'stopping');
+    try {
+      startContainerStatusHeartbeat({
+        machine_id: record.machine_id,
+        container_name: record.container_name,
+        container_id: cid,
+        terminalState: 'offline',
+        onTerminal: (data) => {
+          const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
+          if (st === 'failed') {
+            clearContainerTransition(cid);
+            patchContainerStatus(cid, 'failed');
+            message.error({ content: `容器 ${record.container_name} 状态异常`, key: `stop-${cid}`, duration: 4 });
+            return;
+          }
+          clearContainerTransition(cid);
+          patchContainerStatus(cid, 'offline');
+          message.success({ content: `容器 ${record.container_name} 已停止`, key: `stop-${cid}`, duration: 2 });
+        }
+      });
+    } catch (e) {
+      message.success({ content: `停止指令已发送`, key: `stop-${cid}`, duration: 2 });
+    }
+    return true;
   };
 
   const handleRestartContainer = async (record) => {
     const cid = record?.key;
-    if ((record?.effective_status || '').toLowerCase() !== 'online') return;
+    if ((record?.effective_status || '').toLowerCase() !== 'online') return false;
     try {
-      markContainerTransition(record, 'restarting', 'online');
-      patchContainerStatus(cid, 'restarting');
-      message.loading({ content: `正在重启 ${record.container_name}...`, key: `restart-${cid}` });
       await restartContainer(Number(cid));
-      try {
-        startContainerStatusHeartbeat({
-          machine_id: record.machine_id,
-          container_name: record.container_name,
-          container_id: cid,
-          terminalState: 'online',
-          requiredProgressState: 'restarting',
-          onProgress: (data) => {
-            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
-            if (st && st !== 'online' && st !== 'failed') {
-              patchContainerStatus(cid, st);
-            }
-          },
-          onTerminal: (data) => {
-            const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
-            if (st === 'failed') {
-              clearContainerTransition(cid);
-              patchContainerStatus(cid, 'failed');
-              message.error({ content: `容器 ${record.container_name} 重启失败`, key: `restart-${cid}`, duration: 4 });
-              return;
-            }
-            clearContainerTransition(cid);
-            patchContainerStatus(cid, 'online');
-            message.success({ content: `容器 ${record.container_name} 已重启`, key: `restart-${cid}`, duration: 2 });
-          }
-        });
-      } catch (e) {
-        message.success({ content: `重启指令已发送`, key: `restart-${cid}`, duration: 2 });
-      }
     } catch (e) {
       console.error('restart container failed', e);
-      // revert to online
-      clearContainerTransition(cid);
-      patchContainerStatus(cid, 'online');
-      try { await showErrorModal({ message: e?.body || e || '重启失败', status: e?.status || e?.response?.status, route: e?.route || e?.response?.url }); } catch (er) {}
-      message.error('重启失败');
+      message.error({ content: '重启失败', key: `restart-${cid}` });
+      throw e;
     }
+    markContainerTransition(record, 'restarting', 'online');
+    patchContainerStatus(cid, 'restarting');
+    try {
+      startContainerStatusHeartbeat({
+        machine_id: record.machine_id,
+        container_name: record.container_name,
+        container_id: cid,
+        terminalState: 'online',
+        requiredProgressState: 'restarting',
+        onProgress: (data) => {
+          const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
+          if (st && st !== 'online' && st !== 'failed') {
+            patchContainerStatus(cid, st);
+          }
+        },
+        onTerminal: (data) => {
+          const st = (data && data.effective_status) ? String(data.effective_status).toLowerCase() : null;
+          if (st === 'failed') {
+            clearContainerTransition(cid);
+            patchContainerStatus(cid, 'failed');
+            message.error({ content: `容器 ${record.container_name} 重启失败`, key: `restart-${cid}`, duration: 4 });
+            return;
+          }
+          clearContainerTransition(cid);
+          patchContainerStatus(cid, 'online');
+          message.success({ content: `容器 ${record.container_name} 已重启`, key: `restart-${cid}`, duration: 2 });
+        }
+      });
+    } catch (e) {
+      message.success({ content: `重启指令已发送`, key: `restart-${cid}`, duration: 2 });
+    }
+    return true;
   };
 
   // helpers
@@ -650,14 +651,11 @@ const Home = () => {
         // current user leaving the container
         const cid = data?.record?.key || data?.record?.container_id;
         const uid = Number(currentUserId);
-        if (uid && cid) {
-          try {
-            await removeCollaborator({ user_id: uid, container_id: Number(cid) });
-          } catch (e) {
-            console.error('removeCollaborator failed', e);
-          }
+        if (!uid || !cid) {
+          throw new Error('缺少当前用户或容器标识，未退出容器');
         }
-        // remove from local list for the current user
+        // 退出关联失败必须上抛：只有后端确认移除成功才把本地行删掉并提示成功。
+        await removeCollaborator({ user_id: uid, container_id: Number(cid) });
         setContainers(prev => prev.filter(c => String(c.key) !== String(cid)));
         message.success(`已解除与容器 ${data.record.container_name} 的关联`);
       } else if (type === 'removeUser') {
@@ -669,19 +667,23 @@ const Home = () => {
       } else if (type === 'start') {
         await handleStartContainer(data.record);
       } else if (type === 'stop') {
-        // stop container (high-risk)
-        const cid = data?.record?.key || data?.record?.container_id;
-        await handleStopContainer(data.record);
-        message.success(`容器 ${data.record.container_name} 停止请求已发送`);
+        // 只有确认受理（返回 true）才提示请求已发送；未真正发起请求时不得无条件成功。
+        if (await handleStopContainer(data.record)) {
+          message.success(`容器 ${data.record.container_name} 停止请求已发送`);
+        }
       } else if (type === 'restart') {
-        // restart container (high-risk)
-        const cid = data?.record?.key || data?.record?.container_id;
-        await handleRestartContainer(data.record);
-        message.success(`容器 ${data.record.container_name} 重启请求已发送`);
+        if (await handleRestartContainer(data.record)) {
+          message.success(`容器 ${data.record.container_name} 重启请求已发送`);
+        }
       }
     } catch (err) {
       console.error('modal action failed', err);
-      await showErrorModal({ message: err?.body || err || '操作失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({
+        title: MODAL_ACTION_ERROR_TITLES[type],
+        message: err?.body || err || '操作失败，请重试',
+        status: err?.status || err?.response?.status,
+        route: err?.route || err?.response?.url,
+      });
     } finally {
       setModal({ visible: false, type: '', loading: false, data: null });
     }

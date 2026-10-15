@@ -135,6 +135,19 @@
   gap: 10px;
 }
 
+.rbac-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rbac-field-error {
+  color: #d4380d;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
 .rbac-permission-sections {
   min-width: 0;
   flex: 1 1 auto;
@@ -265,6 +278,33 @@
   color: #6d7d91;
 }
 
+/* 方法实体通配（bypass_auth_entity）与资源通配是两层语义，配色必须区分开 */
+.rbac-permission-chip-covered-auth {
+  border-color: #d46b08;
+  background: #fff7e6;
+  color: #873800;
+}
+
+.rbac-permission-chip-covered-auth .rbac-chip-state {
+  color: #ad4e00;
+}
+
+/* 同域 manage 派生 */
+.rbac-permission-chip-covered-manage {
+  border-color: #597ef7;
+  background: #f0f5ff;
+  color: #1d39c4;
+}
+
+.rbac-permission-chip-covered-manage .rbac-chip-state {
+  color: #2f54eb;
+}
+
+/* 被方法通配覆盖的 manage：方法已覆盖，但直持才能扩资源范围，因此仍可点 */
+.rbac-permission-chip-grantable .rbac-chip-state {
+  text-decoration: underline dotted;
+}
+
 .rbac-permission-chip-locked {
   border-color: #6f42c1;
   background: #f3edff;
@@ -311,6 +351,16 @@
 .rbac-legend-covered {
   border: 1px dashed #98a7ba;
   background: #eef1f5;
+}
+
+.rbac-legend-covered-auth {
+  border: 1px dashed #d46b08;
+  background: #fff7e6;
+}
+
+.rbac-legend-covered-manage {
+  border: 1px dashed #597ef7;
+  background: #f0f5ff;
 }
 
 .rbac-legend-locked {

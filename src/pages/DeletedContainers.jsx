@@ -1,5 +1,5 @@
 import { parseServerTime } from '../utils/detailFormat';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Empty, Modal, Popconfirm, Radio, Spin, Table, Tag, Typography, message } from 'antd';
 import { DeleteOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -53,17 +53,52 @@ export default function DeletedContainers() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
+  // 请求参数放 ref：动作回调可能在较早 render 的闭包里触发，也必须按「当前页」取数；
+  // 序号用于丢弃迟到响应，避免旧页响应覆盖新页。
+  const pageRef = useRef(1);
+  const pageSizeRef = useRef(20);
+  const requestSeqRef = useRef(0);
 
   const canManageContainers = hasPermission('container:manage');
 
-  const loadRecords = useCallback(async () => {
+  const loadRecords = useCallback(async (options = {}) => {
     if (!canManageContainers) return;
-    setLoading(true);
+    const requestedPage = options.page ?? pageRef.current;
+    const requestedSize = options.pageSize ?? pageSizeRef.current;
+    const silent = options.silent === true;
+    const seq = requestSeqRef.current + 1;
+    requestSeqRef.current = seq;
+    if (!silent) setLoading(true);
+    const fetchPage = async (nextPage) => {
+      const res = await listDeletedContainers({ page_number: nextPage, page_size: requestedSize });
+      return {
+        list: Array.isArray(res?.records) ? res.records : [],
+        total: Number(res?.total_number || 0),
+        totalPage: Number(res?.total_page || 0),
+      };
+    };
     try {
-      const res = await listDeletedContainers({ page_number: page, page_size: pageSize });
-      setRecords(Array.isArray(res?.records) ? res.records : []);
-      setTotal(Number(res?.total_number || 0));
+      let current = await fetchPage(requestedPage);
+      if (seq !== requestSeqRef.current) return; // 迟到响应：让更新的请求赢
+      let appliedPage = requestedPage;
+      if (current.list.length === 0 && requestedPage > 1) {
+        // 越界空页才回退：优先用权威 total_page，缺失/0 时按 total_number 与页大小推算，只重取一次。
+        const derivedLastPage = requestedSize > 0 ? Math.max(1, Math.ceil(current.total / requestedSize)) : 1;
+        const lastPage = current.totalPage > 0 ? current.totalPage : derivedLastPage;
+        if (requestedPage > lastPage) {
+          appliedPage = lastPage;
+          current = await fetchPage(lastPage);
+          if (seq !== requestSeqRef.current) return;
+        }
+      }
+      pageRef.current = appliedPage;
+      pageSizeRef.current = requestedSize;
+      setPage(appliedPage);
+      setPageSize(requestedSize);
+      setRecords(current.list);
+      setTotal(current.total);
     } catch (err) {
+      if (seq !== requestSeqRef.current) return;
       if (err?.status === 401) {
         handleAuthError(err.status, navigate);
         return;
@@ -75,9 +110,9 @@ export default function DeletedContainers() {
         route: err?.route,
       });
     } finally {
-      setLoading(false);
+      if (!silent && seq === requestSeqRef.current) setLoading(false);
     }
-  }, [canManageContainers, navigate, page, pageSize]);
+  }, [canManageContainers, navigate]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -87,6 +122,11 @@ export default function DeletedContainers() {
     }
     loadRecords();
   }, [loaded, canManageContainers, loadRecords]);
+
+  const handlePageChange = (nextPage, nextPageSize) => {
+    const size = Number(nextPageSize) > 0 ? Number(nextPageSize) : pageSizeRef.current;
+    loadRecords({ page: nextPage, pageSize: size });
+  };
 
   const cleanMount = async (record) => {
     if (!record?.mount_cleanup_id) return;
@@ -157,7 +197,8 @@ export default function DeletedContainers() {
     }
   };
 
-  const columns = useMemo(() => [
+  // 不用 useMemo 缓存：动作回调必须跟随当前页/当前筛选，避免旧页闭包被 columns 长期持有。
+  const columns = [
     {
       title: '容器',
       dataIndex: 'container_name',
@@ -258,7 +299,7 @@ export default function DeletedContainers() {
         );
       },
     },
-  ], [cleaningId, resurrectingId]);
+  ];
 
   const expandedRowRender = (record) => {
     const snapshot = record.snapshot || {};
@@ -305,32 +346,28 @@ export default function DeletedContainers() {
           </Typography.Title>
           <Typography.Text type="secondary">查看已删除容器的 mount 保留状态，并手动清理残留目录。</Typography.Text>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={loadRecords} disabled={loading || cleaningId !== null || resurrectingId !== null}>
+        <Button icon={<ReloadOutlined />} onClick={() => loadRecords()} disabled={loading || cleaningId !== null || resurrectingId !== null}>
           刷新
         </Button>
       </div>
 
       <Spin spinning={loading}>
-        {records.length ? (
-          <Table
-            rowKey="deleted_id"
-            columns={columns}
-            dataSource={records}
-            expandable={{ expandedRowRender }}
-            pagination={{
-              current: page,
-              pageSize,
-              total,
-              showSizeChanger: true,
-              onChange: (nextPage, nextPageSize) => {
-                setPage(nextPage);
-                setPageSize(nextPageSize);
-              },
-            }}
-          />
-        ) : (
-          <Empty description="暂无已删除容器" />
-        )}
+        {/* 空页也保留 Table 与分页入口：total>0 时当前页可能暂时为空（刚清理/恢复最后一条），
+            用户仍能翻回有效页，而不是被 Empty 顶掉。 */}
+        <Table
+          rowKey="deleted_id"
+          columns={columns}
+          dataSource={records}
+          locale={{ emptyText: <Empty description="暂无已删除容器" /> }}
+          expandable={{ expandedRowRender }}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            onChange: handlePageChange,
+          }}
+        />
       </Spin>
 
       <Modal

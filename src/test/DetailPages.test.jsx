@@ -306,6 +306,7 @@ describe('DetailPages snapshot polling', () => {
     getDetailInformation.mockResolvedValue({
       machine_name: 'gpu-node-01',
       machine_ip: '10.0.0.9',
+      port: 6789,
       machine_type: 'GPU',
       machine_status: 'online',
       effective_status: 'online',
@@ -349,6 +350,7 @@ describe('DetailPages snapshot polling', () => {
     );
 
     expect(await screen.findByText('gpu-node-01')).toBeInTheDocument();
+    expect(await screen.findByText('端口 6789')).toBeInTheDocument();
     expect(getDetailInformation).toHaveBeenCalledTimes(1);
     expect(listAllContainerBrefInformation).not.toHaveBeenCalled();
     expect(getMachineStatus).not.toHaveBeenCalled();

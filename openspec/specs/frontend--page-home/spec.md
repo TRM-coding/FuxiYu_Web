@@ -2,7 +2,7 @@
 
 ## Purpose
 
-当前用户容器卡片、运行操作及详情。本文件是 Web chester-next 6c5f04d2a7f1 在 2026-10-11 的代码逆向基线，按页面或已有页面组件组织路由、权限、API 与状态行为。已知交互和接口差异统一见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)，此记录不表示对应问题已经修复。
+定义当前用户容器卡片、操作成功与受理反馈、过渡态跟踪和静默刷新。身份与资源权限决定操作能力，实际终态由心跳确认，失败保留原列表，刷新覆盖角色和资源限额等业务字段。
 
 ## Requirements
 
@@ -17,12 +17,15 @@
 
 ### Requirement: Home 主流程
 
-页面 SHALL 保持以下已实现的交互及数据职责：读取容器 brief 并定时静默刷新；使用 listRefresh 指纹判断更新；启停重启采用 pending transition 和心跳；删除使用独立确认组件。
+页面 SHALL 读取容器 brief 并定时静默刷新，以 listRefresh 指纹判断是否更新。操作只有在后端明确确认成功或受理后才改变相应本地状态并提示；HTTP 成功但业务失败 MUST NOT 视为成功。启停重启仍在处理中时 SHALL 使用既有中间态、pending transition 和心跳收敛，不提前展示终态成功。退出关联 SHALL 只在确认成功后移除本地行；异常保留原行及具体错误。删除保留独立确认组件。
 
 #### Scenario: 已受理停止或重启
+- **WHEN** 后端确认已受理但尚未完成停止或重启
+- **THEN** 显示相应中间态及准确受理反馈，由轮询推进至权威终态，不提前声称已停止或重启完成
 
-- **WHEN** 已受理停止或重启
-- **THEN** 跟踪过渡态到终态；当前内层失败后外层仍提示请求成功的缺陷见 QUESTIONS
+#### Scenario: 操作失败
+- **WHEN** 停止、重启或退出关联请求失败，包括业务 success=0
+- **THEN** 显示具体错误，不额外提示成功，不删除本地行或伪造终态
 
 ### Requirement: Home 构建归属
 
@@ -32,6 +35,14 @@
 
 - **WHEN** 对本基线执行 `npm run build`
 - **THEN** Vite 完成构建并输出页面级与 `ModelViewer` 的异步 chunk；`src/utils/requestManager.jsx` 与 `src/utils/validateCmdArg.jsx` 统一为静态导入后，预期不再出现「同一模块既被静态又被动态导入」的 Rollup 警告；具体 chunk 体积与警告清单属构建验收观测，记入本轮验收报告，不作为本规格固化的历史指标
+
+### Requirement: Home 静默刷新覆盖权限与展示变化
+
+容器刷新指纹 SHALL 覆盖参与卡片展示、限额及操作权限判断的名称、镜像、地址、端口、账号身份与角色、长期配额、磁盘容量与限额、运行和清理冻结状态；不能只依赖采集时间带动刷新。字段结构相同、集合顺序等语义无关变化 SHALL 保持比较稳定。
+
+#### Scenario: 只改变角色或磁盘限额
+- **WHEN** 新响应只改变当前用户角色或磁盘限额，其他状态与采集时间不变
+- **THEN** 页面仍更新操作入口及展示，不沿用旧权限或旧限额
 
 ## Source references
 
@@ -50,4 +61,3 @@
 - 页面直接依赖：`../utils/useAutoHideTopBar`。
 - 页面直接依赖：`../contexts/PermissionContext`。
 - [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：本次既有 21 个测试文件、123 个测试通过；页面测试是否直接覆盖见 Global QUESTIONS。
-

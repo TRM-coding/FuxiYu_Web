@@ -2,7 +2,7 @@
 
 ## Purpose
 
-机器注册、分页检索及每机容器管理。本文件是 Web chester-next 6c5f04d2a7f1 在 2026-10-11 的代码逆向基线，按页面或已有页面组件组织路由、权限、API 与状态行为。已知交互和接口差异统一见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)，此记录不表示对应问题已经修复。
+定义机器卡片、权限名单、容器子列表及管理操作。机器实时利用率和容器权限、限额等业务变化参与静默刷新比较，已有轮询保留当前子列表页码与筛选，不将资源范围和方法权限混合。
 
 ## Requirements
 
@@ -33,6 +33,14 @@
 - **WHEN** 对本基线执行 `npm run build`
 - **THEN** Vite 完成构建并输出页面级与 `ModelViewer` 的异步 chunk；`src/utils/requestManager.jsx` 与 `src/utils/validateCmdArg.jsx` 统一为静态导入后，预期不再出现「同一模块既被静态又被动态导入」的 Rollup 警告；具体 chunk 体积与警告清单属构建验收观测，记入本轮验收报告，不作为本规格固化的历史指标
 
+### Requirement: ManageMachine 静默刷新覆盖展示与权限字段
+
+机器刷新指纹 SHALL 覆盖名称、地址、类型、状态、维护标记及实时 CPU、内存、GPU 利用率，不能只依赖采集时间。容器子列表指纹 SHALL 覆盖当前参与展示和操作判断的账号角色、绑定、长期配额及磁盘限额等业务字段。比较 SHALL 区分业务变化与语义无关的集合顺序变化；已有静默轮询 SHALL 保留当前子列表页码与筛选。
+
+#### Scenario: 机器展示或容器权限单独变化
+- **WHEN** 机器展示字段、实时利用率或容器角色改变，采集时间与其余状态未改变
+- **THEN** 刷新提交新状态，显示与操作入口按新值判断，静默轮询不重置当前页
+
 ## Source references
 
 - [src/pages/ManageMachine.jsx](../../../src/pages/ManageMachine.jsx)；[src/routes/index.jsx](../../../src/routes/index.jsx)。
@@ -50,4 +58,3 @@
 - 页面直接依赖：`../utils/heartbeat`。
 - 页面直接依赖：`../utils/timeFormat`。
 - [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：本次既有 21 个测试文件、123 个测试通过；页面测试是否直接覆盖见 Global QUESTIONS。
-
