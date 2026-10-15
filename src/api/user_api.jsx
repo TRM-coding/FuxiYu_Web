@@ -312,10 +312,13 @@ export const getUserPermissions = async (timeout = null) => {
     clearTimeout(timer);
     if (!res.ok) throw Object.assign(new Error('failed to load permissions'), { status: res.status });
     const data = await res.json().catch(() => null);
-    // 一次请求交付三样：认证信号（200/401）、授权数据（entities）、身份（user_id/username）。
+    // 一次请求交付四样：认证信号（200/401）、授权数据（entities）、身份（user_id/username）、
+    // 资源级通配的真实判定（image_resource_unrestricted）。
     // 身份必须从这里来——cookie 是 HttpOnly，前端读不到它（2026-09 决策）。
+    // 资源位缺字段（旧后端）一律折成 false：**不得**从 entities 派生集反推资源能力。
     return {
       entities: (data && data.entities) || [],
+      imageResourceUnrestricted: (data && data.image_resource_unrestricted) === true,
       userId: (data && data.user_id) ?? null,
       userName: (data && data.username) || '',
     };

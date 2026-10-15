@@ -185,4 +185,32 @@ describe('API 包装器 401/403 语义分离（Q04）', () => {
       events.stop();
     }
   });
+
+  it('getUserPermissions：资源位规范化为布尔，缺字段/非布尔一律保守 false', async () => {
+    fetch.mockResolvedValue({
+      ok: true, status: 200, statusText: 'OK', url: 'https://ctrl/api/users/me/permissions',
+      json: async () => ({ success: 1, entities: ['image:manage'], user_id: 3, username: 'editor' }),
+    });
+    const missing = await userApi.getUserPermissions();
+    expect(missing.imageResourceUnrestricted).toBe(false);
+    expect(missing.entities).toEqual(['image:manage']);
+
+    fetch.mockResolvedValue({
+      ok: true, status: 200, statusText: 'OK', url: 'https://ctrl/api/users/me/permissions',
+      json: async () => ({
+        success: 1, entities: ['bypass_resource'], image_resource_unrestricted: true,
+        user_id: 3, username: 'editor',
+      }),
+    });
+    expect((await userApi.getUserPermissions()).imageResourceUnrestricted).toBe(true);
+
+    fetch.mockResolvedValue({
+      ok: true, status: 200, statusText: 'OK', url: 'https://ctrl/api/users/me/permissions',
+      json: async () => ({
+        success: 1, entities: [], image_resource_unrestricted: 'true',
+        user_id: 3, username: 'editor',
+      }),
+    });
+    expect((await userApi.getUserPermissions()).imageResourceUnrestricted).toBe(false);
+  });
 });

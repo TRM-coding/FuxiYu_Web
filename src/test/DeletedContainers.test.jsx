@@ -96,6 +96,7 @@ describe('DeletedContainers', () => {
       sections: [
         { name: 'base_image', changed: true },
         { name: 'dockerfile_body', changed: false },
+        { name: 'entrypoint', changed: false },
       ],
     });
     // 第二次（带 contentSource）：这次真的恢复
@@ -118,6 +119,7 @@ describe('DeletedContainers', () => {
     expect(await screen.findByText('恢复内容与删除前不同')).toBeInTheDocument();
     expect(screen.getByText(/基础镜像：有变化/)).toBeInTheDocument();
     expect(screen.getByText(/业务片段：无变化/)).toBeInTheDocument();
+    expect(screen.getByText(/启动命令：无变化/)).toBeInTheDocument();
     expect(resurrectDeletedContainer).toHaveBeenCalledTimes(1);
 
     // 逐行差异窗格：两份文本后端都给了，前端直接比，不再多要一个接口

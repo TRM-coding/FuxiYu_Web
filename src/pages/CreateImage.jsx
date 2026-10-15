@@ -11,6 +11,10 @@ import {
 import showErrorModal from '../utils/showErrorModal';
 import { usePermission } from '../contexts/PermissionContext';
 import {
+  canEditImages,
+  canManageImages,
+} from '../utils/imagePermissions';
+import {
   createImage,
   deleteImage,
   getImageDetailInformation,
@@ -119,6 +123,7 @@ export default function CreateImage() {
   const {
     userId: currentUserId,
     entities: permissions,
+    imageResourceUnrestricted,
     loaded: permissionsLoaded,
   } = usePermission();
   const [images, setImages] = useState([]);
@@ -136,20 +141,14 @@ export default function CreateImage() {
   const [usersList, setUsersList] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
 
-  const canManage = permissions.includes('image:manage');
-  const canEdit = permissions.includes('image:edit') || canManage;
-
-  // ★ 两层口径，与后端逐条对齐（不是页面上自己发明的一套）：
-  //   - `image:edit`（上面那层）：能不能碰这个页面
-  //   - `image:owner`（这一层）：**只能动自己建的**——后端 update 与两个可见性入口
-  //     挂的都是 require_resource("image:owner")，即 created_by_user_id == 自己。
-  //   `image:manage` 是资源通配（user_has_resource 第 0 步直接放行），所以管理员照旧能改全部。
-  //
-  // 新建态（还没有 image_id）视为"将是自己的"，否则新建表单一点开就是灰的。
+  // 方法能力与资源范围分别判断；完整规则见镜像页面和认证规格。
+  const canManageMethods = canManageImages(permissions);
+  const hasResourceWildcard = imageResourceUnrestricted === true;
+  const canEdit = canEditImages(permissions);
   const isOwner =
     form.created_by_user_id != null
     && String(form.created_by_user_id) === String(currentUserId);
-  const canEditThis = canEdit && (!form.image_id || isOwner || canManage);
+  const canEditThis = canEdit && (!form.image_id || isOwner || hasResourceWildcard);
 
   // 脏检查：编辑字段与加载快照不一致 → 显示保存键（新建模式填了内容同样触发）
   const formDirty = useMemo(() => {
@@ -170,7 +169,7 @@ export default function CreateImage() {
         page_number: 1,
         page_size: 100,
         image_search: search,
-        mine_only: mineOnly || !canManage,
+        mine_only: mineOnly || !hasResourceWildcard,
       });
       const items = Array.isArray(result?.images) ? result.images.map(normalizeImage) : [];
       setImages(items);
@@ -212,7 +211,7 @@ export default function CreateImage() {
     if (!permissionsLoaded || !currentUserId) return;
     loadImages(keyword);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permissionsLoaded, currentUserId, mineOnly, canManage]);
+  }, [permissionsLoaded, currentUserId, mineOnly, hasResourceWildcard]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -401,7 +400,7 @@ export default function CreateImage() {
           <Button icon={<ReloadOutlined />} onClick={() => loadImages(keyword)} />
         </div>
 
-        {canManage && (
+        {hasResourceWildcard && (
           <div className="ci-mine-row">
             <span>仅看我创建的</span>
             <Switch size="small" checked={mineOnly} onChange={setMineOnly} />
@@ -452,7 +451,7 @@ export default function CreateImage() {
             ) : null}
           </div>
           <div className="ci-actions">
-            {form.image_id && canManage && (
+            {form.image_id && canManageMethods && (
               <Button danger icon={<DeleteOutlined />} loading={deleting} onClick={removeImage}>
                 删除
               </Button>

@@ -31,11 +31,12 @@ const statusTag = (record) => {
   return <Tag color="green">mount 保留</Tag>;
 };
 
-// 差异分段的显示名。分段是后端给的（基础镜像 / 业务片段），这里只做翻译。
+// 翻译后端提供的恢复配方分段。
 // 没有平台注入：它两侧都取当下的系统设置，按构造恒等，后端不会把它列为分段。
 const SECTION_LABELS = {
   base_image: '基础镜像',
   dockerfile_body: '业务片段',
+  entrypoint: '启动命令',
 };
 
 export default function DeletedContainers() {

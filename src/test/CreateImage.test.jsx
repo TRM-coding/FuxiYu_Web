@@ -275,9 +275,11 @@ describe('CreateImage 可见范围三态', () => {
     expect(screen.getByText(/该模板由他人创建/)).toBeTruthy();
   });
 
-  it('image:manage 通配者仍可编辑他人模板（与后端第 0 步放行一致）', async () => {
+  it('资源位为 true 者可编辑他人模板（与后端资源门放行一致）', async () => {
     getUserPermissions.mockResolvedValue({
-      entities: ['image:view', 'image:edit', 'image:manage'], userId: 3, userName: 'editor',
+      entities: ['image:view', 'image:edit', 'image:manage'],
+      imageResourceUnrestricted: true,
+      userId: 3, userName: 'editor',
     });
     getImageDetailInformation.mockResolvedValue(
       detailWith('custom', { created_by_user_id: 7 })
@@ -313,5 +315,156 @@ describe('CreateImage 可见范围三态', () => {
         .map(node => node.textContent);
       expect(tags).toEqual(['Alice @alice', 'Bob @bob']);
     });
+  });
+});
+
+// ── 资源通配与两层 RBAC（Q14）──────────────────────────────────────────────
+//
+// payload 形状与真实 PermissionContext 契约一致：方法级看生效集 entities，
+// 资源级看服务端明说的 imageResourceUnrestricted（**不从 entities 反推**）。
+// 这组用例锁住两条：实体通配派生的 image:manage 不得开资源范围；
+// 直持 manage + 实体通配时资源范围仍然成立。
+describe('CreateImage 资源通配与两层 RBAC', () => {
+  const renderPage = () =>
+    render(<MemoryRouter><PermissionProvider><CreateImage /></PermissionProvider></MemoryRouter>);
+
+  const detailAsOther = () => ({
+    image: {
+      image_id: 9,
+      name: 'jenkins',
+      status: 'ready',
+      base_image: 'ubuntu:24.04',
+      dockerfile_body: '',
+      entrypoint: '',
+      valid_range: 'custom',
+      created_by_user_id: 7, // 别人的模板
+    },
+  });
+
+  beforeEach(() => {
+    localStorage.setItem('currentUserName', 'editor');
+    localStorage.setItem('currentUserId', '3');
+    getUserPermissions.mockReset();
+    listImageBrefInformation.mockReset();
+    listImageBrefInformation.mockResolvedValue({ images: [{ image_id: 9, name: 'jenkins', status: 'ready' }] });
+    getImageDetailInformation.mockReset();
+    updateImage.mockReset();
+    updateImage.mockResolvedValue({ success: 1 });
+    setImageValidRange.mockReset();
+    setImageValidRange.mockResolvedValue({ success: 1 });
+    setImageVisibleUsers.mockReset();
+    setImageVisibleUsers.mockResolvedValue({ success: 1, user_ids: [] });
+    listAllUserBrefInformation.mockReset();
+    listAllUserBrefInformation.mockResolvedValue({ users: [] });
+  });
+
+  it('资源通配：出现「仅看我创建的」，默认只看我的、可关掉看全部，并能编辑他人模板', async () => {
+    getUserPermissions.mockResolvedValue({
+      entities: ['image:view', 'image:edit', 'bypass_resource'],
+      imageResourceUnrestricted: true,
+      userId: 3, userName: 'editor',
+    });
+    getImageDetailInformation.mockResolvedValue(detailAsOther());
+    renderPage();
+
+    await screen.findByText('仅看我创建的');
+    await waitFor(() => expect(screen.getByDisplayValue('jenkins').disabled).toBe(false));
+    await waitFor(() => {
+      expect(listImageBrefInformation).toHaveBeenCalledWith(
+        expect.objectContaining({ mine_only: true }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('switch'));
+    await waitFor(() => {
+      expect(listImageBrefInformation).toHaveBeenCalledWith(
+        expect.objectContaining({ mine_only: false }),
+      );
+    });
+  });
+
+  it('仅 bypass_auth_entity：生效集里有 image:manage，但资源位为 false → 不开资源范围', async () => {
+    getUserPermissions.mockResolvedValue({
+      entities: ['bypass_auth_entity', 'image:view', 'image:edit', 'image:manage'],
+      imageResourceUnrestricted: false,
+      userId: 3, userName: 'editor',
+    });
+    getImageDetailInformation.mockResolvedValue(detailAsOther());
+    renderPage();
+
+    await screen.findByText('环境模板');
+    await waitFor(() => expect(screen.getByDisplayValue('jenkins').disabled).toBe(true));
+    expect(screen.getByText(/该模板由他人创建/)).toBeTruthy();
+    expect(screen.queryByText('仅看我创建的')).toBeNull();
+    await waitFor(() => {
+      expect(listImageBrefInformation).toHaveBeenCalledWith(
+        expect.objectContaining({ mine_only: true }),
+      );
+    });
+  });
+
+  it('直持 image:manage + 方法通配：资源位为 true → 仍可编辑他人模板', async () => {
+    getUserPermissions.mockResolvedValue({
+      entities: ['bypass_auth_entity', 'image:view', 'image:edit', 'image:manage'],
+      imageResourceUnrestricted: true, // 服务端判定：直持 manage
+      userId: 3, userName: 'editor',
+    });
+    getImageDetailInformation.mockResolvedValue(detailAsOther());
+    renderPage();
+
+    await waitFor(() => expect(screen.getByDisplayValue('jenkins').disabled).toBe(false));
+    expect(screen.getByText('仅看我创建的')).toBeTruthy();
+    expect(screen.queryByText(/该模板由他人创建/)).toBeNull();
+  });
+
+  it('旧响应缺资源位：保守 false，即便 entities 含 image:manage 也不开资源范围', async () => {
+    getUserPermissions.mockResolvedValue({
+      entities: ['image:view', 'image:edit', 'image:manage'],
+      // 没有 imageResourceUnrestricted 字段
+      userId: 3, userName: 'editor',
+    });
+    getImageDetailInformation.mockResolvedValue(detailAsOther());
+    renderPage();
+
+    await screen.findByText('环境模板');
+    await waitFor(() => expect(screen.getByDisplayValue('jenkins').disabled).toBe(true));
+    expect(screen.queryByText('仅看我创建的')).toBeNull();
+  });
+
+  it('删除键按方法级 image:manage：无该权限时不渲染', async () => {
+    getUserPermissions.mockResolvedValue({
+      entities: ['image:view', 'image:edit', 'bypass_resource'],
+      imageResourceUnrestricted: true,
+      userId: 3, userName: 'editor',
+    });
+    getImageDetailInformation.mockResolvedValue({
+      image: {
+        image_id: 9, name: 'jenkins', status: 'ready', base_image: 'ubuntu:24.04',
+        dockerfile_body: '', entrypoint: '', valid_range: 'custom', created_by_user_id: 3,
+      },
+    });
+    renderPage();
+
+    await screen.findByDisplayValue('jenkins');
+    // 资源通配不放行 require_permission("image:manage")，删除键不该出现
+    expect(screen.queryByRole('button', { name: /删除/ })).toBeNull();
+  });
+
+  it('删除键按方法级 image:manage：生效集含 manage 时渲染', async () => {
+    getUserPermissions.mockResolvedValue({
+      entities: ['image:view', 'image:edit', 'image:manage'],
+      imageResourceUnrestricted: true,
+      userId: 3, userName: 'editor',
+    });
+    getImageDetailInformation.mockResolvedValue({
+      image: {
+        image_id: 9, name: 'jenkins', status: 'ready', base_image: 'ubuntu:24.04',
+        dockerfile_body: '', entrypoint: '', valid_range: 'custom', created_by_user_id: 3,
+      },
+    });
+    renderPage();
+
+    await screen.findByDisplayValue('jenkins');
+    expect(screen.getByRole('button', { name: /删除/ })).toBeTruthy();
   });
 });

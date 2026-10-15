@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
  */
 const PermissionContext = createContext({
   entities: [],
+  imageResourceUnrestricted: false,
   loaded: false,
   userId: null,
   userName: '',
@@ -31,12 +32,16 @@ const EMPTY_IDENTITY = { userId: null, userName: '' };
 
 export const PermissionProvider = ({ children }) => {
   const [entities, setEntities] = useState([]);
+  // 资源级通配由服务端明说（image_resource_unrestricted）；缺失即 false，
+  // 前端不从 entities 反推资源能力。
+  const [imageResourceUnrestricted, setImageResourceUnrestricted] = useState(false);
   const [identity, setIdentity] = useState(EMPTY_IDENTITY);
   const [loaded, setLoaded] = useState(false);
   const navigate = useNavigate();
 
   const apply = useCallback((result) => {
     setEntities((result && result.entities) || []);
+    setImageResourceUnrestricted((result && result.imageResourceUnrestricted) === true);
     setIdentity({ userId: (result && result.userId) ?? null, userName: (result && result.userName) || '' });
   }, []);
 
@@ -50,6 +55,7 @@ export const PermissionProvider = ({ children }) => {
 
   const clear = useCallback(() => {
     setEntities([]);
+    setImageResourceUnrestricted(false);
     setIdentity(EMPTY_IDENTITY);
   }, []);
 
@@ -85,6 +91,7 @@ export const PermissionProvider = ({ children }) => {
 
   const value = useMemo(() => ({
     entities,
+    imageResourceUnrestricted,
     loaded,
     userId: identity.userId,
     userName: identity.userName,
@@ -92,7 +99,7 @@ export const PermissionProvider = ({ children }) => {
     hasAnyManage,
     refresh,
     clear,
-  }), [entities, loaded, identity, hasPermission, hasAnyManage, refresh, clear]);
+  }), [entities, imageResourceUnrestricted, loaded, identity, hasPermission, hasAnyManage, refresh, clear]);
 
   return (
     <PermissionContext.Provider value={value}>
