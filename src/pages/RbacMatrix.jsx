@@ -135,7 +135,9 @@ export default function RbacMatrix() {
       setNewGroupName('');
       setNewGroupDescription('');
     } catch (err) {
-      if (err?.status === 401 || err?.status === 403) {
+      // 401 认证失效交给全局；403 是业务拒绝（例如本页权限被撤后后端拒绝），
+      // 必须留在本页并把后端原因显示出来，不能当成认证问题把人踢走。
+      if (err?.status === 401) {
         handleAuthError(err.status, navigate);
         return;
       }
@@ -250,7 +252,8 @@ export default function RbacMatrix() {
         message.success('权限已保存');
       }
     } catch (err) {
-      if (err?.status === 401 || err?.status === 403) {
+      // 同上：403 走普通错误反馈（后端原因可见），不导航、不清身份。
+      if (err?.status === 401) {
         handleAuthError(err.status, navigate);
         return;
       }

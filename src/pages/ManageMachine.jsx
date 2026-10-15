@@ -760,11 +760,7 @@ const ManageMachine = () => {
       setDetailModalVisible(true);
     } catch (err) {
       console.error('getContainerDetailInformation failed', err);
-      const status = err?.response?.status || err?.status;
       await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-      if (status === 403) {
-        handleAuthError(403, navigate);
-      }
       return;
     }
   };
@@ -943,11 +939,7 @@ const ManageMachine = () => {
         success = true;
       } catch (err) {
         console.error('registerMachine failed', err);
-        const status = err?.response?.status || err?.status;
         await showErrorModal({ message: err?.body || err || '注册机器失败，请检查 node 是否可达', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-        if (status === 403) {
-          handleAuthError(403, navigate);
-        }
       } finally {
         setAddHostLoading(false);
         if (success) setAddHostVisible(false);
@@ -1007,11 +999,7 @@ const ManageMachine = () => {
         // prefer structured body message when available
         const bodyMsg = err?.body?.message || err?.body || null;
         const messageText = bodyMsg ? `删除宿主机失败: ${bodyMsg}` : '删除宿主机失败，请重试';
-        const status = err?.status || err?.response?.status || err?.status;
-        await showErrorModal({ message: err?.body || err || messageText, status: status, route: err?.route || err?.response?.url });
-        if (status === 403) {
-          handleAuthError(403, navigate);
-        }
+        await showErrorModal({ message: err?.body || err || messageText, status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       } finally {
         setDeleteLoading(false);
         if (success) {
@@ -1068,11 +1056,7 @@ const ManageMachine = () => {
       success = true;
     } catch (err) {
       console.error('deleteContainer failed', err);
-      const status = err?.response?.status || err?.status;
       await showErrorModal({ message: err?.body || err || '删除容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-      if (status === 403) {
-        handleAuthError(403, navigate);
-      }
     } finally {
       setContainerDeleteLoading(false);
       if (success) {

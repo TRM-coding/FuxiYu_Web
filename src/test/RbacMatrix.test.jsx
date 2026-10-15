@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../contexts/PermissionContext', () => ({
@@ -22,7 +22,22 @@ vi.mock('../utils/showErrorModal', () => ({
 }));
 
 import { getRbacMatrix, updateRbacGroupEntities } from '../api/rbac_api';
+import showErrorModal from '../utils/showErrorModal';
 import RbacMatrix from '../pages/RbacMatrix';
+
+const LocationProbe = () => {
+  const location = useLocation();
+  return <span data-testid="path">{location.pathname}</span>;
+};
+
+/** 业务 403 回归需要观察「有没有被导航走」，所以带一个路径探针。 */
+const renderPage = (path = '/admin/rbac') =>
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <RbacMatrix />
+      <LocationProbe />
+    </MemoryRouter>,
+  );
 
 /**
  * 等到矩阵真正可交互。
@@ -44,6 +59,8 @@ describe('RbacMatrix', () => {
   beforeEach(() => {
     getRbacMatrix.mockReset();
     updateRbacGroupEntities.mockReset();
+    showErrorModal.mockReset();
+    localStorage.clear();
     getRbacMatrix.mockResolvedValue({
       success: 1,
       entities: [
@@ -140,5 +157,67 @@ describe('RbacMatrix', () => {
 
     expect(screen.getByRole('button', { name: '开启 container:manage' })).toHaveClass('rbac-permission-chip-covered');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  // ── 业务 403：留在本页 + 显示后端原因；401 仍交给全局 ──────────────────────
+  // 这是 Q04 收尾的核心回归：一般业务 403 不是认证问题，不能把人踢出当前页。
+
+  it('读取矩阵 403：显示后端拒绝原因，不导航、不清身份', async () => {
+    localStorage.setItem('currentUserName', 'op1');
+    getRbacMatrix.mockRejectedValue(Object.assign(new Error('failed'), {
+      status: 403,
+      body: { success: 0, message: '无权限矩阵管理权限', error_reason: 'insufficient_permission' },
+    }));
+
+    renderPage();
+
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalledTimes(1));
+    expect(showErrorModal.mock.calls[0][0]).toMatchObject({
+      title: '读取权限矩阵失败',
+      message: '无权限矩阵管理权限',
+      status: 403,
+    });
+    // 留在本页、身份保留
+    expect(screen.getByTestId('path')).toHaveTextContent('/admin/rbac');
+    expect(localStorage.getItem('currentUserName')).toBe('op1');
+  });
+
+  it('保存权限 403：显示后端拒绝原因，不导航、不清身份', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem('currentUserName', 'op1');
+    updateRbacGroupEntities.mockRejectedValue(Object.assign(new Error('failed'), {
+      status: 403,
+      body: { success: 0, message: '资源权限不足，禁止修改该组', error_reason: 'insufficient_permission' },
+    }));
+
+    renderPage();
+    await waitForMatrixReady();
+
+    await user.click(screen.getByRole('button', { name: '开启 container:create' }));
+    await user.click(screen.getByRole('button', { name: /保存/ }));
+
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalledTimes(1));
+    expect(showErrorModal.mock.calls[0][0]).toMatchObject({
+      title: '保存权限失败',
+      message: '资源权限不足，禁止修改该组',
+      status: 403,
+    });
+    expect(screen.getByTestId('path')).toHaveTextContent('/admin/rbac');
+    expect(localStorage.getItem('currentUserName')).toBe('op1');
+    // 没有「权限已保存」的成功提示
+    expect(screen.queryByText('权限已保存')).not.toBeInTheDocument();
+  });
+
+  it('读取矩阵 401：仍走全局认证处理（回登录页 + 清历史本地身份）', async () => {
+    localStorage.setItem('currentUserName', 'op1');
+    getRbacMatrix.mockRejectedValue(Object.assign(new Error('expired'), { status: 401 }));
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId('path')).toHaveTextContent('/'));
+    // 401 是认证失效：历史本地副本必须清掉（cookie 由服务端持有，前端不碰）
+    expect(localStorage.getItem('currentUserName')).toBeNull();
+    // 401 不弹业务错误弹窗
+    expect(showErrorModal).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-公告模板列表、新建、编辑和删除。本文件是 Web chester-next 6c5f04d2a7f1 在 2026-10-11 的代码逆向基线，按页面或已有页面组件组织路由、权限、API 与状态行为。已知交互和接口差异统一见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)，此记录不表示对应问题已经修复。
+公告模板列表、新建、编辑和删除。本规格记录当前页面入口、权限、API 与交互边界。未完成问题见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)。
 
 ## Requirements
 
@@ -17,12 +17,11 @@
 
 ### Requirement: TemplateManager 主流程
 
-页面 SHALL 保持以下已实现的交互及数据职责：维护 name/category/description/subject_template/body_template；SYSTEM 模板删除受后端保护，转模板来源 id 保留追溯。
+页面 SHALL 维护 name/category/description/subject_template/body_template，保留 SYSTEM 模板删除保护及转模板来源追溯。自定义模板 SHALL 可删除，旧草稿或公告的模板引用由后端解除，已有正文和投递记录不随模板删除改变。
 
 #### Scenario: 删除已经被公告或草稿引用的自定义模板
-
 - **WHEN** 删除已经被公告或草稿引用的自定义模板
-- **THEN** 当前后端外键阻止删除并可能返回 500；此差异登记在 QUESTIONS，页面模板删除路径未宣称无条件成功
+- **THEN** 删除成功后刷新模板列表，相关草稿及公告仍使用各自保存的内容，不要求先删除草稿
 
 ### Requirement: TemplateManager 构建归属
 
@@ -38,5 +37,4 @@
 - [src/pages/TemplateManager.jsx](../../../src/pages/TemplateManager.jsx)；[src/routes/index.jsx](../../../src/routes/index.jsx)。
 - 页面直接依赖：`../api/announcement_api`。
 - 页面直接依赖：`../utils/showErrorModal`。
-- [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：本次既有 21 个测试文件、123 个测试通过；页面测试是否直接覆盖见 Global QUESTIONS。
-
+- 回归验证：[src/test/](../../../src/test/)；实际范围和结果以当前组件及生产入口测试为准。

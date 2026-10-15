@@ -87,7 +87,8 @@ export default function Settings() {
       setSettings(list);
       setDraft(Object.fromEntries(list.map(item => [item.key, normalizeValue(item, item.value)])));
     } catch (err) {
-      if (err?.status === 401 || err?.status === 403) {
+      // 401 认证失效交给全局；403 是业务拒绝，留在本页并显示后端原因。
+      if (err?.status === 401) {
         handleAuthError(err.status, navigate);
         return;
       }
@@ -153,7 +154,8 @@ export default function Settings() {
       setDraft(Object.fromEntries(list.map(item => [item.key, normalizeValue(item, item.value)])));
       message.success('设置已保存');
     } catch (err) {
-      if (err?.status === 401 || err?.status === 403) {
+      // 同上：403 走普通错误反馈，不导航。
+      if (err?.status === 401) {
         handleAuthError(err.status, navigate);
         return;
       }

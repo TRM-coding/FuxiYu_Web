@@ -23,10 +23,11 @@ const ensureOk = async (res, action) => {
     err.status = res.status;
     err.route = res.url;
     err.body = body;
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
       try { abortAll('auth'); } catch (e) {}
       // 401 只发信号（abortAll → 'auth:expired'），统一由 App 级监听器处置：
       // 不碰 localStorage（本地身份已废除）/ cookie（HttpOnly，删不掉）/ 硬跳转（会打风暴）。
+      // 403 是一般权限拒绝：不清身份、不中断其它请求，交给调用方展示拒绝原因。
     }
     throw err;
   }

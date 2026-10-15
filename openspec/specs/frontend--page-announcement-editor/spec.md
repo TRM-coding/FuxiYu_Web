@@ -2,7 +2,7 @@
 
 ## Purpose
 
-公告正文与模板编辑、属性占位插入、草稿保存。本文件是 Web chester-next 6c5f04d2a7f1 在 2026-10-11 的代码逆向基线，按页面或已有页面组件组织路由、权限、API 与状态行为。已知交互和接口差异统一见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)，此记录不表示对应问题已经修复。
+公告正文与模板编辑、属性占位插入、草稿保存。本规格记录当前页面入口、权限、API 与交互边界。未完成问题见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)。
 
 ## Requirements
 
@@ -17,12 +17,19 @@
 
 ### Requirement: AnnouncementEditor 主流程
 
-页面 SHALL 保持以下已实现的交互及数据职责：选模板获取主题正文；加载机器/容器属性；保存 title/content/raw_content/template_id；编辑器不执行模板变量替换引擎。
+编辑器 SHALL 选模板填充主题正文并保留属性插入功能，保存 title、content、raw_content 等独立草稿内容，MUST NOT 保存有效 template_id 关联。模板仅提供编辑初值，不执行模板变量替换引擎；加载已有草稿 SHALL 优先恢复已保存内容，不重新套用模板。草稿操作 SHALL 遵循创建者私有边界。
 
 #### Scenario: 保存草稿成功
+- **WHEN** 创建者保存草稿成功
+- **THEN** 保留 draft_id 和编辑内容，可继续编辑或进入发送列表；下拉分页与插入光标问题仍单独登记
 
-- **WHEN** 保存草稿成功
-- **THEN** 保留 draft_id 和编辑内容，可继续编辑或进入发送列表；下拉分页与插入光标问题见 QUESTIONS
+#### Scenario: 清空模板选择
+- **WHEN** 用户选模板后编辑正文再清空模板选择并保存
+- **THEN** 保存当前编辑内容，不保留模板关联，不因清空选择丢弃正文
+
+#### Scenario: 模板变化后打开草稿
+- **WHEN** 原模板已修改或删除，用户打开之前保存的草稿
+- **THEN** 恢复草稿自身的内容，不因历史模板 id 再次请求或覆盖正文
 
 ### Requirement: AnnouncementEditor 构建归属
 
@@ -40,5 +47,4 @@
 - 页面直接依赖：`../api/machine_api`。
 - 页面直接依赖：`../api/container_api`。
 - 页面直接依赖：`../utils/showErrorModal`。
-- [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：本次既有 21 个测试文件、123 个测试通过；页面测试是否直接覆盖见 Global QUESTIONS。
-
+- 回归验证：[src/test/](../../../src/test/)；实际范围和结果以当前组件及生产入口测试为准。

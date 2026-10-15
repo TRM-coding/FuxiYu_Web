@@ -2,7 +2,7 @@
 
 ## Purpose
 
-公告草稿批量发送、目标选择、投递状态轮询。本文件是 Web chester-next 6c5f04d2a7f1 在 2026-10-11 的代码逆向基线，按页面或已有页面组件组织路由、权限、API 与状态行为。已知交互和接口差异统一见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)，此记录不表示对应问题已经修复。
+公告草稿批量发送、目标选择、投递状态轮询。本规格记录当前页面入口、权限、API 与交互边界。未完成问题见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)。
 
 ## Requirements
 
@@ -17,12 +17,15 @@
 
 ### Requirement: Announcements 主流程
 
-页面 SHALL 保持以下已实现的交互及数据职责：解析用户/机器/容器/全员目标人数；POST batch-send 立即返回 announcement_ids，后台状态轮询反馈成功失败；列表和草稿分别查询。
+页面 SHALL 分别查询公告和当前用户私有草稿，解析用户、机器、容器或全员目标人数；POST batch-send 立即返回 announcement_ids，后台状态轮询反馈成功失败。发送 SHALL 使用草稿独立内容，无需原模板存在；后端拒绝他人的草稿操作时 SHALL 显示拒绝而不展示成功。
 
 #### Scenario: 后台尚未完成发送
-
 - **WHEN** 后台尚未完成发送
 - **THEN** 以 SENDING 和计数呈现进度，不把受理响应作为全部邮件已投递
+
+#### Scenario: 草稿无模板
+- **WHEN** 用户发送由模板填充后独立保存、且原模板已删除的草稿
+- **THEN** 按已保存内容和目标发送，不要求重新选择模板
 
 ### Requirement: Announcements 构建归属
 
@@ -42,5 +45,4 @@
 - 页面直接依赖：`../api/user_api`。
 - 页面直接依赖：`../utils/showErrorModal`。
 - 页面直接依赖：`../utils/announcementSend`。
-- [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：本次既有 21 个测试文件、123 个测试通过；页面测试是否直接覆盖见 Global QUESTIONS。
-
+- 回归验证：[src/test/](../../../src/test/)；实际范围和结果以当前组件及生产入口测试为准。

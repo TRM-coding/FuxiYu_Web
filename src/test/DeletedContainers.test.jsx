@@ -22,12 +22,14 @@ vi.mock('../utils/showErrorModal', () => ({
 }));
 
 import { listDeletedContainers, resurrectDeletedContainer } from '../api/container_api';
+import showErrorModal from '../utils/showErrorModal';
 import DeletedContainers from '../pages/DeletedContainers';
 
 describe('DeletedContainers', () => {
   beforeEach(() => {
     listDeletedContainers.mockReset();
     resurrectDeletedContainer.mockReset();
+    showErrorModal.mockReset();
     listDeletedContainers.mockResolvedValue({
       success: 1,
       records: [
@@ -129,5 +131,44 @@ describe('DeletedContainers', () => {
     await user.click(screen.getByRole('button', { name: '按所选内容恢复' }));
     await waitFor(() => expect(resurrectDeletedContainer).toHaveBeenLastCalledWith(7, 'snapshot'));
     expect(resurrectDeletedContainer).toHaveBeenCalledTimes(2);
+  });
+
+  it('passes the full error body to showErrorModal so the restore reason survives', async () => {
+    const user = userEvent.setup();
+    const body = {
+      success: 0,
+      message: 'User 1 has reached long-term container limit (1/1)',
+      error_reason: 'long_term_limit_reached',
+    };
+    resurrectDeletedContainer.mockRejectedValueOnce({
+      status: 409,
+      route: 'https://api.test/api/containers/resurrect_container',
+      body,
+    });
+
+    render(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('deleted-train')).toBeInTheDocument();
+    const row = screen.getByText('deleted-train').closest('tr');
+    await user.click(within(row).getByRole('button', { name: /恢复/ }));
+    const confirmButtons = screen.getAllByRole('button', { name: /恢\s*复/ });
+    await user.click(confirmButtons[confirmButtons.length - 1]);
+
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalledWith(expect.objectContaining({
+      title: '恢复容器失败',
+      // 整个 body（不是 body.message）——error_reason 必须随 message 一起到达映射层
+      message: body,
+      status: 409,
+    })));
+    expect(showErrorModal.mock.calls.at(-1)[0].route).toContain('/containers/resurrect_container');
+
+    // 超限是"未恢复"：不得出现成功提示，也不刷新列表（记录仍留在已删除列表里）
+    expect(screen.queryByText('容器恢复请求已发送')).toBeNull();
+    expect(listDeletedContainers).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('deleted-train')).toBeInTheDocument();
   });
 });

@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { SearchOutlined, UnlockOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Tag, message, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
-import { handleAuthError } from '../utils/authHelpers';
 import ConfirmModal from '../components/ConfirmModal';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import EditUserModal from '../components/EditUserModal';
@@ -740,11 +739,9 @@ const Home = () => {
       setDetailVisible(true);
     } catch (err) {
       console.error('getContainerDetailInformation failed', err);
-      const status = err?.response?.status || err?.status;
+      // 只走普通错误反馈：403 是业务拒绝（含后端原因），留在本页、不清身份、不导航；
+      // 401 已由 API 包装器的全局信号统一处置，这里不再抢着跳。
       await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-      if (status === 403) {
-        handleAuthError(403, navigate);
-      }
       return;
     }
   };

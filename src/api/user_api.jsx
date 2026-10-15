@@ -23,10 +23,11 @@ const ensureOk = async (res, action) => {
     err.status = res.status;
     err.route = res.url;
     err.body = body;
-    if (res.status === 401 || res.status === 403) {
-      // 认证失效**只在这里发一个信号**，由 App 级监听器统一处置（清权限快照 + 客户端跳登录页）。
+    if (res.status === 401) {
+      // 只有认证失效（401）**在这里发一个信号**，由 App 级监听器统一处置（清权限快照 + 客户端跳登录页）。
       // 这里不再碰 localStorage（本地身份已废除）、不碰 cookie（HttpOnly，前端删不掉）、
       // 也不做 window.location 硬跳（那会把页面推来推去，2026-09 实测成 12 次/秒的风暴）。
+      // 403 是「登录着但没这个权限」的一般拒绝：保留会话与在途请求，只把错误交给调用方展示。
       try { abortAll('auth'); } catch (e) {}
     }
     throw err;

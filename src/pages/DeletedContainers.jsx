@@ -63,7 +63,7 @@ export default function DeletedContainers() {
       setRecords(Array.isArray(res?.records) ? res.records : []);
       setTotal(Number(res?.total_number || 0));
     } catch (err) {
-      if (err?.status === 401 || err?.status === 403) {
+      if (err?.status === 401) {
         handleAuthError(err.status, navigate);
         return;
       }
@@ -95,7 +95,7 @@ export default function DeletedContainers() {
       message.success('mount 已清理');
       await loadRecords();
     } catch (err) {
-      if (err?.status === 401 || err?.status === 403) {
+      if (err?.status === 401) {
         handleAuthError(err.status, navigate);
         return;
       }
@@ -140,13 +140,14 @@ export default function DeletedContainers() {
       setContentChoice(null);
       await loadRecords();
     } catch (err) {
-      if (err?.status === 401 || err?.status === 403) {
+      if (err?.status === 401) {
         handleAuthError(err.status, navigate);
         return;
       }
       showErrorModal({
         title: '恢复容器失败',
-        message: err?.body?.message || err?.message || '无法恢复容器',
+        // 传整个 body（而非 body.message），让 error_reason 到达 showErrorModal 的映射层。
+        message: err?.body || err?.message || '无法恢复容器',
         status: err?.status,
         route: err?.route,
       });

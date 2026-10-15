@@ -23,6 +23,8 @@ const BACKEND_ERROR_REASONS = [
   'delete_failed', 'start_failed', 'stop_failed', 'restart_failed',
   'add_collaborator_failed', 'remove_collaborator_failed', 'update_role_failed',
   'unpause_failed', 'get_detail_failed',
+  // 恢复（复活软删容器）
+  'data_not_recoverable',
   // 公告
   'empty_targets', 'cannot_delete_system_template',
 ];
@@ -77,5 +79,16 @@ describe('机器作用域族按路由映射', () => {
     const mapped = collectMappedReasons();
     expect(mapped.has('container_host_maintenance')).toBe(true);
     expect(mapped.has('container_host_offline')).toBe(true);
+  });
+});
+
+describe('恢复路由自带失败文案', () => {
+  it('长期配额 / 快照不可恢复 / 机器作用域都在本路由上映射', () => {
+    const map = routeErrorMap['/containers/resurrect_container'] || {};
+    for (const reason of ['long_term_limit_reached', 'data_not_recoverable',
+                          'machine_maintenance', 'machine_offline', 'machine_not_found',
+                          'not_found', 'invalid_payload', 'container_exists']) {
+      expect(map[reason], `resurrect → ${reason}`).toBeTruthy();
+    }
   });
 });

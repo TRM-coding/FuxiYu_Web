@@ -109,7 +109,9 @@ export default function AnnouncementEditor() {
           setTitle(d.title || '');
           setContent(d.content || '');
           setRawContent(d.raw_content || d.content || '');
-          setTemplateId(d.template_id || null);
+          // 草稿与模板没有持久关联（Q06/Q07）：重开草稿不恢复、也不重放任何模板选择，
+          // 内容只来自草稿自己的快照——否则模板会覆盖用户在草稿里已经改过的内容。
+          setTemplateId(null);
         } catch (e) {
           console.error('load draft', e);
         }
@@ -242,11 +244,13 @@ export default function AnnouncementEditor() {
   // 模板选择
   // ══════════════════════════════════════════════════════════════════
 
+  // 模板选择 = 复制初值（Q06/Q07）：把 subject/body 复制进编辑器，草稿保存的是此后
+  // 编辑出来的独立内容快照，与模板之间没有持久关联。清空选择只清选择，不动内容。
   const handleTemplateSelect = (tid) => {
-    if (!tid) { setTemplateId(null); return; }
+    setTemplateId(tid ?? null);
+    if (!tid) return;
     const t = templates.find(tp => tp.id === tid);
     if (!t) return;
-    setTemplateId(tid);
     setContent(t.body_template || '');
     setRawContent(t.body_template || '');
     if (t.subject_template && !title) {
@@ -266,7 +270,7 @@ export default function AnnouncementEditor() {
         title: title.trim(),
         content: content || rawContent,
         raw_content: rawContent || content,
-        template_id: templateId,
+        // 刻意不带 template_id：模板选择只是复制初值，草稿不保留模板关联（Q06/Q07）。
       };
       if (draftId) payload.draft_id = Number(draftId);
       const res = await saveDraft(payload);

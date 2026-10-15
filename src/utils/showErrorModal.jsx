@@ -99,6 +99,16 @@ export const routeErrorMap = {
       long_term_limit_reached: '已达到长期容器上限',
       invalid_payload: '长期容器设置参数无效',
     },
+    // 恢复（复活软删容器）：长期配额、快照不可恢复、机器作用域三条链路都会从这里出去。
+    // 恢复先撞机器准入（machine_*），故复用容器动作那一族文案。
+    '/containers/resurrect_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      not_found: '已删除容器记录不存在',
+      data_not_recoverable: '该容器的挂载已清理，数据不可恢复',
+      invalid_payload: '恢复参数无效',
+      container_exists: '容器记录已存在，无法恢复',
+      long_term_limit_reached: '已达到长期容器上限，恢复后无法保留长期标记',
+    },
 
     // 机器相关
     // 登记（TOFU 接入）与「修复连接」共用若干 reason（machine_unreachable /

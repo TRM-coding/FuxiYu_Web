@@ -123,7 +123,7 @@ const MachineDetailModal = ({ visible, machine, onClose, loading = false }) => {
 
         <div style={{ marginTop: 12 }}>
           <Typography.Text strong className="cdm-item-label">描述</Typography.Text>
-          <div className="apply-prewrap" style={{ marginTop: 6 }}>{machine.machine_description || '-'}</div>
+          <div style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>{machine.machine_description || '-'}</div>
         </div>
 
         <div style={{ marginTop: 12 }}>

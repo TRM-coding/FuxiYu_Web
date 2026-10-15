@@ -33,7 +33,6 @@ export default function MainLayout() {
     if (pathname === '/index') return '/index';
     if (pathname.startsWith('/index/create')) return '/index/create';
     if (pathname.startsWith('/index/images')) return '/index/images';
-    if (pathname.startsWith('/index/apply')) return '/index/apply'; // 旧链接兼容
     if (pathname.startsWith('/index/docs')) return '/index/docs';
     return pathname;
   };

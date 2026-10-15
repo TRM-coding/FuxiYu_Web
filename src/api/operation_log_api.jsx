@@ -1,5 +1,7 @@
 import { BACKEND_ORIGIN, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
-import { createController, unregisterController } from '../utils/requestManager';
+// 与其它 API 包装器同源：401 走全局认证失效信号（abortAll → 'auth:expired'），
+// 由 App 级监听器统一清权限快照并回登录页；403 是一般权限拒绝，不在此处处理。
+import { createController, unregisterController, abortAll } from '../utils/requestManager';
 
 
 const createTimeoutController = (timeout) => {
@@ -23,6 +25,10 @@ const ensureOk = async (res, action) => {
 		err.status = res.status;
 		err.route = res.url;
 		err.body = body;
+		if (res.status === 401) {
+			// 唯一信号：不在包装器里碰 localStorage / cookie / window.location。
+			try { abortAll('auth'); } catch (e) {}
+		}
 		throw err;
 	}
 	return res.json();

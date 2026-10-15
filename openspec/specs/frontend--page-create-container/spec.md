@@ -2,7 +2,7 @@
 
 ## Purpose
 
-选择镜像和宿主机，提交容器资源及 SSH 公钥。本文件是 Web chester-next 6c5f04d2a7f1 在 2026-10-11 的代码逆向基线，按页面或已有页面组件组织路由、权限、API 与状态行为；同日按变更 clarify-resource-limits-and-errors 同步了配额上限分层、共享内存联动与错误呈现。其余已知交互和接口差异统一见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)，该记录不表示对应问题已经修复。
+选择镜像和宿主机，提交容器资源及 SSH 公钥。本规格记录当前页面入口、权限、API 与交互边界。未完成问题见 [Global QUESTIONS](../../../../FuxiYu_Global/QUESTIONS.md)。
 
 ## Requirements
 
@@ -74,17 +74,19 @@
 
 ### Requirement: CreateContainer 创建失败的错误呈现
 
-创建接口返回具体错误 message 与 error_reason 时，页面 SHALL 通过 showErrorModal 保留后端具体 message（含申请值、上限等数值），并 SHALL 同时给出本地化错误原因与 HTTP 状态提示；已知原因（如机器离线）MUST NOT 被呈现为内存超限。未知原因与网络失败 SHALL 有可理解的中文兜底；401/403 的认证与授权处置流程不变。
+创建接口返回具体错误 message 与 error_reason 时，页面 SHALL 通过 showErrorModal 保留后端具体 message（含申请值、上限等数值），并 SHALL 同时给出本地化错误原因与 HTTP 状态提示；已知原因（如机器离线）MUST NOT 被呈现为内存超限。未知原因与网络失败 SHALL 有可理解的中文兜底；401 SHALL 沿用认证失效处理，403 SHALL 显示一般拒绝并保留会话。
 
 #### Scenario: invalid_config 带具体数值
-
 - **WHEN** 接口返回 message=Requested shared_memory 8GB cannot exceed requested memory 4GB、error_reason=invalid_config、HTTP 400
 - **THEN** 弹窗保留该 message 原文与其中的 8GB/4GB，并附带容器配置无效或超出宿主机上限及 400 的中文提示
 
 #### Scenario: 机器离线
-
 - **WHEN** 接口返回 error_reason=machine_offline
 - **THEN** 弹窗显示所在机器不在线的中文提示，不出现超限字样
+
+#### Scenario: 创建权限不足
+- **WHEN** 有效会话的创建请求返回 403
+- **THEN** 显示拒绝原因并保留身份，不把该业务拒绝作为全局认证失效
 
 ### Requirement: CreateContainer 构建归属
 
@@ -104,4 +106,4 @@
 - 页面直接依赖：`../api/user_api`。
 - 页面直接依赖：`../api/container_api`。
 - 页面直接依赖：`../api/image_api`。
-- [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：基线（2026-10-11）为 21 个测试文件、123 个测试通过；clarify-resource-limits-and-errors 新增配额与错误呈现回归 [ResourceLimits.test.jsx](../../../src/test/ResourceLimits.test.jsx)、[ErrorPresentation.test.jsx](../../../src/test/ErrorPresentation.test.jsx)、[MachineSharedLimit.test.jsx](../../../src/test/MachineSharedLimit.test.jsx)，执行结果由主代理运行后记录。
+- 回归验证：[src/test/](../../../src/test/)；实际范围和结果以当前组件及生产入口测试为准。

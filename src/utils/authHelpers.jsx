@@ -36,14 +36,19 @@ export function handleAuthError(status, navigate) {
     return;
   }
 
-  // 403: 不清登录信息；只回首页（登录着，但没这个权限）
+  // 403：**只给布局 / 页面入口守卫用**（如「需要操作员权限」这类整页门禁）——
+  // 不清登录信息，只把人送回工作区。业务请求失败（列表/保存/删除等 catch）**不要**走这里：
+  // 那样用户既看不到后端拒绝原因，也会被莫名踢出当前页。这类 catch 应把 403 交给
+  // showErrorModal 显示原因，保留本页与身份。
   if (Number(status) === 403) {
     navigate('/index');
     return;
   }
 
-  // default fallback: navigate to root
-  navigate('/');
+  // 其它状态码（400/409/500…）既不是认证失效也不是权限不足：**什么都不做**。
+  // 这里刻意不导航——否则一个普通业务失败就可能把用户从当前页带走，而退出身份
+  // 只应由 401 触发（或用户在 /index/user 主动登出）。调用方负责用
+  // showErrorModal 显示该失败的原因。
 }
 
 export default handleAuthError;
