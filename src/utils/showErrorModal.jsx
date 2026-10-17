@@ -33,6 +33,15 @@ const restoreModals = () => {
   });
 };
 
+// 机器作用域族的文案：容器动作与创建共用。措辞指向"所在机器"，不假定是哪个容器动作。
+const MACHINE_SCOPE_MESSAGES = {
+  machine_maintenance: '所在机器正在维护中，暂时无法操作其上的容器',
+  machine_offline: '所在机器不在线，暂时无法操作其上的容器',
+  machine_not_found: '容器所在的机器不存在',
+  container_host_maintenance: '所在机器正在维护中，暂时无法操作其上的容器',
+  container_host_offline: '所在机器不在线，暂时无法操作其上的容器',
+};
+
 export const routeErrorMap = {
     // 用户相关
     '/register': { username_exists: '用户名已存在', email_exists: '邮箱已存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线' },
@@ -46,11 +55,41 @@ export const routeErrorMap = {
     '/users/reset_password': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
 
     // 容器相关
-    '/containers/create_container': { duplicate_entry: '创建容器失败：重复项', invalid_payload: '无效的容器数据', invalid_config: '容器配置无效或超出宿主机上限', create_failed: '创建容器失败' },
-    '/containers/delete_container': { delete_failed: '删除容器失败', not_found: '容器不存在' },
-    '/containers/add_collaborator': { add_collaborator_failed: '添加协作者失败', container_offline: '容器未在线，无法添加协作者' },
-    '/containers/remove_collaborator': { remove_collaborator_failed: '移除协作者失败', container_offline: '容器未在线，无法移除协作者' },
-    '/containers/update_role': { update_role_failed: '更新角色失败', container_offline: '容器未在线，无法更新角色' },
+    // 机器作用域族：容器动作与创建都可能撞上，措辞与具体容器动作无关，故抽成一块共用。
+    // 两个来源：动作类先撞**有效状态机**（container_host_*），创建没有容器、只撞
+    // **机器准入**（machine_*）。此前两族都没映射到容器路由，靠全局兜底去 /machines/*
+    // 借措辞——能用但脆：它按 Object.keys 的遍历顺序取第一个命中者。
+    '/containers/create_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      duplicate_entry: '创建容器失败：重复项',
+      invalid_payload: '无效的容器数据',
+      invalid_config: '容器配置无效或超出宿主机上限',
+      create_failed: '创建容器失败',
+    },
+    '/containers/delete_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      delete_failed: '删除容器失败',
+      not_found: '容器不存在',
+    },
+    '/containers/add_collaborator': {
+      ...MACHINE_SCOPE_MESSAGES,
+      add_collaborator_failed: '添加协作者失败',
+      container_offline: '容器未在线，无法添加协作者',
+    },
+    '/containers/remove_collaborator': {
+      ...MACHINE_SCOPE_MESSAGES,
+      remove_collaborator_failed: '移除协作者失败',
+      container_offline: '容器未在线，无法移除协作者',
+    },
+    '/containers/update_role': {
+      ...MACHINE_SCOPE_MESSAGES,
+      update_role_failed: '更新角色失败',
+      container_offline: '容器未在线，无法更新角色',
+    },
+    '/containers/unpause_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      unpause_failed: '解冻容器失败',
+    },
     '/containers/get_container_detail_information': { get_detail_failed: '获取容器详情失败' },
     '/containers/list_all_container_bref_information': { list_failed: '获取容器列表失败' },
     '/containers/set_long_term_container': {
@@ -60,14 +99,58 @@ export const routeErrorMap = {
       long_term_limit_reached: '已达到长期容器上限',
       invalid_payload: '长期容器设置参数无效',
     },
-    '/containers/unpause_container': { unpause_failed: '解冻容器失败' },
+    // 恢复（复活软删容器）：长期配额、快照不可恢复、机器作用域三条链路都会从这里出去。
+    // 恢复先撞机器准入（machine_*），故复用容器动作那一族文案。
+    '/containers/resurrect_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      not_found: '已删除容器记录不存在',
+      data_not_recoverable: '该容器的挂载已清理，数据不可恢复',
+      invalid_payload: '恢复参数无效',
+      container_exists: '容器记录已存在，无法恢复',
+      long_term_limit_reached: '已达到长期容器上限，恢复后无法保留长期标记',
+    },
 
     // 机器相关
-    '/machines/add_machine': { duplicate_entry: '机器已存在', internal_error: '内部错误，添加失败', create_failed: '添加机器失败' },
+    // 登记（TOFU 接入）与「修复连接」共用若干 reason（machine_unreachable /
+    // enrollment_failed / issue_uid_failed），但**语义不同**：登记是首次建立信任，
+    // 没有「原有信任」可言；修复连接是在保住已有信任。所以两条路由各写各的文案，
+    // 不能靠全局兜底互相借用——否则登记失败会显示「原有信任未被改动」这种错话。
+    '/machines/register_machine': {
+      invalid_trust_anchor: '机器名与 IP 为必填项',
+      invalid_machine_ip: 'IP 地址须为纯地址（不含端口），端口请单独填写',
+      invalid_node_port: '端口须为 1-65535 之间的整数',
+      machine_unreachable: '连不上该机器，无法抓取证书',
+      peer_cert_unavailable: '该机器未提供证书，无法建立信任',
+      enrollment_failed: '该机器未返回接入资料',
+      issue_uid_failed: '该机器的身份牌下发失败',
+      issue_uid_rejected: '该机器拒绝了下发身份牌',
+      persist_failed: '建档写库失败，请重试',
+      internal_error: '建档过程中出现内部错误，请查看日志',
+    },
     '/machines/remove_machine': { remove_failed: '删除机器失败' },
-    '/machines/update_machine': { update_failed: '更新机器失败', machine_not_found: '机器不存在', machine_maintenance: '机器正在维护中', machine_offline: '机器离线' },
+    '/machines/update_machine': {
+      update_failed: '更新机器失败',
+      machine_not_found: '机器不存在',
+      machine_maintenance: '机器正在维护中',
+      machine_offline: '机器离线',
+      // 限额编辑被拒：与容器创建的超限文案分开，先看具体 message 里的字段与数值
+      invalid_config: '机器配置限额无效或超出硬件容量',
+      invalid_payload: '机器配置限额参数无效',
+      missing_field: '缺少必填字段',
+    },
     '/machines/get_detail_information': { machine_not_found: '机器不存在', machine_offline: '机器离线', machine_maintenance: '机器正在维护中' },
     '/machines/list_all_machine_bref_information': { list_failed: '获取机器列表失败', machine_offline: '机器离线' },
+    '/machines/renew_machine_trust': {
+      machine_not_found: '机器不存在',
+      invalid_machine_ip: '该机器没有可用的 IP，无法重新抓取证书',
+      machine_unreachable: '连不上该机器，无法抓取证书；原有信任未被改动',
+      enrollment_failed: '该机器未返回接入资料；原有信任未被改动',
+      issue_uid_failed: '该机器的身份牌下发失败；原有信任未被改动',
+      persist_failed: '信任已重建，但写库失败，请重试',
+    },
+
+    // 设置相关
+    '/settings': { invalid_setting: '设置项不合法', update_failed: '保存设置失败' },
 
     // 通用/鉴权
     '': { invalid_token: '身份验证失败，请重新登录', insufficient_permission: '权限不足', unexpected_response: '远端返回意外响应', NODE_error: '节点错误' },
@@ -99,6 +182,44 @@ export const routeErrorMap = {
       cannot_delete_system_template: '系统模板不可删除'
     }
   };
+
+// 占位/无信息量文案：这些不算「具体信息」，不能让它们抵掉中文原因映射
+const PLACEHOLDER_MESSAGES = new Set([
+  '发生错误', '发生错误，请稍后重试或联系管理员。', '未知错误', '请求失败', '失败',
+  'error', 'Error', 'failed', 'Failed', 'undefined', 'null',
+]);
+
+// 网络类失败（fetch 抛错 / 超时）：没有 HTTP 状态也没有 error_reason 时给中文兜底，
+// 不把 "Failed to fetch" 这类英文原文直接抛给用户。
+const NETWORK_FAILURE_PATTERN = /(failed to fetch|networkerror|network request failed|fetch failed|load failed|err_connection|err_network|econnrefused|etimedout|network error|timed out|超时)/i;
+
+/** 后端 message 是否算「具体信息」（能带出申请值/上限等细节、不是占位或原因名本身） */
+const isSpecificMessage = (text, errorReason) => {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (PLACEHOLDER_MESSAGES.has(t)) return false;
+  if (errorReason && t.toLowerCase() === String(errorReason).toLowerCase()) return false;
+  if (/^\d{3}\s*错误$/.test(t)) return false;
+  return true;
+};
+
+/** 路由优先、其次全表，找到 error_reason 的中文映射；未收录返回 null */
+const resolveReasonMessage = (errorReason, routePath) => {
+  if (!errorReason) return null;
+  if (routePath) {
+    for (const key of Object.keys(routeErrorMap)) {
+      if (routePath.endsWith(key) || routePath.indexOf(key) !== -1) {
+        const map = routeErrorMap[key] || {};
+        if (map[errorReason]) return map[errorReason];
+      }
+    }
+  }
+  for (const key of Object.keys(routeErrorMap)) {
+    const map = routeErrorMap[key] || {};
+    if (map[errorReason]) return map[errorReason];
+  }
+  return null;
+};
 
 const showErrorModal = ({ title = '错误', message = '发生错误', status, route } = {}) => {
   if (typeof document === 'undefined') return Promise.resolve({ confirmed: false, status });
@@ -203,36 +324,32 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
     errorReason = message.error_reason || message.error || (message.body && message.body.error_reason) || (message.data && message.data.error_reason) || null;
   }
 
+  // 后端具体 message（可能带申请值与上限等数字）与中文原因映射分开保存：
+  // 具体 message 优先保留，中文映射只作为补充行，不再反过来覆盖数值。
+  // 未收录的原因也不硬套某个已知错误（例如把任何失败都说成超限）。
+  const rawMessage = String(displayMessage || '').trim();
+  const mappedReasonMessage = resolveReasonMessage(errorReason, routePath);
+  const specificMessage = isSpecificMessage(rawMessage, errorReason) ? rawMessage : null;
+  const hasStatusCode = Number.isFinite(Number(code)) || Number.isFinite(Number(status));
+  const networkFailure = !errorReason && !hasStatusCode && NETWORK_FAILURE_PATTERN.test(rawMessage);
 
-  // If an explicit error_reason exists, prefer it for display
-  if (errorReason) {
-    let found = false;
-    // prefer route-specific mapping when routePath is available
-    if (routePath) {
-      for (const key of Object.keys(routeErrorMap)) {
-        if (routePath.endsWith(key) || routePath.indexOf(key) !== -1) {
-          const map = routeErrorMap[key] || {};
-          if (map[errorReason]) {
-            displayMessage = map[errorReason];
-            found = true;
-            break;
-          }
-        }
-      }
+  let secondaryMessage = '';
+  if (networkFailure) {
+    displayMessage = '网络异常或请求超时，无法连接到服务器，请检查网络后重试。';
+  } else if (specificMessage) {
+    displayMessage = specificMessage;
+    if (mappedReasonMessage && mappedReasonMessage !== specificMessage) {
+      secondaryMessage = `原因：${mappedReasonMessage}`;
     }
-    // fallback: search all mappings for the errorReason (global match)
-    if (!found) {
-      for (const key of Object.keys(routeErrorMap)) {
-        const map = routeErrorMap[key] || {};
-        if (map[errorReason]) {
-          displayMessage = map[errorReason];
-          found = true;
-          break;
-        }
-      }
-    }
-    if (!extraDetails) extraDetails = {};
+  } else if (mappedReasonMessage) {
+    displayMessage = mappedReasonMessage;
+  } else if (errorReason) {
+    displayMessage = '发生未知错误，请重试或联系管理员。';
+    secondaryMessage = `未收录的错误原因：${errorReason}`;
+  } else {
+    displayMessage = '发生错误，请稍后重试或联系管理员。';
   }
+  if (!extraDetails) extraDetails = {};
 
   // Provide a localized hint for common HTTP status codes to help users understand errors.
   let hint = '';
@@ -299,6 +416,9 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
         content={(
           <div style={{ background: '#fff2f0', padding: 12, borderRadius: 4, border: '1px solid #ffccc7' }}>
             <div style={{ color: '#a8071a', marginBottom: 8 }}>{displayMessage}</div>
+            {secondaryMessage ? (
+              <div style={{ color: '#a8071a', marginBottom: 8 }}>{secondaryMessage}</div>
+            ) : null}
             {hint ? <div style={{ color: '#a8071a', opacity: 0.9 }}>{hint}</div> : null}
           </div>
         )}

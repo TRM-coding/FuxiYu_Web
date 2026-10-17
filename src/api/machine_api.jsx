@@ -9,6 +9,18 @@ const createTimeoutController = (timeout) => {
   return { controller, timer };
 };
 
+// 保留有效的逐机配置端口，缺值不补默认数值。
+export const normalizeMachinePort = (port) => {
+  if (port === null || port === undefined || port === '') return null;
+  const n = Number(port);
+  return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : null;
+};
+
+export const normalizeMachineDetail = (detail) => {
+  if (!detail || typeof detail !== 'object') return detail;
+  return { ...detail, port: normalizeMachinePort(detail.port) };
+};
+
 const ensureOk = async (res, action) => {
   if (!res.ok) {
     // try to parse JSON body first
@@ -23,43 +35,38 @@ const ensureOk = async (res, action) => {
     err.status = res.status;
     err.route = res.url;
     err.body = body;
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
       try { abortAll('auth'); } catch (e) {}
-      if (typeof window !== 'undefined' && res.status === 401) {
-        try {
-          localStorage.removeItem('currentUserId');
-          localStorage.removeItem('currentUserName');
-          document.cookie = 'auth_token=; Max-Age=0; path=/';
-        } catch (e) {}
-        try { window.location.href = '/'; } catch (e) {}
-      }
+      // 401 只发信号（abortAll → 'auth:expired'），统一由 App 级监听器处置：
+      // 不碰 localStorage（本地身份已废除）/ cookie（HttpOnly，删不掉）/ 硬跳转（会打风暴）。
+      // 403 是一般权限拒绝：不清身份、不中断其它请求，交给调用方展示拒绝原因。
     }
     throw err;
   }
   return res.json();
 };
 
-export const addMachine = async (machineData = {}, timeout = null) => {
+export const registerMachine = async (machineData = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
-    const url = new URL(API_ROUTES.MACHINES_ADD, BACKEND_ORIGIN).toString();
+    const url = new URL(API_ROUTES.MACHINES_REGISTER, BACKEND_ORIGIN).toString();
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',  
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify(machineData),
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
     clearTimeout(timer);
-    const result = await ensureOk(res, 'Add machine');
+    const result = await ensureOk(res, 'Register machine');
     unregisterController(controller);
     return result;
   } catch (err) {
     clearTimeout(timer);
     try { unregisterController(controller); } catch (e) {}
-    if (err.name === 'AbortError') throw new Error('Add machine request timed out');
+    if (err.name === 'AbortError') throw new Error('Register machine request timed out');
     throw err;
   }
 };
@@ -114,6 +121,56 @@ export const updateMachine = async (machine_id = 0, fields = {}, timeout = null)
   }
 };
 
+export const setMachineMaintenance = async (machine_id = 0, is_maintenance = false, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.MACHINES_SET_MAINTENANCE, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ machine_id, is_maintenance }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Set machine maintenance');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Set machine maintenance request timed out');
+    throw err;
+  }
+};
+
+export const renewMachineTrust = async (machine_id = 0, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.MACHINES_RENEW_TRUST, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ machine_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Renew machine trust');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Renew machine trust request timed out');
+    throw err;
+  }
+};
+
 export const getDetailInformation = async (machine_id = 0, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
@@ -130,7 +187,7 @@ export const getDetailInformation = async (machine_id = 0, timeout = null) => {
     clearTimeout(timer);
     const result = await ensureOk(res, 'Get machine detail');
     unregisterController(controller);
-    return result;
+    return normalizeMachineDetail(result);
   } catch (err) {
     clearTimeout(timer);
     try { unregisterController(controller); } catch (e) {}
@@ -139,16 +196,42 @@ export const getDetailInformation = async (machine_id = 0, timeout = null) => {
   }
 };
 
-export const listAllMachineBrefInformation = async ({ page_number = 1, page_size = 10 } = {}, timeout = null) => {
+export const getMachineStatus = async (machine_id = 0, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.MACHINES_STATUS, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ machine_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Get machine status');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Get machine status request timed out');
+    throw err;
+  }
+};
+
+export const listAllMachineBrefInformation = async ({ page_number = 1, page_size = 10, machine_search = '' } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
     const url = new URL(API_ROUTES.MACHINES_LIST, BACKEND_ORIGIN).toString();
+    const machineSearch = String(machine_search || '').trim();
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json', 
       },
-      body: JSON.stringify({ page_number, page_size }),
+      body: JSON.stringify({ page_number, page_size, machine_search: machineSearch }),
       signal: controller.signal,
       credentials: CREDENTIALS,
     });
@@ -186,6 +269,31 @@ export const addMachinePermission = async ({ machine_id, user_id } = {}, timeout
     clearTimeout(timer);
     try { unregisterController(controller); } catch (e) {}
     if (err.name === 'AbortError') throw new Error('Add machine permission request timed out');
+    throw err;
+  }
+};
+
+export const removeMachinePermission = async ({ machine_id, user_id } = {}, timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.MACHINES_REMOVE_PERMISSION, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type' : 'application/json',
+      },
+      body: JSON.stringify({ machine_id, user_id }),
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Remove machine permission');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    try { unregisterController(controller); } catch (e) {}
+    if (err.name === 'AbortError') throw new Error('Remove machine permission request timed out');
     throw err;
   }
 };

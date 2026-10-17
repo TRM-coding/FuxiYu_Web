@@ -1,0 +1,262 @@
+/* 使用说明 · 旅程式页面样式（2026-09 重建：与产品设计语言同源） */
+
+.jd-wrap {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 16px 12px 48px;
+}
+
+.jd-hero-title {
+  margin-bottom: 4px !important;
+}
+
+.jd-hero-sub {
+  margin-bottom: 8px !important;
+}
+
+/* 旅程锚点 */
+.jd-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 20px;
+}
+
+.jd-toc a {
+  border: 1px solid #f0f0f0;
+  border-radius: 999px;
+  padding: 3px 12px;
+  color: #595959;
+  background: #fafafa;
+}
+
+.jd-toc a:hover {
+  color: #1677ff;
+  border-color: #91caff;
+}
+
+/* 旅程卡片 */
+.jd-journey {
+  border: 1px solid #f0f0f0;
+  border-radius: 14px;
+  padding: 16px 16px 12px;
+  margin-bottom: 18px;
+  background: #fff;
+  scroll-margin-top: 12px;
+}
+
+.jd-journey-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.jd-journey-icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #e6f4ff;
+  color: #1677ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.jd-journey-title {
+  margin-bottom: 0 !important;
+}
+
+.jd-journey-for {
+  display: block;
+  color: #8c8c8c;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* 步骤序列（数字徽章 + 内容） */
+.jd-steps {
+  list-style: none;
+  margin: 10px 0 6px;
+  padding: 0;
+}
+
+.jd-steps > li {
+  position: relative;
+  padding: 0 0 16px 40px;
+  margin: 0;
+}
+
+.jd-steps > li::before {
+  content: attr(data-step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.jd-steps > li + li {
+  border-top: 1px dashed #f0f0f0;
+  padding-top: 14px;
+}
+
+.jd-step-title {
+  font-weight: 600;
+}
+
+.jd-step-desc {
+  color: #595959;
+  margin-top: 2px;
+  line-height: 1.7;
+}
+
+/* 状态词云（概念卡用） */
+.jd-term-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.jd-term-cloud .ant-tag {
+  margin-inline-end: 0;
+}
+
+/* 小概念卡网格 */
+.jd-concepts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.jd-concept-card {
+  border: 1px solid #d6e9ff;
+  border-left: 4px solid #69b1ff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #f5faff;
+}
+
+.jd-concept-card h5 {
+  margin: 0 0 4px;
+  color: #0958d9;
+}
+
+.jd-concept-card p {
+  margin: 0;
+  color: #444;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.jd-concept-card strong,
+.jd-step-desc strong {
+  color: #1f1f1f;
+  font-weight: 600;
+}
+
+/* 表格微调 */
+.jd-table .ant-table-cell {
+  font-size: 13px;
+}
+
+/* 步骤内的小字补充（次要信息） */
+.jd-step-small {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #8c8c8c;
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+.jd-note-line {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+/* 结尾返回顶部 */
+.jd-back-top {
+  text-align: center;
+  margin-top: 6px;
+}
+
+/* 典型容器卡片示意（文档用，非交互） */
+.jd-demo-card {
+  max-width: 460px;
+  border: 1px solid #d6e9ff;
+  border-left: 4px solid #69b1ff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #f7fbff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.jd-demo-chip {
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  padding: 1px 8px;
+  color: #595959;
+}
+
+.jd-demo-card-actions {
+  border-top: 1px dashed #f0f0f0;
+  padding-top: 6px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* SVG 顺序示意图 */
+.jd-flow-figure-wrap {
+  margin: 2px 0 8px;
+}
+
+.jd-flow-figure {
+  margin: 4px 0 0;
+  max-width: 640px;
+}
+
+.jd-legend {
+  margin: 0;
+  padding-left: 18px;
+  color: #595959;
+}
+
+.jd-legend li {
+  margin: 4px 0;
+  line-height: 1.7;
+}
+
+.jd-flow-figure svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.jd-fig-caption {
+  text-align: center;
+  color: #8c8c8c;
+  font-size: 12px;
+  margin-top: 2px;
+}

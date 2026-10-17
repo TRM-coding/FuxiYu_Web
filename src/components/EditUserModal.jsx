@@ -3,6 +3,7 @@ import { Modal, Form, Button, Space, Typography, Row, Col, Select, Tag, Avatar, 
 import showErrorModal from '../utils/showErrorModal';
 import { EditOutlined, PlusOutlined, TeamOutlined, DeleteOutlined } from '@ant-design/icons';
 import { addCollaborator, removeCollaborator, updateRole } from '../api/container_api';
+import { usePermission } from '../contexts/PermissionContext';
 import './EditUserModal.css';
 
 const { Option } = Select;
@@ -23,6 +24,7 @@ const getAvatarUrl = (username) => `https://api.dicebear.com/7.x/miniavs/svg?see
 
 const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], usersLoading = false, forceSystemAdmin = false }) => {
   const [form] = Form.useForm();
+  const { userId: currentUserId } = usePermission();
   // editing state removed (no local save flow)
   const [accounts, setAccounts] = useState([]);
   const [adding, setAdding] = useState(false);
@@ -140,14 +142,9 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
           return acc;
         }));
           message.success('角色已更新');
-          // 转让后关闭编辑窗口
-          try {
-            const currentUid = localStorage.getItem('currentUserId');
-            if (String(resolvedUserId) !== String(currentUid) && !forceSystemAdmin) {
-              onClose();
-            }
-          } catch (e) {
-            // ignore
+          // 转让后关闭编辑窗口（"当前用户是谁"来自 context，不再读 localStorage 副本）
+          if (String(resolvedUserId) !== String(currentUserId) && !forceSystemAdmin) {
+            onClose();
           }
           return;
       }

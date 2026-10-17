@@ -1,10 +1,13 @@
 import { HashRouter } from "react-router-dom"
 import AppRoutes from "./routes"
+import { PermissionProvider } from "./contexts/PermissionContext"
 
 function App() {
   return (
     <HashRouter>
-      <AppRoutes />
+      <PermissionProvider>
+        <AppRoutes />
+      </PermissionProvider>
     </HashRouter>
   )
 }

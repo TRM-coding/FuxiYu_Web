@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Typography, Row, Col, Select, DatePicker, Checkbox, Button, Tag, Space, Table, message, Segmented, Modal, Descriptions } from 'antd';
-import { SearchOutlined, ReloadOutlined, LeftOutlined, RightOutlined, CopyOutlined } from '@ant-design/icons';
+import {
+  SearchOutlined, ReloadOutlined, LeftOutlined, RightOutlined, CopyOutlined,
+  DatabaseOutlined, DeleteOutlined, EditOutlined, SafetyOutlined, SwapOutlined,
+  ContainerOutlined, PlayCircleOutlined, PoweroffOutlined, PauseCircleOutlined,
+  ClockCircleOutlined, TeamOutlined, UserAddOutlined, KeyOutlined, BellOutlined,
+  SafetyCertificateOutlined, FileImageOutlined, FileTextOutlined,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import TableComponent from '../components/TableComponent';
 import showErrorModal from '../utils/showErrorModal';
 import { handleAuthError } from '../utils/authHelpers';
-import { getUserDetailInformation, listAllUserBrefInformation } from '../api/user_api';
+import { listAllUserBrefInformation, getUserDetailInformation } from '../api/user_api';
+import { usePermission } from '../contexts/PermissionContext';
 import { listOperationLogs, getOperationLogStats } from '../api/operation_log_api';
 import { getDetailInformation as getMachineDetailInformation } from '../api/machine_api';
 import { getContainerDetailInformation } from '../api/container_api';
@@ -27,6 +34,7 @@ const OPERATION_TEXT = {
   add_machine: '添加机器',
   remove_machine: '删除机器',
   update_machine: '更新机器',
+  renew_machine_trust: '修复机器连接',
   add_machine_permission: '授予机器权限',
   remove_machine_permission: '收回机器权限',
   create_container: '创建容器',
@@ -44,12 +52,80 @@ const OPERATION_TEXT = {
   change_password: '修改密码',
   delete_user: '删除用户',
   reset_password: '重置密码',
+  // RBAC 权限组
+  create_group: '创建权限组',
+  update_group_entities: '变更权限组权限',
+  update_user_groups: '变更用户权限组',
+  // 镜像
+  create_image: '创建镜像',
+  update_image: '更新镜像',
+  delete_image: '删除镜像',
+  // 可见性变更（分享事件）：与改内容分开记，出事要能单独捞
+  set_image_valid_range: '调整镜像可见范围',
+  set_image_visible_users: '调整镜像授权名单',
+  update_setting: '更新系统设置',
+  send_mail: '发送邮件',
+  // 定时任务 / 系统事件
   send_cleanup_reminder: '发送清理提醒',
   pause_container: '冻结容器（磁盘超限）',
   machine_status_transition: '机器状态变更',
 };
 
-const TARGET_TEXT = { machine: '机器', container: '容器', user: '用户' };
+/** 操作类型 → 展示元信息（颜色 + antd 图标，杜绝 emoji）。未知操作回退蓝色 + 文件图标。 */
+const OPERATION_META = {
+  // 机器操作
+  add_machine: { color: 'purple', icon: <DatabaseOutlined /> },
+  remove_machine: { color: 'red', icon: <DeleteOutlined /> },
+  update_machine: { color: 'purple', icon: <EditOutlined /> },
+  renew_machine_trust: { color: 'geekblue', icon: <SafetyCertificateOutlined /> },
+  add_machine_permission: { color: 'orange', icon: <SafetyOutlined /> },
+  remove_machine_permission: { color: 'orange', icon: <SafetyOutlined /> },
+  machine_status_transition: { color: 'purple', icon: <SwapOutlined /> },
+  // 容器操作
+  create_container: { color: 'cyan', icon: <ContainerOutlined /> },
+  delete_container: { color: 'red', icon: <DeleteOutlined /> },
+  remove_container: { color: 'red', icon: <DeleteOutlined /> },
+  start_container: { color: 'cyan', icon: <PlayCircleOutlined /> },
+  stop_container: { color: 'cyan', icon: <PoweroffOutlined /> },
+  restart_container: { color: 'cyan', icon: <ReloadOutlined /> },
+  pause_container: { color: 'cyan', icon: <PauseCircleOutlined /> },
+  unpause_container: { color: 'cyan', icon: <PlayCircleOutlined /> },
+  set_long_term: { color: 'cyan', icon: <ClockCircleOutlined /> },
+  add_collaborator: { color: 'orange', icon: <TeamOutlined /> },
+  remove_collaborator: { color: 'orange', icon: <TeamOutlined /> },
+  update_collaborator_role: { color: 'orange', icon: <SwapOutlined /> },
+  // 用户操作
+  register_user: { color: 'green', icon: <UserAddOutlined /> },
+  change_password: { color: 'green', icon: <KeyOutlined /> },
+  delete_user: { color: 'red', icon: <DeleteOutlined /> },
+  reset_password: { color: 'green', icon: <KeyOutlined /> },
+  // RBAC 权限组
+  create_group: { color: 'purple', icon: <TeamOutlined /> },
+  update_group_entities: { color: 'purple', icon: <SafetyCertificateOutlined /> },
+  update_user_groups: { color: 'orange', icon: <TeamOutlined /> },
+  // 镜像
+  create_image: { color: 'cyan', icon: <FileImageOutlined /> },
+  update_image: { color: 'orange', icon: <FileImageOutlined /> },
+  delete_image: { color: 'red', icon: <DeleteOutlined /> },
+  set_image_valid_range: { color: 'geekblue', icon: <SafetyCertificateOutlined /> },
+  set_image_visible_users: { color: 'geekblue', icon: <TeamOutlined /> },
+  update_setting: { color: 'red', icon: <SafetyCertificateOutlined /> },
+  // 系统任务
+  send_cleanup_reminder: { color: 'gold', icon: <BellOutlined /> },
+  send_mail: { color: 'gold', icon: <BellOutlined /> },
+};
+
+const TARGET_TEXT = {
+  machine: '机器',
+  container: '容器',
+  user: '用户',
+  rbac_group: '权限组',
+  image: '镜像',
+  system_setting: '系统设置',
+  container_mount_cleanup: '容器挂载清理',
+  mail: '邮件',
+  announcement: '公告',
+};
 
 /** detail 字段名 → 可读中文（未知字段显示原文） */
 const FIELD_TEXT = {
@@ -73,6 +149,16 @@ const FIELD_TEXT = {
   user_id: '用户ID',
   username: '用户名',
   recipient: '收件人',
+  cc: '抄送',
+  bcc: '密送',
+  subject: '邮件主题',
+  mail_type: '邮件用途',
+  mail_mode: '发送模式',
+  batch_total: '批次邮件总数',
+  message_count: '本组邮件数',
+  messages: '邮件明细',
+  smtp_code: 'SMTP 状态码',
+  exc_type: '错误类型',
   threshold: '提醒档位',
   cleanup_at: '预计清理时间',
   role: '角色',
@@ -84,6 +170,16 @@ const FIELD_TEXT = {
   reason: '原因',
   usage: '用量',
   days_frozen: '冻结天数',
+  // RBAC 权限组 / 镜像日志 detail
+  description: '描述',
+  entities: '权限点',
+  locked_entities: '锁定权限点',
+  requested_entities: '请求的权限点',
+  group_id: '权限组ID',
+  why: '失败原因',
+  setting_keys: '设置项',
+  before: '变更前',
+  requested: '请求值（未生效）',
 };
 
 /** 状态值 → 可读中文 */
@@ -107,7 +203,6 @@ const UserInfoModal = ({ visible, info, onClose }) => (
         <Descriptions.Item label="用户名">{info.username || '-'}</Descriptions.Item>
         <Descriptions.Item label="邮箱">{info.email || '-'}</Descriptions.Item>
         <Descriptions.Item label="毕业年份">{info.graduation_year ?? '-'}</Descriptions.Item>
-        <Descriptions.Item label="权限">{info.permission === 'operator' ? '操作员 (operator)' : (info.permission || '-')}</Descriptions.Item>
         <Descriptions.Item label="容器总数">{info.amount_of_container ?? 0}</Descriptions.Item>
         <Descriptions.Item label="运行中">{info.amount_of_functional_container ?? 0}</Descriptions.Item>
         <Descriptions.Item label="管理中的容器">{info.amount_of_managed_container ?? 0}</Descriptions.Item>
@@ -138,7 +233,7 @@ const fmtStatusVal = (v) => (typeof v === 'string' && STATUS_TEXT[v.toLowerCase(
 export const LogDetail = ({ record }) => {
   const [mode, setMode] = React.useState('structured');
   const detail = record.detail;
-  const hasDiff = !!detail && typeof detail === 'object' && (detail.before || detail.after);
+  const hasDiff = !!detail && typeof detail === 'object' && !('requested' in detail) && (detail.before || detail.after);
 
   const diffFields = React.useMemo(() => {
     if (!hasDiff) return [];
@@ -282,40 +377,28 @@ export default function AdminLogs() {
     return `${ws.format('YYYY-MM-DD')} ~ ${ws.add(6, 'day').format('YYYY-MM-DD')}`;
   }, [timeRange]);
 
-  // auth + operator 门禁（与 ManageUser 同模式）
+  // 门禁只剩"授权"这一层（operator 通配判定）：**认证不在这里判**——
+  // 未登录由全局 401 处理统一回登录页，页面不再读 localStorage 副本（2026-09 决策）。
+  const { hasPermission, loaded: permLoaded } = usePermission();
   useEffect(() => {
-    const checkAuthAndPerm = async () => {
+    if (!permLoaded) return;
+    if (!hasPermission('bypass_auth_entity')) {
+      showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
+      handleAuthError(403, navigate);
+      return;
+    }
+    setPermitted(true);
+    const loadUsers = async () => {
       try {
-        const name = localStorage.getItem('currentUserName');
-        const id = localStorage.getItem('currentUserId');
-        if (!name || !id) {
-          await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-          handleAuthError(401, navigate);
-          return;
-        }
-        const res = await getUserDetailInformation(Number(id));
-        const info = (res && (res.user_info || res.data)) || res || {};
-        const isOperator = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
-        if (!isOperator) {
-          await showErrorModal({ title: '权限不足', message: '需要操作员权限', status: 403 });
-          handleAuthError(403, navigate);
-          return;
-        }
-        setPermitted(true);
-        try {
-          const ures = await listAllUserBrefInformation({ page_number: 0, page_size: 500 });
-          const items = (ures && (ures.users || ures.users_info || ures.data || ures.users_list)) || [];
-          setUsers(items.map(u => ({ id: u.user_id || u.id || u.uid, username: u.username || u.name || String(u.id) })));
-        } catch (e) {
-          // 用户列表拉取失败不阻塞页面
-        }
+        const ures = await listAllUserBrefInformation({ page_number: 1, page_size: 500 });
+        const items = (ures && (ures.users || ures.users_info || ures.data || ures.users_list)) || [];
+        setUsers(items.map(u => ({ id: u.user_id || u.id || u.uid, username: u.username || u.name || String(u.id) })));
       } catch (e) {
-        await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-        handleAuthError(401, navigate);
+        // 用户列表拉取失败不阻塞页面
       }
     };
-    checkAuthAndPerm();
-  }, [navigate]);
+    loadUsers();
+  }, [navigate, permLoaded, hasPermission]);
 
   const load = useCallback(async (p, ps, rangeOverride) => {
     setLoading(true);
@@ -405,6 +488,11 @@ export default function AdminLogs() {
         }
         setDetailModal({ type: 'machine', data });
       } else if (tt === 'container') {
+        // 上一代容器日志（后端校验 target_name=None）不做导航
+        if (!record.target_name) {
+          message.info('该日志属于已删除的上一代容器，仅展示 ID');
+          return;
+        }
         const res = await getContainerDetailInformation(record.target_id);
         const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
         if (!detail || !detail.container_name) {
@@ -416,16 +504,29 @@ export default function AdminLogs() {
           data: {
             key: detail.container_id != null ? String(detail.container_id) : String(record.target_id),
             container_name: detail.container_name,
-            container_image: detail.container_image || '',
+            image_id: detail.image_id ?? null,
+            image_name: detail.image_name || '',
             machine_ip: detail.machine_ip || '',
             port: detail.port != null ? String(detail.port) : '',
-            container_status: (detail.container_status || '').toLowerCase(),
-            display_status: detail.display_status || null,
+            effective_status: (detail.effective_status || '').toLowerCase(),
             cpu_number: detail.cpu_number ?? 0,
             gpu_number: detail.gpu_number ?? 0,
             memory_gb: detail.memory_gb ?? 0,
             shared_gb: detail.shared_gb ?? 0,
             accounts: detail.accounts || [],
+            // 「清理与磁盘」这一段的字段必须一并带过来——漏了它们整段就只剩 "-"。
+            // 运行摘要刻意不带（见下面的 showRuntimeSummary）。
+            is_long_term: detail.is_long_term ?? false,
+            last_ssh_login_time: detail.last_ssh_login_time ?? null,
+            cleanup_status: detail.cleanup_status ?? null,
+            cleanup_at: detail.cleanup_at ?? null,
+            seconds_until_cleanup: detail.seconds_until_cleanup ?? null,
+            cleanup_after_days: detail.cleanup_after_days ?? null,
+            disk_usage: detail.disk_usage ?? null,
+            disk_total_gb: detail.disk_total_gb ?? null,
+            disk_limit_gb: detail.disk_limit_gb ?? null,
+            disk_usage_percent: detail.disk_usage_percent ?? null,
+            freeze_state: detail.freeze_state ?? null,
           },
         });
       } else if (tt === 'user') {
@@ -656,6 +757,12 @@ export default function AdminLogs() {
                 { value: 'machine', label: '机器' },
                 { value: 'container', label: '容器' },
                 { value: 'user', label: '用户' },
+                { value: 'rbac_group', label: '权限组' },
+                { value: 'image', label: '镜像' },
+                { value: 'system_setting', label: '系统设置' },
+                { value: 'container_mount_cleanup', label: '容器挂载清理' },
+                { value: 'mail', label: '邮件' },
+                { value: 'announcement', label: '公告' },
               ]}
             />
           </Col>
@@ -731,7 +838,14 @@ export default function AdminLogs() {
             title="操作"
             dataIndex="operation"
             key="operation"
-            render={(_, r) => <Tag color="blue">{OPERATION_TEXT[r.operation] || r.operation}</Tag>}
+            render={(_, r) => {
+              const meta = OPERATION_META[r.operation] || { color: 'blue', icon: <FileTextOutlined /> };
+              return (
+                <Tag color={meta.color} icon={meta.icon}>
+                  {OPERATION_TEXT[r.operation] || r.operation}
+                </Tag>
+              );
+            }}
           />
           <Column
             title="目标"
@@ -739,9 +853,15 @@ export default function AdminLogs() {
             key="target_id"
             render={(_, r) => {
               const prefix = `${TARGET_TEXT[r.target_type] || r.target_type || '-'} `;
-              let label = r.target_name || `#${r.target_id}`;
+              let label = r.target_name || r.target_display_name || `#${r.target_id}`;
               if (r.target_type === 'container' && r.root_owner) {
                 label = `${label} · 超管 ${r.root_owner}`;
+              }
+              // 仅机器/容器/用户三类目标可跳详情；权限组/镜像等审计目标
+              // （无对应详情页）以及上一代容器日志只展示、不做错误导航。
+              const LINKABLE_TYPES = ['machine', 'container', 'user'];
+              if ((r.target_type === 'container' && !r.target_name) || !LINKABLE_TYPES.includes(r.target_type)) {
+                return <span>{prefix}{label}</span>;
               }
               return <a onClick={() => openTargetDetail(r)}>{prefix}{label}</a>;
             }}
@@ -771,6 +891,7 @@ export default function AdminLogs() {
         container={detailModal?.data || null}
         onClose={() => setDetailModal(null)}
         readOnly
+        showRuntimeSummary={false}
       />
       <UserInfoModal
         visible={detailModal?.type === 'user'}

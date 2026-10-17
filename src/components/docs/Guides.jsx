@@ -4,7 +4,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 
-/** 真实页面（申请容器 / 我的容器）的按钮、弹窗、输入框逐项说明。
+/** 真实页面（创建容器 / 我的容器）的按钮、弹窗、输入框逐项说明。
  *  按钮均用真实界面的同款控件渲染，并直接嵌入句子中提及该组件的位置，方便对照寻找。桌面与移动端通用。 */
 
 const GuideItem = ({ title, children }) => (
@@ -148,9 +148,9 @@ export function ApplyGuide() {
         <Field><LinkBtn>机器名称</LinkBtn> 是链接，点击打开「机器详细信息」弹窗</Field>
         <Field label="机器ID / IP地址">展示机器的标识与地址</Field>
         <Field label="机器类型">以 <Tag color="green">CPU</Tag> / <Tag color="volcano">GPU</Tag> 标签区分</Field>
-        <Field label="机器状态"><Tag color="green">运行中</Tag> 可申请；<Tag color="orange">维护中</Tag> 与 <Tag color="volcano">已停止</Tag> 不可申请</Field>
+        <Field label="机器状态"><Tag color="green">运行中</Tag> 可创建；<Tag color="orange">维护中</Tag> 与 <Tag color="volcano">已停止</Tag> 不可创建</Field>
         <Field><LinkBtn>查看</LinkBtn> 与机器名称一样打开「机器详细信息」弹窗</Field>
-        <Field><LinkBtn>申请</LinkBtn> 仅机器状态为「运行中」时可点，打开「添加容器」弹窗；其余状态显示「不可用」</Field>
+        <Field><LinkBtn>创建</LinkBtn> 仅机器状态为「运行中」时可点，打开「添加容器」弹窗；其余状态显示「不可用」</Field>
       </GuideItem>
 
       <GuideItem title="② 机器详情弹窗（点机器名称或「查看」打开）">

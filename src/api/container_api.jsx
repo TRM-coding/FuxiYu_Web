@@ -10,6 +10,12 @@ const createTimeoutController = (timeout) => {
 	return { controller, timer };
 };
 
+const toOptionalId = (value) => {
+	if (value === '' || value === null || value === undefined) return null;
+	const id = Number(value);
+	return Number.isInteger(id) && id >= 0 ? id : null;
+};
+
 const ensureOk = async (res, action) => {
 	if (!res.ok) {
 		let body = null;
@@ -23,21 +29,25 @@ const ensureOk = async (res, action) => {
 		err.status = res.status;
 		err.route = res.url;
 		err.body = body;
-		if (res.status === 401 || res.status === 403) {
+		if (res.status === 401) {
 			try { abortAll('auth'); } catch (e) {}
-			// clear local auth and redirect to login for 401
-			if (typeof window !== 'undefined' && res.status === 401) {
-				try {
-					localStorage.removeItem('currentUserId');
-					localStorage.removeItem('currentUserName');
-					document.cookie = 'auth_token=; Max-Age=0; path=/';
-				} catch (e) {}
-				try { window.location.href = '/'; } catch (e) {}
-			}
+			// 401 只发信号（abortAll → 'auth:expired'），统一由 App 级监听器处置：
+			// 不碰 localStorage（本地身份已废除）/ cookie（HttpOnly，删不掉）/ 硬跳转（会打风暴）。
+			// 403 是一般权限拒绝：不清身份、不中断其它请求，交给调用方展示拒绝原因。
 		}
 		throw err;
 	}
-	return res.json();
+	const body = await res.json();
+	// HTTP 2xx 但业务 success=0 不是成功：后端成功一律 success=1，_error 才会给 0。
+	if (body && typeof body === 'object' && !Array.isArray(body)
+		&& (body.success === 0 || body.success === false)) {
+		const err = new Error(`${action} failed: ${body.message || 'business failure'}`);
+		err.status = res.status;
+		err.route = res.url;
+		err.body = body;
+		throw err;
+	}
+	return body;
 };
 
 export const createContainer = async (payload = {}, timeout = null) => {
@@ -190,16 +200,69 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 	}
 };
 
-export const listAllContainerBrefInformation = async ({ machine_id = '', user_id = '', page_number = 1, page_size = 10 } = {}, timeout = null) => {
+export const getContainerOperationLogs = async (container_id = 0, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
+		const url = new URL(API_ROUTES.CONTAINERS_OPERATION_LOGS, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Get container operation logs');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Get container operation logs request timed out');
+		throw err;
+	}
+};
+
+export const getContainerStatus = async (container_id = 0, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_STATUS, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({ container_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Get container status');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Get container status request timed out');
+		throw err;
+	}
+};
+
+export const listAllContainerBrefInformation = async ({ machine_id = '', user_id = '', container_search = '', page_number = 1, page_size = 10 } = {}, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const machineId = toOptionalId(machine_id);
+		const userId = toOptionalId(user_id);
+		const containerSearch = String(container_search || '').trim();
 		const url = new URL(API_ROUTES.CONTAINERS_LIST, BACKEND_ORIGIN).toString();
 		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({ machine_id, user_id, page_number, page_size }),
+			body: JSON.stringify({ machine_id: machineId, user_id: userId, container_search: containerSearch, page_number, page_size }),
 			signal: controller.signal,
 			credentials: CREDENTIALS,
 		});
@@ -211,6 +274,81 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 		clearTimeout(timer);
 		try { unregisterController(controller); } catch (e) {}
 		if (err.name === 'AbortError') throw new Error('List containers request timed out');
+		throw err;
+	}
+};
+
+export const listDeletedContainers = async ({ page_number = 1, page_size = 20 } = {}, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_LIST_DELETED, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ page_number, page_size }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'List deleted containers');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('List deleted containers request timed out');
+		throw err;
+	}
+};
+
+export const cleanDeletedContainerMount = async (mount_cleanup_id = 0, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_CLEAN_DELETED_MOUNT, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ mount_cleanup_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Clean deleted container mount');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Clean deleted container mount request timed out');
+		throw err;
+	}
+};
+
+/**
+ * 恢复容器。
+ *
+ * content_source 只在「模板就绪但容器落后」时需要——那时内容会真正改变，后端不设默认，
+ * 必须由界面明确选择（默认预选快照）。其余情形传 null 即可，后端会忽略。
+ */
+export const resurrectDeletedContainer = async (deleted_id = 0, content_source = null, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_RESURRECT_DELETED, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ deleted_id, content_source }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		clearTimeout(timer);
+		const result = await ensureOk(res, 'Resurrect deleted container');
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		try { unregisterController(controller); } catch (e) {}
+		if (err.name === 'AbortError') throw new Error('Resurrect deleted container request timed out');
 		throw err;
 	}
 };
@@ -369,7 +507,12 @@ export default {
 	removeCollaborator,
 	updateRole,
 	getContainerDetailInformation,
+	getContainerOperationLogs,
+	getContainerStatus,
 	listAllContainerBrefInformation,
+	listDeletedContainers,
+	cleanDeletedContainerMount,
+	resurrectDeletedContainer,
 	startContainer,
 	stopContainer,
 	restartContainer,
