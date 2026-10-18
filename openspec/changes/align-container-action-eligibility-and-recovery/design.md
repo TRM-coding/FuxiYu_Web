@@ -19,7 +19,7 @@ Ctrl 侧待执行变更 `guard-long-term-container-transitions` 已把长期资�
 
 - 不新增资格对象、响应字段、preflight API 或后端状态机。
 - 不实现或改写 Ctrl 的长期守卫、恢复新建语义、冻结策略。
-- 不新增 ContainerDetailModal 的长期控件，不把 `freeze_state` 当长期资格来源。
+- 不新增 ContainerDetailModal 的长期控件或生产入口，不把 `freeze_state` 当长期资格来源。
 - 不新增容器删除入口到 ManageUser/ManageUserInTable；解除关联仍走独立既有流程。
 - 不修复 Q67/Q70；不改 Q71 的 inode/路径边界，业务只看 `bind_mount_path`。
 
@@ -148,11 +148,13 @@ export function getContainerActionReasonText(reason) {}
 ### 6. 页面只保留布局、确认与回调
 
 - Home：卡片 start/stop/restart、解冻、长期使用 `resolveContainerActions`；删除在详情弹窗由同一 `actions.delete` 控制，只有 `visible && enabled` 才打开确认；移除 `isDiskOverLimit`/旧配额的第二套长期门。
-- ManageMachine：卡片与 `ContainerDetailModal` 使用共享结果；不再传 `forceSystemAdmin=true` 伪造删除，改传真实 `containerRole`/权限；人员管理能力另用显式 `canManagePeople`，不影响删除/解冻/长期。
-- ManageUser：卡片使用共享结果；不新增容器删除入口；只读详情弹窗只展示，不引入长期控件。
+- ManageMachine：现有卡片是生产用户路径；既有 `ContainerDetailModal` 组件契约使用共享结果，但该弹窗当前没有生产可达入口，本次不新增。不再传 `forceSystemAdmin=true` 伪造删除，改传真实 `containerRole`/权限；人员管理能力另用显式 `canManagePeople`，不影响删除/解冻/长期。
+- ManageUser：现有卡片是生产用户路径，使用共享结果；不新增容器删除入口；既有只读 `ContainerDetailModal` 组件契约只展示，不引入长期控件，该弹窗当前没有生产可达入口，本次不新增。
 - ManageUserInTable：长期列只消费父组件传入的 `longTerm`/共享结果，不自行读配额、磁盘或冻结字段；无删除、启停、解冻入口。
-- ContainerDetailPage：删除、start/stop/restart、解冻、长期全部使用共享结果；删除不再只看 `building/creating`；解冻仍只在 `container:manage` 下渲染。
-- ContainerDetailModal：不新增长期控件；删除/解冻只渲染父页面传入的 action 状态，不用 `isRoot`/`forceSystemAdmin`/状态字符串另造判据；解除关联走独立既有流程，不能由 `delete.visible === false` 推导授权。
+- ContainerDetailPage：删除、start/stop/restart、解冻、长期全部使用共享结果；删除不再只看 `building/creating`；解冻仍只在 `container:manage` 下渲染；动作确认使用 `ContainerActionConfirmModal`，该页不渲染 `ContainerDetailModal`。
+- ContainerDetailModal（既有组件契约，Home 等页面已有入口；ManageMachine/ManageUser 当前无生产入口）：不新增长期控件；删除/解冻只渲染父页面传入的 action 状态，不用 `isRoot`/`forceSystemAdmin`/状态字符串另造判据；解除关联走独立既有流程，不能由 `delete.visible === false` 推导授权。
+
+事实边界：ManageMachine/ManageUser 的动作验收以现有卡片为用户路径；这两页的 `ContainerDetailModal` 只是已存在的父回调组件契约，不声称生产可达，本次不新增按钮或入口。ContainerDetailPage 的动作确认组件是 `ContainerActionConfirmModal`，不渲染 `ContainerDetailModal`。
 
 每页映射行数据时保留原始 `is_long_term`、配额、磁盘和 `freeze_state` 字段；不默认成空对象或默认可启用。
 
@@ -189,7 +191,7 @@ export function getContainerActionReasonText(reason) {}
 
 ## Rollout / Rollback
 
-1. 先合入共享纯函数与单测，保持旧页面不变；再逐页替换 Home → ManageMachine（含弹窗）→ ManageUser/ManageUserInTable → ContainerDetailPage/ContainerDetailModal。
+1. 先合入共享纯函数与单测，保持旧页面不变；再逐页替换 Home → ManageMachine（卡片；既有弹窗组件契约）→ ManageUser/ManageUserInTable → ContainerDetailPage（动作确认弹窗）与既有 ContainerDetailModal 组件契约。
 2. 每页替换后删除该页旧条件，避免两套规则并存；共享层测试覆盖七个 action key、权限矩阵、状态矩阵、长期字段与失败分支。
 3. 回滚 Web 即恢复旧 UI 条件；没有后端字段/数据变更，旧客户端可继续使用既有响应。回滚不改 Ctrl/Node 长期政策。
 4. 用定向组件/纯函数测试、全量 `npm test`、`npm run build`、`openspec validate --strict` 与 `git diff --check` 验证；实现前不改源码。

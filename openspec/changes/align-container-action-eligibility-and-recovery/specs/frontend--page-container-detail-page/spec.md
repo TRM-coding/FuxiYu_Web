@@ -4,7 +4,7 @@
 
 ### Requirement: ContainerDetailPage 容器动作使用共享结果
 
-ContainerDetailPage 的 start、stop、restart、unpause、delete、long_term_enable 与 long_term_disable SHALL 使用同一共享纯函数结果，输入当前用户真实方法权限、容器角色、只读上下文与权威状态。删除按 `online/offline/paused/failed` 允许、过渡/主机/未知拒绝；长期使用既有配额、磁盘百分比与状态字段；弹窗只消费父页面传入结果，不另建判据。失败时清除 loading/pending 并重读，不伪造终态。
+ContainerDetailPage 的 start、stop、restart、unpause、delete、long_term_enable 与 long_term_disable SHALL 使用同一共享纯函数结果，输入当前用户真实方法权限、容器角色、只读上下文与权威状态。删除按 `online/offline/paused/failed` 允许、过渡/主机/未知拒绝；长期使用既有配额、磁盘百分比与状态字段；动作确认使用 `ContainerActionConfirmModal`，该页不渲染 `ContainerDetailModal`，确认弹窗只负责确认呈现，不另建动作资格判据。失败时清除 loading/pending 并重读，不伪造终态。
 
 #### Scenario: 与其他页面同上下文一致
 
@@ -31,7 +31,7 @@ ContainerDetailPage 的 start、stop、restart、unpause、delete、long_term_en
 - **WHEN** 解冻失败/超时，或解冻后的启动被权威验证为 `failed`
 - **THEN** 清除 loading/pending、显示具体错误并重读；权威 `online` 才结束 pending，真实 `failed` 保持 `failed`，不写猜测的 `paused`/`online`
 
-#### Scenario: 弹窗不另建资格
+#### Scenario: 动作确认弹窗不另建资格
 
-- **WHEN** ContainerDetailPage 的 ContainerDetailModal 收到带长期/冻结字段的容器
-- **THEN** 弹窗不出现长期控件，不自行用 `freeze_state`、旧配额或本地状态推导长期/删除资格；解除关联仍走独立既有流程
+- **WHEN** ContainerDetailPage 的 `ContainerActionConfirmModal` 收到带长期/冻结字段的容器
+- **THEN** 该动作确认弹窗不出现长期控件，不自行用 `freeze_state`、旧配额或本地状态推导长期/删除资格；解除关联仍走独立既有流程

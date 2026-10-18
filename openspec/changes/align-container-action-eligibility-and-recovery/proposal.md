@@ -11,6 +11,7 @@
 - 保留既有状态矩阵：删除允许 `online/offline/paused/failed`，拒绝 `building/creating/starting/stopping/restarting`、主机离线/维护、采集未知；本地 `pausing/unpausing` 和空状态按保守态禁用。start 只在 `offline`；stop/restart 只在 `online`；unpause 只在 `paused`。删除不复用长期资格，`failed` 仍可删。
 - 长期动作只使用既有响应字段：严格布尔 `is_long_term`、`long_term_container_can_enable`（配额）、`long_term_container_blocked_user_ids`/`long_term_container_remaining_by_user`（展示）、`disk_usage_percent` 或 `disk_usage.usage_percent`（磁盘展示）、`effective_status`。启用长期在配额已满或磁盘达到既有 100% 展示阈值时禁用；取消长期在实际状态为 `paused`（冻结）时禁用，`freeze_state` 行残留但状态已 `online`/`offline` 时不得永久禁用。不新增资格对象、API 字段或 preflight 请求，后端 409/403 仍是最终裁决。
 - 所有页面使用同一策略结果：Home、ManageMachine、ManageUser、ContainerDetailPage；ManageUserInTable 只消费父组件传入的长期结果；ContainerDetailModal 不新增长期控件，也不自行推导长期/删除资格。
+- 事实边界：ManageMachine/ManageUser 的现有卡片是实际用户路径；这两页的 `ContainerDetailModal` 是既有组件契约，当前没有生产可达入口，本变更不新增按钮或入口。ContainerDetailPage 的容器动作确认使用 `ContainerActionConfirmModal`，不渲染 `ContainerDetailModal`。
 - 所有写动作在真正提交 API 前用最新容器、权限/角色、长期字段和 pending 重新解析；有确认框的，在最终确认时重解析。结果禁用/隐藏则不发请求并更新原因，不复用打开弹窗时的快照。
 - 解冻受理只提示“解冻指令已发送”；失败、拒绝或超时清除该容器的 loading/pending，显示具体错误并重读权威快照，不以 catch 伪造 `paused`/`online`。权威 `online` 结束 pending，真实 `failed` 保持 `failed`。
 - 恢复长期快照沿用既有恢复与 image 内容选择流程。按最新 Q74 决策，恢复容器等价于一次新建：旧容器的冻结类状态（含宽限）不随恢复继承，也不存在恢复旁路或额外宽恕。该语义由 Ctrl 承载，本 Web 变更不修改 Ctrl，不新增超限确认框、token、恢复倒计时或前端状态机，也不根据 `freeze_state` 反推恢复结果或派生新资格。
@@ -24,11 +25,11 @@
 
 ### Modified Capabilities
 
-- `frontend--page-home`：卡片、详情弹窗和删除/解冻/长期动作统一消费共享纯函数结果。
-- `frontend--page-manage-machine`：机器卡片与详情弹窗统一消费共享结果，删除不再靠 `forceSystemAdmin` 伪造权限。
-- `frontend--page-manage-user`：用户容器卡片消费共享结果，不新增容器删除入口，只读弹窗不出现长期控件。
+- `frontend--page-home`：卡片、现有详情弹窗和删除/解冻/长期动作统一消费共享纯函数结果。
+- `frontend--page-manage-machine`：机器卡片与既有 `ContainerDetailModal` 组件契约统一消费共享结果（该弹窗当前无生产可达入口，本次不新增），删除不再靠 `forceSystemAdmin` 伪造权限。
+- `frontend--page-manage-user`：用户容器卡片消费共享结果，不新增容器删除入口；既有只读 `ContainerDetailModal` 组件契约不出现长期控件（该弹窗当前无生产可达入口，本次不新增）。
 - `frontend--page-manage-user-in-table`：长期列只消费父组件共享结果，不自行重算配额/磁盘/冻结。
-- `frontend--page-container-detail-page`：详情页七个动作与弹窗边界统一到同一策略。
+- `frontend--page-container-detail-page`：详情页七个动作与 `ContainerActionConfirmModal` 动作确认边界统一到同一策略；该页不渲染 `ContainerDetailModal`。
 
 ## Impact
 

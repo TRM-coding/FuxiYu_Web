@@ -15,10 +15,10 @@
 - [x] 2.2 Home 解冻只按 `container:manage` 与 `paused` 显示/启用，受理文案为“解冻指令已发送”；失败/超时清除 transition、loading、message loading 并重读权威快照，不在 catch 写 `paused`/`online`。验证：组件测试覆盖受理后 online、失败、超时、后续启动验证 failed，断言无“已解冻”。
 - [x] 2.3 Home 删除按共享 delete 结果：ADMIN/ROOT 可见可删，COLLABORATOR 不显示可执行删除；failed 可删，过渡/主机/未知不可删；`delete.visible=false` 不推导解除关联授权。验证：组件测试覆盖角色差异、failed 删除、403/409/超时不提前移除行，以及 leave 独立流程断言。
 
-## 3. ManageMachine 与弹窗
+## 3. ManageMachine 与既有弹窗组件契约
 
-- [x] 3.1 ManageMachine 卡片的 start/stop/restart、解冻、长期改用共享结果；`ContainerDetailModal` 不再传 `forceSystemAdmin=true` 伪造删除，改传真实 `containerRole`/权限；人员管理能力另用显式 `canManagePeople`，不与删除/解冻/长期复用。验证：组件测试覆盖 ROOT/ADMIN/COLLABORATOR、failed 可删、starting 不可删、人员管理入口仍可用且不放开删除。
-- [x] 3.2 ManageMachine 删除/长期/解冻失败后清除 loading/pending、重读机器容器列表，不提前更新计数或移除行；长期成功后才更新行，解冻失败后按钮可恢复。验证：组件测试断言失败后无残留 loading/pending、无“已解冻”，删除/长期失败保留原行并可重试。
+- [x] 3.1 ManageMachine 卡片（现有用户路径）的 start/stop/restart、解冻、长期改用共享结果；既有 `ContainerDetailModal` 组件契约不再传 `forceSystemAdmin=true` 伪造删除，改传真实 `containerRole`/权限（该弹窗当前无生产可达入口，本次不新增）；人员管理能力另用显式 `canManagePeople`，不与删除/解冻/长期复用。验证：组件测试覆盖 ROOT/ADMIN/COLLABORATOR、failed 可删、starting 不可删、人员管理入口仍可用且不放开删除。
+- [x] 3.2 ManageMachine 删除/长期/解冻失败后清除 loading/pending、重读机器容器列表，不提前更新计数或移除行；长期成功后才更新行，解冻失败后按钮可恢复。验证：组件测试断言失败后无残留 loading/pending、无“已解冻”，删除/长期失败保留原行并可重试。删除失败经由既有 `ContainerDetailModal` 父回调接缝验证，该弹窗无生产入口，不等同于端到端用户路径。
 
 ## 4. ManageUser 与表格
 
@@ -26,12 +26,13 @@
 - [x] 4.2 ManageUser 解冻失败清理该容器的 transition、操作 loading、消息 loading，重读权威快照；不 catch 后 patch paused；后续真实 online 清 pending，启动验证 failed 保持 failed。验证：组件测试断言失败后按钮恢复、无残留 unpausing、错误可见且无“已解冻”。
 - [x] 4.3 ManageUserInTable 长期列只消费父组件传入的 `longTerm`/共享结果，不读取 `long_term_container_remaining`、`long_term_container_can_enable`、磁盘百分比或 `freeze_state` 自行重算；严格 `is_long_term` 方向，缺失/非法按未知禁用；保存中 loading、失败回滚到父级权威值；无删除/启停/解冻入口。验证：表格组件测试覆盖方向 true/false/非法、资格未知、旧字段冲突、保存中、409/失败回滚与无删除按钮。
 
-## 5. ContainerDetailPage 与 ContainerDetailModal
+## 5. ContainerDetailPage 与容器动作弹窗
 
+- ContainerDetailPage 使用 `ContainerActionConfirmModal` 做动作确认，不渲染 `ContainerDetailModal`；5.4 的 `ContainerDetailModal` 是 Home 等页面使用的既有共享组件契约，在 ManageMachine/ManageUser 无生产可达入口。
 - [x] 5.1 ContainerDetailPage 删除改用共享 delete：移除 `['building','creating']` 硬编码；ADMIN/ROOT 可删，COLLABORATOR 不显示可执行删除；failed 可删，过渡/主机/未知不可删；失败/409/超时展示原因并重读，不提前导航成功。验证：详情页测试覆盖完整删除状态矩阵、角色差异、failed 删除、403/409/超时。
 - [x] 5.2 ContainerDetailPage 的 start/stop/restart/unpause 使用共享结果；解冻仍只在 `container:manage` 下渲染，失败/超时清 loading/pending 并重读，真实 online/failed 按权威展示。验证：详情页测试覆盖按钮状态、受理/失败/超时、启动验证 failed 不被受理提示覆盖。
 - [x] 5.3 ContainerDetailPage 长期勾选只用既有字段：严格 `is_long_term` 选向，缺失/非法只禁用长期并显示未知原因；配额 false/磁盘 100% 禁用启用；paused 禁用取消；online/offline 且冻结行残留允许取消；提交中不伪造 checked，409/超时重读。验证：详情页测试覆盖两个方向、非法布尔、配额/磁盘/冻结残留、409/超时。
-- [x] 5.4 ContainerDetailModal 不提供长期控件；删除/解冻使用父页面传入的 action 结果，不用 `isRoot`/`forceSystemAdmin`/状态字符串另造判据；解除关联不由 `delete.visible` 推导。验证：弹窗测试覆盖 ROOT/ADMIN/COLLABORATOR、failed 删除、过渡禁用、只读模式、无长期控件与 leave 独立流程。
+- [x] 5.4 既有 `ContainerDetailModal` 组件契约不提供长期控件；删除/解冻使用父页面传入的 action 结果，不用 `isRoot`/`forceSystemAdmin`/状态字符串另造判据；解除关联不由 `delete.visible` 推导。验证：组件测试覆盖 ROOT/ADMIN/COLLABORATOR、failed 删除、过渡禁用、只读模式、无长期控件与 leave 独立流程；该组件在 ManageMachine/ManageUser 当前无生产入口。
 
 ## 6. 跨页与集成验证
 
@@ -45,11 +46,11 @@
 
 ## Workflow follow-up
 
-- 本提案已在本机隔离 Web 仓库实施并通过定向/全量测试与构建；25/25 task 已勾选。3.2 的长期失败与解冻失败由 ManageMachine 卡片现有 UI 交互验证；删除失败通过 `ContainerDetailModal` 父回调接缝验证（测试替换该组件以暴露页面传入的 `onDelete`，未新增生产按钮），覆盖失败后清 loading/pending、重读、保留行与计数、可重试。
+- 本提案已在本机隔离 Web 仓库实施并通过定向/全量测试与构建；25/25 task 已勾选。3.2 的长期失败与解冻失败由 ManageMachine 卡片现有 UI 交互验证；删除失败通过既有 `ContainerDetailModal` 父回调接缝验证（该组件是已存在的契约，当前无生产可达入口；测试替换该组件以暴露页面传入的 `onDelete`，未新增生产按钮），覆盖失败后清 loading/pending、重读、保留行与计数、可重试。
 - ManageMachine/ManageUser 的 `ContainerDetailModal` 仍无生产可达入口，这是既有页面缺口，不是本次新增：ManageMachine 的 `openContainerDetail` 只被 `returnToDetail` 调用，`returnToDetail` 只由 `EditUserModal` 的 `onBack` 触发，而 `EditUserModal` 只由 `openEditModal` 打开，`openEditModal` 又只由 `ContainerDetailModal` 的 `onEdit` 触发，形成不可达闭环；ManageUser 的 `openContainerDetail` 没有调用者。因此删除失败的接缝测试只证明父页面失败恢复契约，不等同于端到端用户删除路径；不通过新增按钮掩盖入口缺失。
 - 复审发现并修正 ManageMachine/ManageUser 渲染侧 ing 看护只更新列表状态、未回写页面快照的问题：`onProgress`/`onTerminal` 现通过页面既有 `patch*Container*` 同步快照，避免打开确认框后外部状态变化时提交前重解析仍读到旧状态；两页均有组件测试覆盖。
 - 父审进一步发现 ManageUser 的 watcher 按 cid 去重后只更新首个 uid：同一容器同时出现在多个已展开用户卡片时，其他 uid 会保留旧状态。现已改为 `patchUserContainerEverywhere`：快照仍只统一更新一次，同时更新所有现有持有该 cid 的用户卡片；新增两个用户共享同一容器的 progress/terminal 测试。ManageMachine 的 containerMap 按机器分组，未发现同 cid 跨机器列表重复的依据，故不扩写。
 - 复审发现 `useContainerSnapshots` 的版本仍按响应到达顺序递增，Home/ManageMachine/ManageUser/ContainerDetailPage 均无请求代际保护；迟到旧响应可能覆盖较新列表/详情快照并影响提交前重解析。该风险未在本次改动中扩大修复范围（需要跨请求/服务端版本的统一方案），建议后续单独决策；提交前仍会重新解析，但不能把到达顺序当作服务端版本。
-- 最小规格澄清建议（不自行改规格）：若要求 ManageMachine 删除失败必须有端到端用户路径，需先把“弹窗入口是否存在”纳入产品决策，或把该删除失败场景明确归到已有入口的 ContainerDetailPage（5.1 已覆盖）；否则保留“组件接缝验证父页面契约、生产入口不伪造”的说明。禁止为测试新增生产按钮。
+- 本次已在 delta 中明确：ManageMachine/ManageUser 的现有卡片是用户路径，`ContainerDetailModal` 只是已存在组件契约且无生产可达入口；ContainerDetailPage 使用 `ContainerActionConfirmModal`，不渲染 `ContainerDetailModal`。若产品后续要求 ManageMachine 删除失败有端到端用户路径，需先补真实入口，或把该场景明确归到已有入口的 ContainerDetailPage（5.1 已覆盖）；禁止为测试新增生产按钮。
 - Ctrl 侧 `guard-container-vanish-deletion` 对 unknown 来源区分 `delete_frame`/`snapshot_missing` 及管理员处置出口不在本 Web 变更内；本次未放宽所有 unknown 删除、未新增核实/清理 API，也未配套新增展示，待父代理决策。
 - 评审通过后按仓库流程归档；归档时把 delta 合并到五个既有页面主规格，并保留上述弹窗入口与请求乱序说明；不把删除守卫或长期资格误报为已经修复，不声称修复 Q67/Q70。
