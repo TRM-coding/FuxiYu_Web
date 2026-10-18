@@ -219,7 +219,7 @@ const ManageUser = () => {
   const ingWatcherRef = useRef(new Map());
   useEffect(() => {
     const current = ingWatcherRef.current;
-    for (const entry of Object.values(containerMap)) {
+    for (const [uid, entry] of Object.entries(containerMap)) {
       for (const c of (entry?.data || [])) {
         const st = (c.effective_status || '').toLowerCase();
         const cid = c.key ? String(c.key) : (c.container_id ? String(c.container_id) : null);
@@ -237,38 +237,21 @@ const ManageUser = () => {
           onProgress: (data) => {
             const st = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!st) return;
-            setContainerMap(prev => {
-              const next = { ...prev };
-              for (const uid of Object.keys(next)) {
-                next[uid] = { ...next[uid], data: (next[uid]?.data || []).map(x => (
-                  String(x.key) === String(cid)
-                    ? applyContainerEffectiveStatus({ ...x, effective_status: st })
-                    : x
-                )) };
-              }
-              return next;
-            });
+            // 进度也要写回页面快照：否则提交前重解析会读到旧的 online/starting。
+            patchUserContainer(uid, cid, { effective_status: st });
           },
           onTerminal: (data) => {
             const finalSt = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!finalSt) return;
             current.delete(cid);
-            setContainerMap(prev => {
-              const next = { ...prev };
-              for (const uid of Object.keys(next)) {
-                next[uid] = { ...next[uid], data: (next[uid]?.data || []).map(x => (
-                  String(x.key) === String(cid)
-                    ? applyContainerEffectiveStatus({ ...x, effective_status: finalSt })
-                    : x
-                )) };
-              }
-              return next;
-            });
+            patchUserContainer(uid, cid, { effective_status: finalSt });
           },
         });
         current.set(cid, stop);
       }
     }
+  // 页面级 patch 函数随渲染更新；本 effect 只按 containerMap 变化重跑，避免每帧重建 watcher。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerMap]);
 
   // 卸载时停止全部 ing watcher

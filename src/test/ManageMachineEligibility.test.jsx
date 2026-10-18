@@ -10,6 +10,12 @@ const permissionState = vi.hoisted(() => ({
   userName: 'root_user',
 }));
 
+// ManageMachine 当前的 ContainerDetailModal 没有生产可达入口；这里只暴露父页面传入的
+// onDelete 回调，作为删除失败恢复的组件接缝，不新增任何生产按钮或用户入口。
+const detailModalSeam = vi.hoisted(() => ({ onDelete: null }));
+// 渲染侧 ing 看护回调：验证外部状态变化也会同步提交前快照。
+const ingWatcherSeam = vi.hoisted(() => ({ onProgress: null, onTerminal: null }));
+
 vi.mock('antd', async (importOriginal) => {
   const antd = await importOriginal();
   return {
@@ -35,9 +41,19 @@ vi.mock('../contexts/PermissionContext', () => ({
 
 vi.mock('../utils/showErrorModal', () => ({ default: vi.fn() }));
 vi.mock('../utils/authHelpers', () => ({ handleAuthError: vi.fn() }));
+vi.mock('../components/ContainerDetailModal', () => ({
+  default: (props) => {
+    detailModalSeam.onDelete = props.onDelete;
+    return null;
+  },
+}));
 vi.mock('../utils/heartbeat', () => ({
   startContainerStatusHeartbeat: vi.fn(() => () => {}),
-  watchIngContainerUntilTerminal: vi.fn(() => () => {}),
+  watchIngContainerUntilTerminal: vi.fn(({ onProgress, onTerminal }) => {
+    ingWatcherSeam.onProgress = onProgress;
+    ingWatcherSeam.onTerminal = onTerminal;
+    return () => {};
+  }),
   ING_CONTAINER_STATES: new Set(['building', 'creating', 'starting', 'stopping', 'restarting', 'pausing', 'unpausing', 'status_unknown']),
 }));
 
@@ -109,6 +125,9 @@ const renderPage = () => render(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  detailModalSeam.onDelete = null;
+  ingWatcherSeam.onProgress = null;
+  ingWatcherSeam.onTerminal = null;
   permissionState.entities = ['container:operation', 'container:manage', 'bypass_auth_entity', 'bypass_resource'];
   permissionState.userId = 1;
   permissionState.userName = 'root_user';
@@ -329,5 +348,161 @@ describe('ManageMachine 共享动作与提交前重解析', () => {
 
     expect(stopContainer).not.toHaveBeenCalled();
     expect(message.warning).toHaveBeenCalled();
+  });
+
+  it('ing 看护更新状态时同步提交前快照，确认时按最新状态解析', async () => {
+    const user = userEvent.setup();
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'online' })],
+      total_number: 1,
+      total_page: 1,
+    });
+    renderPage();
+    const card = await waitForCard();
+    await user.click(within(card).getByRole('button', { name: /^停\s*止$/ }));
+    expect(await screen.findByText('确认停止容器')).toBeInTheDocument();
+
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'starting' })],
+      total_number: 1,
+      total_page: 1,
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(within(card).getByText('启动中')).toBeInTheDocument());
+    await waitFor(() => expect(ingWatcherSeam.onProgress).toBeTypeOf('function'));
+
+    await act(async () => {
+      ingWatcherSeam.onProgress({ effective_status: 'online' });
+    });
+    await waitFor(() => expect(within(card).getByText('运行中')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /确认\s*停\s*止/ }));
+
+    await waitFor(() => expect(stopContainer).toHaveBeenCalledWith(12));
+  });
+
+  it('长期失败清除更新中、保留行与计数并可重试', async () => {
+    const user = userEvent.setup();
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'offline' })],
+      total_number: 1,
+      total_page: 1,
+    });
+    let rejectLongTerm;
+    setLongTermContainer.mockImplementationOnce(() => new Promise((_, reject) => {
+      rejectLongTerm = reject;
+    }));
+
+    renderPage();
+    const card = await waitForCard();
+    await user.click(within(card).getByRole('checkbox'));
+    await waitFor(() => expect(setLongTermContainer).toHaveBeenCalledWith({
+      container_id: 12,
+      is_long_term: true,
+    }));
+    expect(within(card).getByRole('checkbox')).toBeDisabled();
+    expect(screen.getByText('1 个容器')).toBeInTheDocument();
+
+    await act(async () => {
+      rejectLongTerm({ status: 409, body: { message: 'long term busy' } });
+    });
+
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalled());
+    await waitFor(() => expect(within(card).getByRole('checkbox')).toBeEnabled());
+    expect(within(card).getByRole('checkbox')).not.toBeChecked();
+    expect(screen.getByText('train-a')).toBeInTheDocument();
+    expect(screen.getByText('1 个容器')).toBeInTheDocument();
+    expect(message.success).not.toHaveBeenCalledWith('已设为长期容器');
+    expect(listAllContainerBrefInformation.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'offline', is_long_term: true })],
+      total_number: 1,
+      total_page: 1,
+    });
+    setLongTermContainer.mockResolvedValueOnce({ success: 1, is_long_term: true });
+    await user.click(within(card).getByRole('checkbox'));
+    await waitFor(() => expect(setLongTermContainer).toHaveBeenCalledTimes(2));
+  });
+
+  it('解冻失败清除 pending/loading、保留行与计数并可重试', async () => {
+    const user = userEvent.setup();
+    permissionState.entities = ['container:manage'];
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'paused' })],
+      total_number: 1,
+      total_page: 1,
+    });
+    unpauseContainer.mockRejectedValueOnce({
+      status: 409,
+      body: { message: 'unpause failed', error_reason: 'unpause_failed' },
+    });
+
+    renderPage();
+    const card = await waitForCard();
+    await user.click(within(card).getByRole('button', { name: /解冻/ }));
+    await user.click(await screen.findByRole('button', { name: /确认解冻/ }));
+
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalled());
+    await waitFor(() => expect(within(card).getByRole('button', { name: /解冻/ })).toBeEnabled());
+    expect(within(card).getByText('磁盘已冻结')).toBeInTheDocument();
+    expect(within(card).queryByText('解冻中')).toBeNull();
+    expect(within(card).queryByText('运行中')).toBeNull();
+    expect(within(card).getByRole('button', { name: /解冻/ })).not.toHaveAttribute('title');
+    expect(screen.getByText('train-a')).toBeInTheDocument();
+    expect(screen.getByText('1 个容器')).toBeInTheDocument();
+    expect(message.success).not.toHaveBeenCalledWith('已解冻');
+    expect(listAllContainerBrefInformation.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    unpauseContainer.mockResolvedValueOnce({ success: 1 });
+    await user.click(within(card).getByRole('button', { name: /解冻/ }));
+    await user.click(await screen.findByRole('button', { name: /确认解冻/ }));
+    await waitFor(() => expect(unpauseContainer).toHaveBeenCalledTimes(2));
+    expect(message.success).toHaveBeenCalledWith('解冻指令已发送');
+    await waitFor(() => expect(within(card).getByText('解冻中')).toBeInTheDocument());
+  });
+
+  it('删除失败通过父回调接缝保留行与计数、清除 loading 并可重试', async () => {
+    const user = userEvent.setup();
+    deleteContainer.mockRejectedValueOnce({
+      status: 409,
+      body: { message: 'delete failed', error_reason: 'container_busy' },
+    });
+
+    renderPage();
+    const card = await waitForCard();
+    await waitFor(() => expect(detailModalSeam.onDelete).toBeTypeOf('function'));
+    await act(async () => {
+      detailModalSeam.onDelete({
+        key: '12',
+        container_id: 12,
+        machine_id: '3',
+        container_name: 'train-a',
+      });
+    });
+
+    const findDeleteDialog = async () => {
+      const dialogs = await screen.findAllByRole('dialog');
+      return dialogs.find(node => within(node).queryByText('确认删除容器'));
+    };
+    let dialog = await findDeleteDialog();
+    expect(dialog).toBeTruthy();
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() => expect(deleteContainer).toHaveBeenCalledWith('12'));
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalled());
+    await waitFor(() => expect(listAllContainerBrefInformation.mock.calls.length).toBeGreaterThanOrEqual(2));
+    dialog = await findDeleteDialog();
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: /删\s*除/ })).toBeEnabled());
+    expect(within(card).getByText('train-a')).toBeInTheDocument();
+    expect(screen.getByText('1 个容器')).toBeInTheDocument();
+    expect(message.success).not.toHaveBeenCalledWith('容器已删除');
+
+    deleteContainer.mockResolvedValueOnce({ success: 1 });
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    await waitFor(() => expect(deleteContainer).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(card).not.toBeInTheDocument());
+    expect(message.success).toHaveBeenCalledWith('容器已删除');
   });
 });

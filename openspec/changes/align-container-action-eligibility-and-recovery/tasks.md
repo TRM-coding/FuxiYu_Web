@@ -18,7 +18,7 @@
 ## 3. ManageMachine 与弹窗
 
 - [x] 3.1 ManageMachine 卡片的 start/stop/restart、解冻、长期改用共享结果；`ContainerDetailModal` 不再传 `forceSystemAdmin=true` 伪造删除，改传真实 `containerRole`/权限；人员管理能力另用显式 `canManagePeople`，不与删除/解冻/长期复用。验证：组件测试覆盖 ROOT/ADMIN/COLLABORATOR、failed 可删、starting 不可删、人员管理入口仍可用且不放开删除。
-- [ ] 3.2 ManageMachine 删除/长期/解冻失败后清除 loading/pending、重读机器容器列表，不提前更新计数或移除行；长期成功后才更新行，解冻失败后按钮可恢复。验证：组件测试断言失败后无残留 loading/pending、无“已解冻”，删除/长期失败保留原行并可重试。
+- [x] 3.2 ManageMachine 删除/长期/解冻失败后清除 loading/pending、重读机器容器列表，不提前更新计数或移除行；长期成功后才更新行，解冻失败后按钮可恢复。验证：组件测试断言失败后无残留 loading/pending、无“已解冻”，删除/长期失败保留原行并可重试。
 
 ## 4. ManageUser 与表格
 
@@ -45,6 +45,10 @@
 
 ## Workflow follow-up
 
-- 本提案已在本机隔离 Web 仓库实施并验证；除 3.2 的删除失败页面级专项外均已闭环。3.2 的删除失败重读逻辑已实现，但 ManageMachine 现有源码没有可达的 ContainerDetailModal 入口，按“不新增不存在的按钮”未新增触发按钮，故该项保留未勾选。
-- 评审通过后按仓库流程归档；归档时把 delta 合并到五个既有页面主规格，并保留 3.2 的未闭环说明。
-- 归档前再次核对 Ctrl 长期静态守卫与既有字段实际状态；不把删除守卫或长期资格误报为已经修复。
+- 本提案已在本机隔离 Web 仓库实施并通过定向/全量测试与构建；25/25 task 已勾选。3.2 的长期失败与解冻失败由 ManageMachine 卡片现有 UI 交互验证；删除失败通过 `ContainerDetailModal` 父回调接缝验证（测试替换该组件以暴露页面传入的 `onDelete`，未新增生产按钮），覆盖失败后清 loading/pending、重读、保留行与计数、可重试。
+- ManageMachine/ManageUser 的 `ContainerDetailModal` 仍无生产可达入口，这是既有页面缺口，不是本次新增：ManageMachine 的 `openContainerDetail` 只被 `returnToDetail` 调用，`returnToDetail` 只由 `EditUserModal` 的 `onBack` 触发，而 `EditUserModal` 只由 `openEditModal` 打开，`openEditModal` 又只由 `ContainerDetailModal` 的 `onEdit` 触发，形成不可达闭环；ManageUser 的 `openContainerDetail` 没有调用者。因此删除失败的接缝测试只证明父页面失败恢复契约，不等同于端到端用户删除路径；不通过新增按钮掩盖入口缺失。
+- 复审发现并修正 ManageMachine/ManageUser 渲染侧 ing 看护只更新列表状态、未回写页面快照的问题：`onProgress`/`onTerminal` 现通过页面既有 `patch*Container*` 同步快照，避免打开确认框后外部状态变化时提交前重解析仍读到旧状态；两页均有组件测试覆盖。
+- 复审发现 `useContainerSnapshots` 的版本仍按响应到达顺序递增，Home/ManageMachine/ManageUser/ContainerDetailPage 均无请求代际保护；迟到旧响应可能覆盖较新列表/详情快照并影响提交前重解析。该风险未在本次改动中扩大修复范围（需要跨请求/服务端版本的统一方案），建议后续单独决策；提交前仍会重新解析，但不能把到达顺序当作服务端版本。
+- 最小规格澄清建议（不自行改规格）：若要求 ManageMachine 删除失败必须有端到端用户路径，需先把“弹窗入口是否存在”纳入产品决策，或把该删除失败场景明确归到已有入口的 ContainerDetailPage（5.1 已覆盖）；否则保留“组件接缝验证父页面契约、生产入口不伪造”的说明。禁止为测试新增生产按钮。
+- Ctrl 侧 `guard-container-vanish-deletion` 对 unknown 来源区分 `delete_frame`/`snapshot_missing` 及管理员处置出口不在本 Web 变更内；本次未放宽所有 unknown 删除、未新增核实/清理 API，也未配套新增展示，待父代理决策。
+- 评审通过后按仓库流程归档；归档时把 delta 合并到五个既有页面主规格，并保留上述弹窗入口与请求乱序说明；不把删除守卫或长期资格误报为已经修复，不声称修复 Q67/Q70。

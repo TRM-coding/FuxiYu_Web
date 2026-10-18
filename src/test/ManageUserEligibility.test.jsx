@@ -10,6 +10,8 @@ const permissionState = vi.hoisted(() => ({
   userName: 'root_user',
 }));
 
+const ingWatcherSeam = vi.hoisted(() => ({ onProgress: null, onTerminal: null }));
+
 vi.mock('antd', async (importOriginal) => {
   const antd = await importOriginal();
   return {
@@ -38,7 +40,11 @@ vi.mock('../utils/showErrorModal', () => ({ default: vi.fn() }));
 vi.mock('../utils/authHelpers', () => ({ handleAuthError: vi.fn() }));
 vi.mock('../utils/heartbeat', () => ({
   startContainerStatusHeartbeat: vi.fn(() => () => {}),
-  watchIngContainerUntilTerminal: vi.fn(() => () => {}),
+  watchIngContainerUntilTerminal: vi.fn(({ onProgress, onTerminal }) => {
+    ingWatcherSeam.onProgress = onProgress;
+    ingWatcherSeam.onTerminal = onTerminal;
+    return () => {};
+  }),
   ING_CONTAINER_STATES: new Set(['building', 'creating', 'starting', 'stopping', 'restarting', 'pausing', 'unpausing', 'status_unknown']),
 }));
 
@@ -113,6 +119,8 @@ const renderPage = () => render(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  ingWatcherSeam.onProgress = null;
+  ingWatcherSeam.onTerminal = null;
   permissionState.entities = ['bypass_auth_entity', 'container:operation', 'container:manage'];
   permissionState.userId = 1;
   permissionState.userName = 'root_user';
@@ -309,5 +317,37 @@ describe('ManageUser 共享动作资格且不新增删除入口', () => {
 
     expect(startContainer).not.toHaveBeenCalled();
     expect(message.warning).toHaveBeenCalled();
+  });
+
+  it('ing 看护更新状态时同步提交前快照，确认时按最新状态解析', async () => {
+    const user = userEvent.setup();
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'online' })],
+      total_number: 1,
+      total_page: 1,
+    });
+    renderPage();
+    const card = await waitForCard();
+    await user.click(within(card).getByRole('button', { name: /^停\s*止$/ }));
+    expect(await screen.findByText('确认停止容器')).toBeInTheDocument();
+
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'restarting' })],
+      total_number: 1,
+      total_page: 1,
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(within(card).getByText('重启中')).toBeInTheDocument());
+    await waitFor(() => expect(ingWatcherSeam.onProgress).toBeTypeOf('function'));
+
+    await act(async () => {
+      ingWatcherSeam.onProgress({ effective_status: 'online' });
+    });
+    await waitFor(() => expect(within(card).getByText('运行中')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /确认\s*停\s*止/ }));
+
+    await waitFor(() => expect(stopContainer).toHaveBeenCalledWith(12));
   });
 });

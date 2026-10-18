@@ -234,6 +234,7 @@ const ManageMachine = () => {
           continue;
         }
         if (current.has(cid)) continue; // 每容器一个 watcher，去重
+        const mid = String(c.machine_id || '');
         const stop = watchIngContainerUntilTerminal({
           machine_id: c.machine_id,
           container_id: cid,
@@ -241,44 +242,21 @@ const ManageMachine = () => {
           onProgress: (data) => {
             const st = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!st) return;
-            setContainerMap(prev => {
-              const next = { ...prev };
-              for (const mid of Object.keys(next)) {
-                next[mid] = {
-                  ...next[mid],
-                  data: (next[mid]?.data || []).map(x => (
-                    String(x.key) === String(cid)
-                      ? applyContainerEffectiveStatus({ ...x, effective_status: st })
-                      : x
-                  )),
-                };
-              }
-              return next;
-            });
+            // 进度也要写回页面快照：否则提交前重解析会读到旧的 online/starting。
+            patchMachineContainerStatus(mid, cid, st);
           },
           onTerminal: (data) => {
             const finalSt = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!finalSt) return;
             current.delete(cid);
-            setContainerMap(prev => {
-              const next = { ...prev };
-              for (const mid of Object.keys(next)) {
-                next[mid] = {
-                  ...next[mid],
-                  data: (next[mid]?.data || []).map(x => (
-                    String(x.key) === String(cid)
-                      ? applyContainerEffectiveStatus({ ...x, effective_status: finalSt })
-                      : x
-                  )),
-                };
-              }
-              return next;
-            });
+            patchMachineContainerStatus(mid, cid, finalSt);
           },
         });
         current.set(cid, stop);
       }
     }
+  // 页面级 patch 函数随渲染更新；本 effect 只按 containerMap 变化重跑，避免每帧重建 watcher。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerMap]);
 
   // 卸载时停止全部 ing watcher
