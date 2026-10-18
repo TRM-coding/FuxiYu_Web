@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, Button, Checkbox, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, TeamOutlined, UnlockOutlined } from '@ant-design/icons';
@@ -23,7 +23,14 @@ import RuntimeTrendChart from '../components/RuntimeTrendChart';
 import showErrorModal from '../utils/showErrorModal';
 import { formatNumber, formatSnapshotTime, formatContainerImage } from '../utils/detailFormat';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
-import { isDiskOverLimit, DISK_OVER_LIMIT_MESSAGE } from '../utils/diskLimit';
+import {
+  createContainerStatusTransition,
+  deriveContainerEffectiveStatus,
+  getContainerActionReasonText,
+  getContainerRoleFromAccounts,
+  resolveContainerActions,
+} from '../utils/containerActions';
+import { useContainerSnapshots } from '../utils/containerSnapshots';
 
 // 容器相关操作 → 中文（与 AdminLogs 的映射保持一致；未知操作回退原文）
 const CONTAINER_OPERATION_LABELS = {
@@ -43,7 +50,6 @@ const CONTAINER_OPERATION_LABELS = {
 import { getContainerStatusDisplay } from '../utils/statusDisplay';
 import { POLL_TIMEOUT } from '../configs/backend_config';
 import { usePermission } from '../contexts/PermissionContext';
-import { getContainerActionState } from '../utils/containerActions';
 import './DetailPages.css';
 
 const ROLE = {
@@ -130,7 +136,72 @@ const ContainerDetailPage = () => {
   const [peopleSaving, setPeopleSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState(null); // 'start' | 'stop' | 'restart' | 'unpause' | 'delete' | null
   const [containerActionConfirm, setContainerActionConfirm] = useState({ visible: false, action: '' });
-  const { hasPermission, userId: currentUserId } = usePermission();
+  const {
+    entities,
+    userId: currentUserId,
+    userName: currentUserName,
+  } = usePermission();
+  const pendingContainerTransitionRef = useRef(new Map());
+  const {
+    remember: rememberContainerSnapshot,
+    markUnavailable: markContainerUnavailable,
+    get: getContainerSnapshot,
+  } = useContainerSnapshots();
+
+  const applyContainerEffectiveStatus = (detail) => {
+    if (!detail) return detail;
+    const key = containerId === undefined || containerId === null ? '' : String(containerId);
+    const result = deriveContainerEffectiveStatus(
+      detail.effective_status,
+      key ? pendingContainerTransitionRef.current.get(key) : null,
+      Date.now(),
+    );
+    if (result.pendingTransition) {
+      pendingContainerTransitionRef.current.set(key, result.pendingTransition);
+    } else if (result.cleared) {
+      pendingContainerTransitionRef.current.delete(key);
+    }
+    return { ...detail, effective_status: result.status };
+  };
+
+  const markContainerTransition = (detail, transitionStatus, targetStatus) => {
+    if (!containerId) return;
+    pendingContainerTransitionRef.current.set(
+      String(containerId),
+      createContainerStatusTransition(detail?.effective_status, transitionStatus, {
+        targetStatus,
+        startedAt: Date.now(),
+      }),
+    );
+  };
+
+  const resolveActionsFor = (detail, extraLoading = {}) => {
+    const loading = {
+      start: extraLoading.start === true || actionLoading === 'start',
+      stop: extraLoading.stop === true || actionLoading === 'stop',
+      restart: extraLoading.restart === true || actionLoading === 'restart',
+      unpause: extraLoading.unpause === true || actionLoading === 'unpause',
+      delete: extraLoading.delete === true || actionLoading === 'delete',
+      long_term_enable: extraLoading.long_term_enable === true || longTermSaving,
+      long_term_disable: extraLoading.long_term_disable === true || longTermSaving,
+    };
+    return resolveContainerActions({
+      container: {
+        is_long_term: detail?.is_long_term,
+        effective_status: detail?.effective_status,
+        long_term_container_can_enable: detail?.long_term_container_can_enable,
+        disk_usage_percent: detail?.disk_usage_percent,
+        disk_usage: detail?.disk_usage,
+      },
+      context: {
+        permissions: entities,
+        containerRole: getContainerRoleFromAccounts(detail?.accounts, currentUserId, currentUserName),
+        readOnly: false,
+      },
+      pendingTransition: containerId ? pendingContainerTransitionRef.current.get(String(containerId)) : null,
+      loading,
+    });
+  };
 
   const loadDetail = async ({ silent = false } = {}) => {
     if (!containerId) return;
@@ -138,7 +209,14 @@ const ContainerDetailPage = () => {
     try {
       const res = await getContainerDetailInformation(Number(containerId));
       const detail = res?.container_info || res?.container || res?.data || res;
-      setContainer(detail || null);
+      if (!detail || (typeof detail === 'object' && Object.keys(detail).length === 0)) {
+        markContainerUnavailable(containerId);
+        setContainer(null);
+        return;
+      }
+      const withPending = applyContainerEffectiveStatus(detail);
+      rememberContainerSnapshot(withPending, 'detail');
+      setContainer(withPending);
       setHistory(prev => addHistoryPoint(prev, detail?.runtime_metrics));
     } catch (err) {
       await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status, route: err?.route });
@@ -169,13 +247,15 @@ const ContainerDetailPage = () => {
       setContainer(prev => {
         if (!prev) return prev;
         const has = key => Object.prototype.hasOwnProperty.call(data || {}, key);
-        return {
+        const merged = applyContainerEffectiveStatus({
           ...prev,
           effective_status: has('effective_status') ? data.effective_status : prev.effective_status,
           failed_reason: has('failed_reason') ? data.failed_reason : prev.failed_reason,
           failed_detail: has('failed_detail') ? data.failed_detail : prev.failed_detail,
           runtime_metrics: has('runtime_metrics') ? data.runtime_metrics : prev.runtime_metrics,
-        };
+        });
+        rememberContainerSnapshot(merged, 'poll');
+        return merged;
       });
       setHistory(prev => addHistoryPoint(prev, data?.runtime_metrics));
     } catch (err) {
@@ -230,23 +310,76 @@ const ContainerDetailPage = () => {
   }, [containerId]);
 
   // 容器操作（详情页直连 API；状态由 5s 轮询 loadStatus 兜底刷新）
-  const actionState = getContainerActionState(container?.effective_status);
-  const runAction = async (action, label) => {
-    if (!containerId) return;
-    setActionLoading(label);
+  const [longTermSaving, setLongTermSaving] = useState(false);
+
+  const latestDetail = () => getContainerSnapshot(containerId) || container;
+
+  const preflightDetailAction = (actionKey) => {
+    const detail = latestDetail();
+    if (!detail) {
+      message.warning(getContainerActionReasonText('container_no_longer_available'));
+      return { ok: false, detail: null, action: null };
+    }
+    const action = resolveActionsFor(detail, { [actionKey]: false }).actions[actionKey];
+    if (!action || !action.visible || !action.enabled) {
+      message.warning(getContainerActionReasonText(action?.reason) || '当前不可执行该操作');
+      return { ok: false, detail, action };
+    }
+    return { ok: true, detail, action };
+  };
+
+  const runAction = async (actionKey, action, label) => {
+    if (!containerId) return false;
+    const before = preflightDetailAction(actionKey);
+    if (!before.ok) {
+      await loadDetail({ silent: true });
+      return false;
+    }
+    setActionLoading(actionKey);
     try {
       await action(Number(containerId));
-      message.success(`${label}成功`);
+      message.success(label === '解冻' ? '解冻指令已发送' : `${label}成功`);
+      const transitionStatus = {
+        start: 'starting',
+        stop: 'stopping',
+        restart: 'restarting',
+        unpause: 'unpausing',
+      }[actionKey];
+      const targetStatus = {
+        start: 'online',
+        stop: 'offline',
+        restart: 'online',
+        unpause: 'online',
+      }[actionKey];
+      markContainerTransition(before.detail, transitionStatus, targetStatus);
+      const patched = applyContainerEffectiveStatus({
+        ...before.detail,
+        effective_status: transitionStatus,
+      });
+      rememberContainerSnapshot(patched, 'local-status');
+      setContainer(prev => (prev ? applyContainerEffectiveStatus({ ...prev, effective_status: transitionStatus }) : prev));
       await loadDetail({ silent: true });
+      return true;
     } catch (err) {
+      if (containerId) pendingContainerTransitionRef.current.delete(String(containerId));
       await showErrorModal({ message: err?.body || err || `${label}失败`, status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await loadDetail({ silent: true });
+      return false;
     } finally {
       setActionLoading(null);
     }
   };
-  const [longTermSaving, setLongTermSaving] = useState(false);
+
   const handleLongTermToggle = async (checked) => {
     if (!containerId) return;
+    const detail = latestDetail();
+    const before = detail ? resolveActionsFor(detail).longTerm : null;
+    if (!before || !before.visible || !before.enabled) {
+      message.warning(getContainerActionReasonText(before?.reason) || '当前不可切换长期状态');
+      await loadDetail({ silent: true });
+      return;
+    }
+    if ((before.actionKey === 'long_term_enable') !== (checked === true)) return;
     setLongTermSaving(true);
     try {
       await setLongTermContainer({ container_id: Number(containerId), is_long_term: checked });
@@ -254,6 +387,7 @@ const ContainerDetailPage = () => {
       await loadDetail({ silent: true });
     } catch (err) {
       await showErrorModal({ message: err?.body || err || '设置长期容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await loadDetail({ silent: true });
     } finally {
       setLongTermSaving(false);
     }
@@ -262,14 +396,23 @@ const ContainerDetailPage = () => {
     setContainerActionConfirm({ visible: true, action: 'delete' });
   };
   const handleConfirmDeleteContainer = async () => {
+    const before = preflightDetailAction('delete');
+    if (!before.ok) {
+      setContainerActionConfirm({ visible: false, action: '' });
+      await loadDetail({ silent: true });
+      return;
+    }
     setActionLoading('delete');
     try {
       await deleteContainer(Number(containerId));
+      markContainerUnavailable(containerId);
       message.success('容器已删除');
       setContainerActionConfirm({ visible: false, action: '' });
       navigate('/index');
     } catch (err) {
       await showErrorModal({ message: err?.body || err || '删除失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      setContainerActionConfirm({ visible: false, action: '' });
+      await loadDetail({ silent: true });
     } finally {
       setActionLoading(null);
     }
@@ -287,15 +430,15 @@ const ContainerDetailPage = () => {
       await handleConfirmDeleteContainer();
       return;
     }
-    const actions = {
+    const actionMap = {
       start: { fn: startContainer, label: '启动' },
       stop: { fn: stopContainer, label: '停止' },
       restart: { fn: restartContainer, label: '重启' },
       unpause: { fn: unpauseContainer, label: '解冻' },
     };
-    const selected = actions[action];
+    const selected = actionMap[action];
     if (!selected) return;
-    await runAction(selected.fn, selected.label);
+    await runAction(action, selected.fn, selected.label);
     setContainerActionConfirm({ visible: false, action: '' });
   };
 
@@ -303,10 +446,10 @@ const ContainerDetailPage = () => {
   const statusDisplay = getContainerStatusDisplay(status);
   const metrics = container?.runtime_metrics || {};
   const diskUsage = container?.disk_usage || {};
-  // 「长期容器」勾选框：已长期的不用拦（超限的长期容器走冻结升级），未长期但磁盘已达上限的置灰。
-  // 详情页的磁盘数据是嵌套形状（disk_usage.usage_percent），共用判据两种形状都认。
-  const longTermBlockedByDisk = container?.is_long_term !== true && isDiskOverLimit(container);
-  const longTermBlockedByQuota = container?.is_long_term !== true && container?.long_term_container_can_enable === false;
+  const resolvedActions = container ? resolveActionsFor(container) : null;
+  const actions = resolvedActions?.actions;
+  const longTermAction = resolvedActions?.longTerm;
+  const reasonTitle = action => getContainerActionReasonText(action?.reason) || undefined;
   const latestHistoryPoint = history.length ? history[history.length - 1] : null;
   const collectedAt = latestHistoryPoint?.collectedAt || metrics?.collected_at || metrics?.cache_updated_at;
   const gpuDevices = metrics?.gpu?.device_ids || [];
@@ -462,47 +605,59 @@ const ContainerDetailPage = () => {
               <div className="detail-card container-operations-card">
                 <h2>容器操作</h2>
                 <div className="container-operations-actions">
-                  <Button
-                    type="primary"
-                    disabled={!actionState.canStart}
-                    loading={actionLoading === '启动'}
-                    onClick={() => openContainerActionConfirm('start')}
-                  >启动</Button>
-                  <Button
-                    danger
-                    disabled={!actionState.canStop}
-                    loading={actionLoading === '停止'}
-                    onClick={() => openContainerActionConfirm('stop')}
-                  >停止</Button>
-                  <Button
-                    disabled={!actionState.canRestart}
-                    loading={actionLoading === '重启'}
-                    onClick={() => openContainerActionConfirm('restart')}
-                  >重启</Button>
-                  <Button
-                    danger
-                    icon={<DeleteOutlined />}
-                    disabled={['building', 'creating'].includes(status)}
-                    loading={actionLoading === 'delete'}
-                    onClick={handleDeleteContainer}
-                  >删除</Button>
+                  {actions?.start.visible && (
+                    <Button
+                      type="primary"
+                      disabled={!actions.start.enabled}
+                      loading={actions.start.loading}
+                      title={reasonTitle(actions.start)}
+                      onClick={() => openContainerActionConfirm('start')}
+                    >启动</Button>
+                  )}
+                  {actions?.stop.visible && (
+                    <Button
+                      danger
+                      disabled={!actions.stop.enabled}
+                      loading={actions.stop.loading}
+                      title={reasonTitle(actions.stop)}
+                      onClick={() => openContainerActionConfirm('stop')}
+                    >停止</Button>
+                  )}
+                  {actions?.restart.visible && (
+                    <Button
+                      disabled={!actions.restart.enabled}
+                      loading={actions.restart.loading}
+                      title={reasonTitle(actions.restart)}
+                      onClick={() => openContainerActionConfirm('restart')}
+                    >重启</Button>
+                  )}
+                  {actions?.delete.visible && (
+                    <Button
+                      danger
+                      icon={<DeleteOutlined />}
+                      disabled={!actions.delete.enabled}
+                      loading={actions.delete.loading}
+                      title={reasonTitle(actions.delete)}
+                      onClick={handleDeleteContainer}
+                    >删除</Button>
+                  )}
                 </div>
                 <div className="container-secondary-actions">
-                  <Checkbox
-                    checked={container?.is_long_term === true}
-                    disabled={longTermSaving || longTermBlockedByDisk || longTermBlockedByQuota}
-                    title={longTermSaving ? undefined
-                      : longTermBlockedByDisk ? DISK_OVER_LIMIT_MESSAGE
-                        : longTermBlockedByQuota ? '绑定用户已达到长期容器上限'
-                          : undefined}
-                    onChange={e => handleLongTermToggle(e.target.checked)}
-                  >长期容器（不参与清理倒计时）</Checkbox>
-                  {hasPermission('container:manage') && (
+                  {longTermAction?.visible && (
+                    <Checkbox
+                      checked={longTermAction.checked === true}
+                      disabled={longTermAction.disabled}
+                      title={reasonTitle(longTermAction)}
+                      onChange={e => handleLongTermToggle(e.target.checked)}
+                    >长期容器（不参与清理倒计时）</Checkbox>
+                  )}
+                  {actions?.unpause.visible && (
                     <Button
                       size="small"
                       icon={<UnlockOutlined />}
-                      disabled={!actionState.canUnpause}
-                      loading={actionLoading === '解冻'}
+                      disabled={!actions.unpause.enabled}
+                      loading={actions.unpause.loading}
+                      title={reasonTitle(actions.unpause)}
                       onClick={() => openContainerActionConfirm('unpause')}
                     >解冻</Button>
                   )}

@@ -18,7 +18,7 @@ Ctrl 侧待执行变更 `guard-long-term-container-transitions` 已把长期资�
 **Non-Goals:**
 
 - 不新增资格对象、响应字段、preflight API 或后端状态机。
-- 不实现或改写 Ctrl 的长期守卫、恢复宽限、冻结策略。
+- 不实现或改写 Ctrl 的长期守卫、恢复新建语义、冻结策略。
 - 不新增 ContainerDetailModal 的长期控件，不把 `freeze_state` 当长期资格来源。
 - 不新增容器删除入口到 ManageUser/ManageUserInTable；解除关联仍走独立既有流程。
 - 不修复 Q67/Q70；不改 Q71 的 inode/路径边界，业务只看 `bind_mount_path`。
@@ -166,7 +166,7 @@ export function getContainerActionReasonText(reason) {}
 
 ### 8. 恢复边界
 
-恢复长期快照沿用既有恢复与 image 内容选择流程；Web 不新增超限确认框、token、恢复宽限倒计时或恢复状态机，也不根据 `freeze_state` 反推恢复宽限是否成功。恢复宽限的后端承载不在 Web 变更内；Web 只展示既有冻结/宽限字段。
+恢复长期快照沿用既有恢复与 image 内容选择流程。按最新 Q74 决策，恢复容器等价于一次新建：旧容器的冻结类状态（含宽限）不随恢复继承，也不存在恢复旁路或额外宽恕。Web 不新增超限确认框、token、恢复倒计时或恢复状态机，也不根据 `freeze_state` 反推恢复结果或派生新资格；恢复新建语义由 Ctrl 承载，不在本 Web 变更内实现。Web 只展示既有冻结/宽限字段。
 
 ### 9. 被否决的替代方案
 
@@ -185,7 +185,7 @@ export function getContainerActionReasonText(reason) {}
 - **删除状态表与 Ctrl 守卫漂移** → 在共享模块注明 Ctrl `operation_guard.py` 为来源，测试覆盖完整状态集；后端拒绝仍是最终安全网。
 - **角色/权限上下文缺失导致按钮变少** → 这是 fail closed 的预期结果；页面必须传真实 `entities`/角色，不能以 `undefined` 默认放开。
 - **Q67 配额并发** → 前端无法阻止两个容器同时占用最后一个名额；不由 Web 修复，也不声称已修。
-- **恢复宽限表示缺口** → 属于 Ctrl 既有冻结仓储的边界，不在 Web 变更内；Web 不据 UI 推导补偿。
+- **恢复新建语义的承载在 Ctrl** → 恢复容器不继承旧冻结/宽限、不提供恢复旁路，属于 Ctrl 的既有恢复流程；Web 不据此新增前端机制或从 UI 推导补偿。
 
 ## Rollout / Rollback
 

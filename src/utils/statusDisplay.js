@@ -6,6 +6,8 @@ export const CONTAINER_STATUS_DISPLAY = {
   starting: { label: '启动中', color: 'cyan' },
   restarting: { label: '重启中', color: 'purple' },
   stopping: { label: '停止中', color: 'orange' },
+  pausing: { label: '冻结中', color: 'volcano' },
+  unpausing: { label: '解冻中', color: 'cyan' },
   paused: { label: '已冻结', color: 'volcano' },
   failed: { label: '异常', color: 'red' },
   unknown: { label: '未知', color: 'default' },

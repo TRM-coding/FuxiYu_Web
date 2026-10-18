@@ -2,7 +2,7 @@ import React from 'react';
 import { DownOutlined, ReloadOutlined, UpOutlined } from '@ant-design/icons';
 import { Button, Card, Checkbox, Space, Table, Typography } from 'antd';
 import TableComponent from '../components/TableComponent';
-import { isDiskOverLimit } from '../utils/diskLimit';
+import { getContainerActionReasonText } from '../utils/containerActions';
 
 const { Column } = Table;
 
@@ -16,7 +16,6 @@ const ManageUserInTable = ({
   fetchContainersForUser,
   getUserContainers,
   containerMap,
-  longTermUpdatingMap,
   handleLongTermChange,
   handleRemoveUserFromContainer,
   handleDeleteUser,
@@ -94,30 +93,24 @@ const ManageUserInTable = ({
                     <Column title="用户角色" dataIndex="userRole" key="userRole" render={renderContainerRoleTag} />
                     <Column
                       title="长期容器"
-                      dataIndex="is_long_term"
-                      key="is_long_term"
+                      dataIndex="longTerm"
+                      key="longTerm"
                       render={(_, containerRecord) => {
-                        const cid = containerRecord?.key || containerRecord?.container_id;
-                        const entry = containerMap[String(record.key)] || {};
-                        const longTermChecked = containerRecord?.is_long_term === true;
-                        const remaining = entry.long_term_container_remaining;
-                        const limitReached = remaining !== null && remaining !== undefined && Number(remaining) <= 0;
-                        const blockedByRelatedUser = containerRecord?.long_term_container_can_enable === false;
-                        // 防呆：已超磁盘硬限的容器不该被设成长期——勾上就等于让它进冻结升级的射程
-                        const blockedByDisk = !longTermChecked && isDiskOverLimit(containerRecord);
-                        const updating = !!longTermUpdatingMap[String(cid)];
-                        const disabled = updating || (!longTermChecked && (limitReached || blockedByRelatedUser || blockedByDisk));
-                        const disabledReason = updating ? undefined
-                          : blockedByDisk ? '磁盘用量已达上限，无法设为长期容器'
-                            : (limitReached || blockedByRelatedUser) ? '绑定用户已达到长期容器上限'
-                              : undefined;
+                        // 只消费父组件传入的共享 longTerm 结果，不在表格内重算旧资格字段。
+                        const longTerm = containerRecord?.longTerm;
+                        if (!longTerm || !longTerm.visible) return null;
                         return (
-                          <Checkbox
-                            checked={longTermChecked}
-                            disabled={disabled}
-                            title={disabledReason}
-                            onChange={e => handleLongTermChange(record, containerRecord, e.target.checked)}
-                          />
+                          <Space size={4}>
+                            <Checkbox
+                              checked={longTerm.checked === true}
+                              disabled={longTerm.disabled}
+                              title={getContainerActionReasonText(longTerm.reason) || undefined}
+                              onChange={e => handleLongTermChange(record, containerRecord, e.target.checked)}
+                            />
+                            {longTerm.loading && (
+                              <Typography.Text type="secondary" className="manage-user-long-term-saving">保存中</Typography.Text>
+                            )}
+                          </Space>
                         );
                       }}
                     />

@@ -13,7 +13,7 @@
 - 所有页面使用同一策略结果：Home、ManageMachine、ManageUser、ContainerDetailPage；ManageUserInTable 只消费父组件传入的长期结果；ContainerDetailModal 不新增长期控件，也不自行推导长期/删除资格。
 - 所有写动作在真正提交 API 前用最新容器、权限/角色、长期字段和 pending 重新解析；有确认框的，在最终确认时重解析。结果禁用/隐藏则不发请求并更新原因，不复用打开弹窗时的快照。
 - 解冻受理只提示“解冻指令已发送”；失败、拒绝或超时清除该容器的 loading/pending，显示具体错误并重读权威快照，不以 catch 伪造 `paused`/`online`。权威 `online` 结束 pending，真实 `failed` 保持 `failed`。
-- 恢复长期快照沿用既有恢复与 image 内容选择流程；不新增超限确认框、token、恢复宽限倒计时或前端状态机。恢复宽限的后端承载不在 Web 变更内，Web 不据此派生新资格。
+- 恢复长期快照沿用既有恢复与 image 内容选择流程。按最新 Q74 决策，恢复容器等价于一次新建：旧容器的冻结类状态（含宽限）不随恢复继承，也不存在恢复旁路或额外宽恕。该语义由 Ctrl 承载，本 Web 变更不修改 Ctrl，不新增超限确认框、token、恢复倒计时或前端状态机，也不根据 `freeze_state` 反推恢复结果或派生新资格。
 - 不修改 Ctrl/Node 实现，不声称修复 Q67/Q70；Q71 边界保持为 inode 仅由 Node 校正路径，业务只看 `bind_mount_path`。
 
 ## Capabilities

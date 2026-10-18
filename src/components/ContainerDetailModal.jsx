@@ -12,6 +12,7 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import { formatContainerImage, parseServerTime } from '../utils/detailFormat';
+import { getContainerActionReasonText } from '../utils/containerActions';
 import './ContainerDetailModal.css';
 
 const ROLE = {
@@ -70,8 +71,8 @@ const formatCleanup = container => {
  */
 const ContainerDetailModal = ({
   visible, container, onClose, onEdit, onDelete, onLeave, onUnpause,
-  usersList = [], currentUserId = null, forceSystemAdmin = false, readOnly = false,
-  showRuntimeSummary = true,
+  usersList = [], readOnly = false, showRuntimeSummary = true,
+  actions = null, canLeave = false, canManagePeople = false,
 }) => {
   if (!container) return null;
 
@@ -89,9 +90,14 @@ const ContainerDetailModal = ({
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
 
-  // 使用 user_id 精确判断当前用户是否为 ROOT（避免 username 修改导致匹配失败）
-  const isRoot = forceSystemAdmin || (container.accounts || []).some(acc => acc.role === ROLE.ROOT && String(acc.user_id) === String(currentUserId));
-  const canManagePeople = !readOnly && isRoot && typeof onEdit === 'function' && container.effective_status === 'online';
+  // 动作资格只消费父页面传入的共享结果；弹窗不再用系统管理员标志/状态字符串另造删除/解冻判据。
+  const unpauseAction = actions?.unpause || null;
+  const deleteAction = actions?.delete || null;
+  const showUnpause = !readOnly && Boolean(unpauseAction?.visible) && typeof onUnpause === 'function';
+  const showDelete = !readOnly && Boolean(deleteAction?.visible);
+  const showLeave = !readOnly && Boolean(canLeave) && typeof onLeave === 'function';
+  const showManagePeople = !readOnly && Boolean(canManagePeople) && typeof onEdit === 'function';
+  const actionReason = action => getContainerActionReasonText(action?.reason) || undefined;
 
   const isHostOffline = container.effective_status === 'host_offline';
   const runtime = container.runtime_metrics || {};
@@ -151,20 +157,43 @@ const ContainerDetailModal = ({
 
   return (
     <Modal title="容器详细信息" open={visible} onCancel={onClose} width="min(750px, calc(100vw - 24px))" className="cdm-modal" footer={[
-      !readOnly && container.effective_status === 'paused' && onUnpause ? (
-        <Button key="unpause" type="primary" icon={<PlayCircleOutlined />} onClick={() => onUnpause(container)}>解冻容器</Button>
+      showUnpause ? (
+        <Button
+          key="unpause"
+          type="primary"
+          icon={<PlayCircleOutlined />}
+          disabled={!unpauseAction.enabled}
+          loading={Boolean(unpauseAction.loading)}
+          title={actionReason(unpauseAction)}
+          onClick={() => unpauseAction.enabled && onUnpause && onUnpause(container)}
+        >
+          解冻容器
+        </Button>
       ) : null,
-      !readOnly && container.effective_status === 'paused' && !onUnpause ? (
+      !readOnly && container.effective_status === 'paused' && !showUnpause ? (
         <Typography.Text key="frozen-hint" type="secondary" style={{ marginRight: 12, alignSelf: 'center', fontSize: 12 }}>
           磁盘已冻结，请联系管理员解冻
         </Typography.Text>
       ) : null,
       <Button key="close" onClick={onClose}>关闭</Button>,
-      !readOnly && (isRoot ? (
-        <Button key="deleteContainer" danger icon={<DeleteOutlined />} onClick={() => onDelete && onDelete(container)}>删除容器</Button>
-      ) : (
-        <Button key="leave" icon={<DeleteOutlined />} disabled={container.effective_status !== 'online'} onClick={() => onLeave && onLeave(container)}>解除关联</Button>
-      ))
+      showLeave ? (
+        <Button key="leave" icon={<DeleteOutlined />} disabled={container.effective_status !== 'online'} onClick={() => onLeave && onLeave(container)}>
+          解除关联
+        </Button>
+      ) : null,
+      showDelete ? (
+        <Button
+          key="deleteContainer"
+          danger
+          icon={<DeleteOutlined />}
+          disabled={!deleteAction.enabled}
+          loading={Boolean(deleteAction.loading)}
+          title={actionReason(deleteAction)}
+          onClick={() => deleteAction.enabled && onDelete && onDelete(container)}
+        >
+          删除容器
+        </Button>
+      ) : null
     ]}>
       <div className="cdm-body">
         <div className="cdm-header">
@@ -224,7 +253,7 @@ const ContainerDetailModal = ({
               <Typography.Title level={5} className="cdm-roles-title">
                 <TeamOutlined className="cdm-roles-icon" /> 人员管理 ({container.accounts?.length || 0}人)
               </Typography.Title>
-              {canManagePeople && (
+              {showManagePeople && (
                 <Button size="small" type="primary" icon={<EditOutlined />} onClick={() => onEdit(container)}>
                   管理人员
                 </Button>

@@ -17,9 +17,15 @@ import ContainerDetailModal from '../components/ContainerDetailModal';
 import ManageUserInTable from './ManageUserInTable';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
-import { isDiskOverLimit, DISK_OVER_LIMIT_MESSAGE } from '../utils/diskLimit';
 import EntitySearchBar from '../components/EntitySearchBar';
-import { createContainerStatusTransition, deriveContainerEffectiveStatus, getContainerActionState } from '../utils/containerActions';
+import {
+  createContainerStatusTransition,
+  deriveContainerEffectiveStatus,
+  getContainerActionReasonText,
+  getContainerRoleFromAccounts,
+  resolveContainerActions,
+} from '../utils/containerActions';
+import { useContainerSnapshots } from '../utils/containerSnapshots';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
 import { formatContainerImage } from '../utils/detailFormat';
 import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint, userListFingerprint } from '../utils/listRefresh';
@@ -140,6 +146,7 @@ const ManageUser = () => {
     const result = deriveContainerEffectiveStatus(
       container.effective_status,
       pendingContainerTransitionRef.current.get(key),
+      Date.now(),
     );
     if (result.pendingTransition) {
       pendingContainerTransitionRef.current.set(key, result.pendingTransition);
@@ -154,7 +161,52 @@ const ManageUser = () => {
     if (!cid) return;
     pendingContainerTransitionRef.current.set(
       String(cid),
-      createContainerStatusTransition(container?.effective_status, transitionStatus, { targetStatus }),
+      createContainerStatusTransition(container?.effective_status, transitionStatus, {
+        targetStatus,
+        startedAt: Date.now(),
+      }),
+    );
+  };
+
+  const resolveActionsFor = (record, extraLoading = {}) => {
+    const key = record?.key || record?.container_id;
+    const loadingKey = key === undefined || key === null ? '' : String(key);
+    return resolveContainerActions({
+      container: {
+        is_long_term: record?.is_long_term,
+        effective_status: record?.effective_status,
+        long_term_container_can_enable: record?.long_term_container_can_enable,
+        disk_usage_percent: record?.disk_usage_percent,
+        disk_usage: record?.disk_usage,
+      },
+      context: {
+        permissions: entities,
+        containerRole: getContainerRoleFromAccounts(record?.accounts, currentUserId, currentUserName),
+        readOnly: false,
+      },
+      pendingTransition: loadingKey ? pendingContainerTransitionRef.current.get(loadingKey) : null,
+      loading: {
+        start: extraLoading.start === true || containerActionMap[`start-${loadingKey}`] === true,
+        stop: extraLoading.stop === true || containerActionMap[`stop-${loadingKey}`] === true,
+        restart: extraLoading.restart === true || containerActionMap[`restart-${loadingKey}`] === true,
+        unpause: extraLoading.unpause === true || containerActionMap[`unpause-${loadingKey}`] === true,
+        long_term_enable: extraLoading.long_term_enable === true || longTermUpdatingMap[loadingKey] === true,
+        long_term_disable: extraLoading.long_term_disable === true || longTermUpdatingMap[loadingKey] === true,
+      },
+    });
+  };
+
+  const getLatestContainer = (record) => getContainerSnapshot(record?.key || record?.container_id);
+
+  const reloadUserContainerRow = async (userRecord, record) => {
+    const uid = userRecord?.key || userRecord?.user_id;
+    if (!uid || !record) return;
+    const entry = containerMapRef.current[String(uid)] || {};
+    await fetchContainersForUser(
+      uid,
+      entry.page ?? 0,
+      entry.container_name ?? searchContainerNameRef.current,
+      { silent: true },
     );
   };
 
@@ -231,6 +283,12 @@ const ManageUser = () => {
   const [containerActionMap, setContainerActionMap] = useState({});
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState(null);
+  const {
+    remember: rememberContainerSnapshot,
+    rememberList: rememberContainerList,
+    markUnavailable: markContainerUnavailable,
+    get: getContainerSnapshot,
+  } = useContainerSnapshots();
   // matched user ids from top-level container name search
   const [matchedUserIds, setMatchedUserIds] = useState(null);
   const { barRef: searchBarRef, barStyle: searchBarStyle } = useAutoHideTopBar();
@@ -238,7 +296,13 @@ const ManageUser = () => {
   const navigate = useNavigate();
 
   // auth + operator 门禁（PermissionContext 通配判定，替代旧 is_operator 字段猜测）
-  const { hasPermission, loaded: permLoaded, userName: currentUserName, userId: currentUserId } = usePermission();
+  const {
+    hasPermission,
+    entities,
+    loaded: permLoaded,
+    userName: currentUserName,
+    userId: currentUserId,
+  } = usePermission();
   // 用户 ↔ 权限组 弹窗（生效权限 = 各组并集；入口仅 rbac:manage 可见）
   const [userGroupModal, setUserGroupModal] = useState({
     visible: false,
@@ -352,8 +416,24 @@ const ManageUser = () => {
 
   // 处理弹窗确认
   const handleModalConfirm = async () => {
-    setModal(prev => ({ ...prev, loading: true }));
     const { type, data } = modal;
+    const actionType = {
+      startContainer: 'start',
+      stopContainer: 'stop',
+      restartContainer: 'restart',
+      unpauseContainer: 'unpause',
+    }[type];
+    if (actionType) {
+      const latest = getLatestContainer(data?.containerRecord);
+      const action = latest ? resolveActionsFor(latest).actions[actionType] : null;
+      if (!latest || !action?.visible || !action?.enabled) {
+        message.warning(getContainerActionReasonText(action?.reason) || '当前不可执行该操作');
+        closeModal();
+        if (latest) await reloadUserContainerRow(data?.userRecord, latest);
+        return;
+      }
+    }
+    setModal(prev => ({ ...prev, loading: true }));
 
     try {
       if (type === 'save') {
@@ -634,8 +714,8 @@ const ManageUser = () => {
         machine_id: c.machine_id ? String(c.machine_id) : null,
         machine_ip: c.machine_ip || '',
         accounts: c.accounts || [],
-        is_long_term: c.is_long_term === true,
-        long_term_container_can_enable: c.long_term_container_can_enable !== false,
+        is_long_term: c.is_long_term,
+        long_term_container_can_enable: c.long_term_container_can_enable,
         long_term_container_blocked_user_ids: c.long_term_container_blocked_user_ids || [],
         long_term_container_remaining_by_user: c.long_term_container_remaining_by_user || {},
         last_ssh_login_time: c.last_ssh_login_time ?? null,
@@ -646,6 +726,11 @@ const ManageUser = () => {
         disk_total_gb: c.disk_total_gb ?? null,
         disk_limit_gb: c.disk_limit_gb ?? null,
         disk_usage_percent: c.disk_usage_percent ?? null,
+        disk_usage: c.disk_usage ?? null,
+        freeze_state: c.freeze_state ?? null,
+        freeze_first_frozen_at: c.freeze_first_frozen_at ?? null,
+        freeze_grace_until: c.freeze_grace_until ?? null,
+        freeze_days_frozen: c.freeze_days_frozen ?? null,
         runtime_metrics: c.runtime_metrics ?? null,
       }));
       // bref 已含卡片所需全部字段（image/machine_ip/accounts/资源/磁盘/长期态），
@@ -666,6 +751,7 @@ const ManageUser = () => {
         }
         return { ...c, accounts, userRole };
       });
+      rememberContainerList(data, `user:${id}`, 'list');
       const fingerprint = containerListFingerprint(data, {
         user_id: id,
         page: pageNumber,
@@ -747,7 +833,11 @@ const ManageUser = () => {
       return [];
     }
     const data = containerMap[id].data || [];
-    return data; // `userRole` is provided by detail fetch and stored in cache
+    // 表格列只消费父级共享结果；不在表格内重新读配额/磁盘/freeze_state。
+    return data.map(container => ({
+      ...container,
+      longTerm: resolveActionsFor(container).longTerm,
+    }));
   };
 
   const openContainerDetail = async (container) => {
@@ -758,11 +848,12 @@ const ManageUser = () => {
       setSelectedContainer(null);
       const res = await getContainerDetailInformation(Number(cid));
       const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
-      if (!detail) {
+      if (!detail || (typeof detail === 'object' && Object.keys(detail).length === 0)) {
+        markContainerUnavailable(cid);
         await showErrorModal({ message: '未能获取容器详情' });
         return;
       }
-      setSelectedContainer({
+      const mapped = {
         key: detail.container_id ? String(detail.container_id) : String(cid),
         container_name: detail.container_name || detail.name || container.container_name || '',
         image_name: detail.image_name || container.image_name || '',
@@ -774,8 +865,23 @@ const ManageUser = () => {
         gpu_number: detail.gpu_number ?? container.gpu_number ?? 0,
         memory_gb: detail.memory_gb ?? container.memory_gb ?? 0,
         shared_gb: detail.shared_gb ?? container.shared_gb ?? 0,
+        disk_usage: detail.disk_usage ?? container.disk_usage ?? null,
+        disk_total_gb: detail.disk_total_gb ?? container.disk_total_gb ?? null,
+        disk_limit_gb: detail.disk_limit_gb ?? container.disk_limit_gb ?? null,
+        disk_usage_percent: detail.disk_usage_percent ?? container.disk_usage_percent ?? null,
+        is_long_term: detail.is_long_term ?? container.is_long_term,
+        long_term_container_can_enable: detail.long_term_container_can_enable ?? container.long_term_container_can_enable,
+        long_term_container_blocked_user_ids: detail.long_term_container_blocked_user_ids ?? container.long_term_container_blocked_user_ids ?? [],
+        long_term_container_remaining_by_user: detail.long_term_container_remaining_by_user ?? container.long_term_container_remaining_by_user ?? {},
+        freeze_state: detail.freeze_state ?? container.freeze_state ?? null,
+        freeze_first_frozen_at: detail.freeze_first_frozen_at ?? container.freeze_first_frozen_at ?? null,
+        freeze_grace_until: detail.freeze_grace_until ?? container.freeze_grace_until ?? null,
+        freeze_days_frozen: detail.freeze_days_frozen ?? container.freeze_days_frozen ?? null,
+        runtime_metrics: detail.runtime_metrics ?? container.runtime_metrics ?? null,
         accounts: detail.accounts || detail.account_list || container.accounts || [],
-      });
+      };
+      rememberContainerSnapshot(mapped, 'detail');
+      setSelectedContainer(mapped);
       setDetailModalVisible(true);
     } catch (err) {
       await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
@@ -783,43 +889,27 @@ const ManageUser = () => {
   };
 
   const handleLongTermChange = async (userRecord, containerRecord, checked) => {
-    const cid = containerRecord?.key || containerRecord?.container_id;
+    const record = getLatestContainer(containerRecord);
+    const cid = record?.key || record?.container_id;
     const uid = userRecord?.key || userRecord?.user_id;
-    if (!cid || !uid) return;
-    const currentlyLongTerm = containerRecord?.is_long_term === true;
-    setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: true }));
+    if (!cid || !uid) {
+      message.warning(getContainerActionReasonText('container_no_longer_available'));
+      return;
+    }
+    const key = String(cid);
+    const before = resolveActionsFor(record);
+    const actionKey = before.longTerm.actionKey;
+    if (!actionKey || !before.longTerm.visible || !before.longTerm.enabled) {
+      message.warning(getContainerActionReasonText(before.longTerm.reason) || '当前不可切换长期状态');
+      return;
+    }
+    if ((actionKey === 'long_term_enable') !== (checked === true)) return;
+
+    const currentlyLongTerm = record?.is_long_term === true;
+    setLongTermUpdatingMap(prev => ({ ...prev, [key]: true }));
     try {
       const res = await setLongTermContainer({ container_id: Number(cid), is_long_term: checked });
-      const nextIsLongTerm = res?.is_long_term === true;
-      const nextCanEnable = res?.long_term_container_can_enable !== false;
-      const nextBlockedUserIds = res?.long_term_container_blocked_user_ids || [];
-      const nextRemainingByUser = res?.long_term_container_remaining_by_user || {};
-      const userRemaining = Object.prototype.hasOwnProperty.call(nextRemainingByUser, String(uid))
-        ? Number(nextRemainingByUser[String(uid)])
-        : (Object.prototype.hasOwnProperty.call(nextRemainingByUser, Number(uid))
-          ? Number(nextRemainingByUser[Number(uid)])
-          : null);
-      setContainerMap(prev => {
-        const entry = prev[String(uid)] || { data: [] };
-        return {
-          ...prev,
-          [String(uid)]: {
-            ...entry,
-            long_term_container_remaining: userRemaining === null ? entry.long_term_container_remaining : userRemaining,
-            data: (entry.data || []).map(c => (
-              String(c.key) === String(cid)
-                ? {
-                  ...c,
-                  is_long_term: nextIsLongTerm,
-                  long_term_container_can_enable: nextCanEnable,
-                  long_term_container_blocked_user_ids: nextBlockedUserIds,
-                  long_term_container_remaining_by_user: nextRemainingByUser,
-                }
-                : c
-            )),
-          },
-        };
-      });
+      const nextIsLongTerm = typeof res?.is_long_term === 'boolean' ? res.is_long_term : checked;
       setUsers(prev => prev.map(u => {
         if (String(u.key) !== String(uid)) return u;
         let nextCount = Number(u.amount_of_long_term_container || 0);
@@ -828,15 +918,24 @@ const ManageUser = () => {
         return { ...u, amount_of_long_term_container: nextCount };
       }));
       message.success(nextIsLongTerm ? '已设为长期容器' : '已取消长期容器');
+      await reloadUserContainerRow(userRecord, record);
     } catch (err) {
       await showErrorModal({ message: err?.body || err || '设置长期容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await reloadUserContainerRow(userRecord, record);
     } finally {
-      setLongTermUpdatingMap(prev => ({ ...prev, [String(cid)]: false }));
+      setLongTermUpdatingMap(prev => ({ ...prev, [key]: false }));
     }
   };
 
   const patchUserContainer = (userId, containerId, patch) => {
     if (!userId || !containerId) return;
+    const latest = getContainerSnapshot(containerId);
+    if (latest) {
+      rememberContainerSnapshot(
+        applyContainerEffectiveStatus({ ...latest, ...patch }),
+        'local-status',
+      );
+    }
     setContainerMap(prev => {
       const id = String(userId);
       const entry = prev[id] || { data: [] };
@@ -852,6 +951,20 @@ const ManageUser = () => {
         },
       };
     });
+  };
+
+  const preflightUserAction = (actionKey, userRecord, containerRecord) => {
+    const latest = getLatestContainer(containerRecord);
+    if (!latest) {
+      message.warning(getContainerActionReasonText('container_no_longer_available'));
+      return { ok: false, latest: null, action: null };
+    }
+    const action = resolveActionsFor(latest).actions[actionKey];
+    if (!action || !action.visible || !action.enabled) {
+      message.warning(getContainerActionReasonText(action?.reason) || '当前不可执行该操作');
+      return { ok: false, latest, action };
+    }
+    return { ok: true, latest, action };
   };
 
   const runContainerHeartbeat = ({ userRecord, containerRecord, actionKey, terminalState, requiredProgressState = '' }) => {
@@ -883,86 +996,123 @@ const ManageUser = () => {
     });
   };
 
-  const handleUnpauseUserContainer = async (userRecord, containerRecord) => {
-    const cid = containerRecord?.key;
-    if (!cid) return;
+  const handleUnpauseUserContainer = async (userRecord, sourceRecord) => {
+    const record = getLatestContainer(sourceRecord);
+    const cid = record?.key;
+    if (!cid) return false;
     const actionKey = `unpause-${cid}`;
+    const before = preflightUserAction('unpause', userRecord, record);
+    if (!before.ok) {
+      await reloadUserContainerRow(userRecord, before.latest || record);
+      return false;
+    }
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
-    markContainerTransition(containerRecord, 'unpausing', 'online');
-    patchUserContainer(userRecord.key, cid, { effective_status: 'unpausing' });
     try {
-      message.loading({ content: `正在解冻 ${containerRecord.container_name}...`, key: actionKey });
+      message.loading({ content: `正在解冻 ${record.container_name}...`, key: actionKey });
       await unpauseContainer(Number(cid));
-      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
-      runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'online' });
+      markContainerTransition(record, 'unpausing', 'online');
+      patchUserContainer(userRecord.key, cid, { effective_status: 'unpausing' });
+      runContainerHeartbeat({ userRecord, containerRecord: record, actionKey, terminalState: 'online' });
       message.success({ content: '解冻指令已发送', key: actionKey, duration: 2 });
+      return true;
     } catch (err) {
-      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
-      patchUserContainer(userRecord.key, cid, { effective_status: 'paused' });
+      message.destroy(actionKey);
+      clearContainerTransition(cid);
       await showErrorModal({ message: err?.body || err || '解冻失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await reloadUserContainerRow(userRecord, record);
+      return false;
+    } finally {
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
     }
   };
 
-  const handleStartContainer = async (userRecord, containerRecord) => {
-    const cid = containerRecord?.key;
-    if (!cid) return;
+  const handleStartContainer = async (userRecord, sourceRecord) => {
+    const record = getLatestContainer(sourceRecord);
+    const cid = record?.key;
+    if (!cid) return false;
     const actionKey = `start-${cid}`;
+    const before = preflightUserAction('start', userRecord, record);
+    if (!before.ok) {
+      await reloadUserContainerRow(userRecord, before.latest || record);
+      return false;
+    }
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
-    markContainerTransition(containerRecord, 'starting', 'online');
-    patchUserContainer(userRecord.key, cid, { effective_status: 'starting' });
     try {
-      message.loading({ content: `正在启动 ${containerRecord.container_name}...`, key: actionKey });
+      message.loading({ content: `正在启动 ${record.container_name}...`, key: actionKey });
       await startContainer(Number(cid));
-      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
-      runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'online' });
+      markContainerTransition(record, 'starting', 'online');
+      patchUserContainer(userRecord.key, cid, { effective_status: 'starting' });
+      runContainerHeartbeat({ userRecord, containerRecord: record, actionKey, terminalState: 'online' });
       message.success({ content: '启动指令已发送', key: actionKey, duration: 2 });
+      return true;
     } catch (err) {
+      message.destroy(actionKey);
       clearContainerTransition(cid);
-      patchUserContainer(userRecord.key, cid, { effective_status: 'offline' });
-      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
       await showErrorModal({ message: err?.body || err || '启动失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await reloadUserContainerRow(userRecord, record);
+      return false;
+    } finally {
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
     }
   };
 
-  const handleStopContainer = async (userRecord, containerRecord) => {
-    const cid = containerRecord?.key;
-    if (!cid) return;
+  const handleStopContainer = async (userRecord, sourceRecord) => {
+    const record = getLatestContainer(sourceRecord);
+    const cid = record?.key;
+    if (!cid) return false;
     const actionKey = `stop-${cid}`;
+    const before = preflightUserAction('stop', userRecord, record);
+    if (!before.ok) {
+      await reloadUserContainerRow(userRecord, before.latest || record);
+      return false;
+    }
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
-    markContainerTransition(containerRecord, 'stopping', 'offline');
-    patchUserContainer(userRecord.key, cid, { effective_status: 'stopping' });
     try {
-      message.loading({ content: `正在停止 ${containerRecord.container_name}...`, key: actionKey });
+      message.loading({ content: `正在停止 ${record.container_name}...`, key: actionKey });
       await stopContainer(Number(cid));
-      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
-      runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'offline' });
+      markContainerTransition(record, 'stopping', 'offline');
+      patchUserContainer(userRecord.key, cid, { effective_status: 'stopping' });
+      runContainerHeartbeat({ userRecord, containerRecord: record, actionKey, terminalState: 'offline' });
       message.success({ content: '停止指令已发送', key: actionKey, duration: 2 });
+      return true;
     } catch (err) {
+      message.destroy(actionKey);
       clearContainerTransition(cid);
-      patchUserContainer(userRecord.key, cid, { effective_status: 'online' });
-      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
       await showErrorModal({ message: err?.body || err || '停止失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await reloadUserContainerRow(userRecord, record);
+      return false;
+    } finally {
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
     }
   };
 
-  const handleRestartContainer = async (userRecord, containerRecord) => {
-    const cid = containerRecord?.key;
-    if (!cid) return;
+  const handleRestartContainer = async (userRecord, sourceRecord) => {
+    const record = getLatestContainer(sourceRecord);
+    const cid = record?.key;
+    if (!cid) return false;
     const actionKey = `restart-${cid}`;
+    const before = preflightUserAction('restart', userRecord, record);
+    if (!before.ok) {
+      await reloadUserContainerRow(userRecord, before.latest || record);
+      return false;
+    }
     setContainerActionMap(prev => ({ ...prev, [actionKey]: true }));
-    markContainerTransition(containerRecord, 'restarting', 'online');
-    patchUserContainer(userRecord.key, cid, { effective_status: 'restarting' });
     try {
-      message.loading({ content: `正在重启 ${containerRecord.container_name}...`, key: actionKey });
+      message.loading({ content: `正在重启 ${record.container_name}...`, key: actionKey });
       await restartContainer(Number(cid));
-      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
-      runContainerHeartbeat({ userRecord, containerRecord, actionKey, terminalState: 'online', requiredProgressState: 'restarting' });
+      markContainerTransition(record, 'restarting', 'online');
+      patchUserContainer(userRecord.key, cid, { effective_status: 'restarting' });
+      runContainerHeartbeat({ userRecord, containerRecord: record, actionKey, terminalState: 'online', requiredProgressState: 'restarting' });
       message.success({ content: '重启指令已发送', key: actionKey, duration: 2 });
+      return true;
     } catch (err) {
+      message.destroy(actionKey);
       clearContainerTransition(cid);
-      patchUserContainer(userRecord.key, cid, { effective_status: 'online' });
-      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
       await showErrorModal({ message: err?.body || err || '重启失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await reloadUserContainerRow(userRecord, record);
+      return false;
+    } finally {
+      setContainerActionMap(prev => ({ ...prev, [actionKey]: false }));
     }
   };
 
@@ -1444,7 +1594,12 @@ const ManageUser = () => {
                 </>
               );
             }}
-            renderChild={(containerRecord, userRecord) => (
+            renderChild={(containerRecord, userRecord) => {
+              const resolvedActions = resolveActionsFor(containerRecord);
+              const actions = resolvedActions.actions;
+              const longTermAction = resolvedActions.longTerm;
+              const reasonTitle = action => getContainerActionReasonText(action?.reason) || undefined;
+              return (
               <article className="fuxi-nested-child-card manage-user-nested-container-card" key={containerRecord.key}>
                 <div className="fuxi-nested-child-card-head">
                   <button
@@ -1471,12 +1626,13 @@ const ManageUser = () => {
                 </div>
                 {renderDiskUsage(containerRecord, (
                   <div className="fuxi-nested-child-disk-actions">
-                    {hasPermission('container:manage') && (
+                    {actions.unpause.visible && (
                       <Button
                         size="small"
                         icon={<UnlockOutlined />}
-                        disabled={String(containerRecord.effective_status || '').toLowerCase() !== 'paused' || !!containerActionMap[`unpause-${String(containerRecord.key)}`]}
-                        loading={!!containerActionMap[`unpause-${String(containerRecord.key)}`]}
+                        disabled={!actions.unpause.enabled}
+                        loading={actions.unpause.loading}
+                        title={reasonTitle(actions.unpause)}
                         onClick={(event) => {
                           event.stopPropagation();
                           openModal('unpauseContainer', { userRecord, containerRecord });
@@ -1485,70 +1641,64 @@ const ManageUser = () => {
                         解冻
                       </Button>
                     )}
-                    <Checkbox
-                      checked={containerRecord.is_long_term === true}
-                      disabled={
-                        !!longTermUpdatingMap[String(containerRecord.key)] ||
-                        !getContainerActionState(containerRecord.effective_status).canSetLongTerm ||
-                        (!containerRecord.is_long_term && (containerRecord.long_term_container_can_enable === false || isDiskOverLimit(containerRecord)))
-                      }
-                      title={
-                        containerRecord.is_long_term ? undefined
-                          : isDiskOverLimit(containerRecord) ? DISK_OVER_LIMIT_MESSAGE
-                            : containerRecord.long_term_container_can_enable === false ? '绑定用户已达到长期容器上限'
-                              : undefined
-                      }
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) => handleLongTermChange(userRecord, containerRecord, event.target.checked)}
-                    >
-                      长期
-                    </Checkbox>
+                    {longTermAction.visible && (
+                      <Checkbox
+                        checked={longTermAction.checked === true}
+                        disabled={longTermAction.disabled}
+                        title={reasonTitle(longTermAction)}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) => handleLongTermChange(userRecord, containerRecord, event.target.checked)}
+                      >
+                        长期
+                      </Checkbox>
+                    )}
                   </div>
                 ))}
                 <div className="fuxi-nested-child-card-actions">
-                  {(() => {
-                    const status = String(containerRecord.effective_status || '').toLowerCase();
-                    const cid = String(containerRecord.key);
-                    return (
-                      <>
-                        <Button
-                          size="small"
-                          type="primary"
-                          disabled={status !== 'offline' || !!containerActionMap[`start-${cid}`]}
-                          loading={!!containerActionMap[`start-${cid}`]}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openModal('startContainer', { userRecord, containerRecord });
-                          }}
-                        >
-                          启动
-                        </Button>
-                        <Button
-                          size="small"
-                          danger
-                          disabled={status !== 'online' || !!containerActionMap[`stop-${cid}`]}
-                          loading={!!containerActionMap[`stop-${cid}`]}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openModal('stopContainer', { userRecord, containerRecord });
-                          }}
-                        >
-                          停止
-                        </Button>
-                        <Button
-                          size="small"
-                          disabled={status !== 'online' || !!containerActionMap[`restart-${cid}`]}
-                          loading={!!containerActionMap[`restart-${cid}`]}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openModal('restartContainer', { userRecord, containerRecord });
-                          }}
-                        >
-                          重启
-                        </Button>
-                      </>
-                    );
-                  })()}
+                  {actions.start.visible && (
+                    <Button
+                      size="small"
+                      type="primary"
+                      disabled={!actions.start.enabled}
+                      loading={actions.start.loading}
+                      title={reasonTitle(actions.start)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openModal('startContainer', { userRecord, containerRecord });
+                      }}
+                    >
+                      启动
+                    </Button>
+                  )}
+                  {actions.stop.visible && (
+                    <Button
+                      size="small"
+                      danger
+                      disabled={!actions.stop.enabled}
+                      loading={actions.stop.loading}
+                      title={reasonTitle(actions.stop)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openModal('stopContainer', { userRecord, containerRecord });
+                      }}
+                    >
+                      停止
+                    </Button>
+                  )}
+                  {actions.restart.visible && (
+                    <Button
+                      size="small"
+                      disabled={!actions.restart.enabled}
+                      loading={actions.restart.loading}
+                      title={reasonTitle(actions.restart)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openModal('restartContainer', { userRecord, containerRecord });
+                      }}
+                    >
+                      重启
+                    </Button>
+                  )}
                   {String(containerRecord.userRole || '').toUpperCase() === 'ROOT' ? (
                     <Button size="small" disabled>不可解除</Button>
                   ) : (
@@ -1565,7 +1715,8 @@ const ManageUser = () => {
                   )}
                 </div>
               </article>
-            )}
+              );
+            }}
             renderEmptySlot={(record, index) => {
               const entry = containerMap[String(record.key)] || {};
               const label = entry.loading ? '加载容器中' : (index === 0 ? '暂无容器' : '空位');
@@ -1622,7 +1773,6 @@ const ManageUser = () => {
               fetchContainersForUser={fetchContainersForUser}
               getUserContainers={getUserContainers}
               containerMap={containerMap}
-              longTermUpdatingMap={longTermUpdatingMap}
               handleLongTermChange={handleLongTermChange}
               handleRemoveUserFromContainer={handleRemoveUserFromContainer}
               handleDeleteUser={handleDeleteUser}

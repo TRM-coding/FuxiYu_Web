@@ -1,7 +1,19 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { vi } from 'vitest';
 
 import ContainerDetailModal from '../components/ContainerDetailModal';
+import { resolveContainerActions } from '../utils/containerActions';
+
+const actionsFor = (container, {
+  role = 'ROOT',
+  permissions = ['container:operation', 'container:manage'],
+  readOnly = false,
+} = {}) => resolveContainerActions({
+  container,
+  context: { permissions, containerRole: role, readOnly },
+}).actions;
 
 describe('ContainerDetailModal', () => {
   it('展示详情接口已有的运行态、诊断、磁盘和清退信息', () => {
@@ -63,6 +75,7 @@ describe('ContainerDetailModal', () => {
           ],
         }}
         onEdit={() => {}}
+        canManagePeople
         usersList={[
           { id: 1, name: 'root_user', username: 'root_user' },
           { id: 2, name: 'admin_user', username: 'admin_user' },
@@ -96,6 +109,7 @@ describe('ContainerDetailModal', () => {
         onClose={() => {}}
         currentUserId={1}
         onEdit={() => {}}
+        canManagePeople
         container={{
           key: 10,
           container_id: 10,
@@ -147,5 +161,135 @@ describe('ContainerDetailModal', () => {
     expect(screen.queryByText('块 IO')).toBeNull();
     expect(screen.getByText('清理与磁盘')).toBeTruthy();
     expect(screen.getByText('25%')).toBeTruthy();      // 磁盘用量真的渲染出来了，不是 "-"
+  });
+
+  it('删除只消费父级 action：failed 可删，starting 禁用并显示原因', () => {
+    const failed = {
+      key: 21, container_id: 21, container_name: 'failed-one', effective_status: 'failed',
+      accounts: [{ user_id: 1, username: 'root_user', role: 'ROOT' }],
+      is_long_term: false, long_term_container_can_enable: true,
+    };
+    const { unmount } = render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={failed}
+        actions={actionsFor(failed)}
+        onDelete={() => {}}
+      />
+    );
+    expect(screen.getByRole('button', { name: /删除容器/ })).toBeEnabled();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    unmount();
+
+    const starting = { ...failed, key: 22, container_id: 22, effective_status: 'starting' };
+    render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={starting}
+        actions={actionsFor(starting)}
+        onDelete={() => {}}
+      />
+    );
+    const deleteButton = screen.getByRole('button', { name: /删除容器/ });
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton).toHaveAttribute('title', '容器正在处理中，暂不可操作');
+  });
+
+  it('COLLABORATOR 不出现可执行删除，解除关联独立存在', () => {
+    const container = {
+      key: 23, container_id: 23, container_name: 'collab-one', effective_status: 'online',
+      accounts: [{ user_id: 2, username: 'collab_user', role: 'COLLABORATOR' }],
+      is_long_term: false,
+    };
+    render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={container}
+        actions={actionsFor(container, { role: 'COLLABORATOR', permissions: ['container:operation'] })}
+        canLeave
+        onDelete={() => {}}
+        onLeave={() => {}}
+      />
+    );
+    expect(screen.queryByRole('button', { name: /删除容器/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /解除关联/ })).toBeEnabled();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('ADMIN 使用父级 action 可删；显式人员管理能力不打开删除', () => {
+    const container = {
+      key: 25, container_id: 25, container_name: 'admin-one', effective_status: 'online',
+      accounts: [{ user_id: 2, username: 'admin_user', role: 'ADMIN' }],
+      is_long_term: false,
+    };
+    const { unmount } = render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={container}
+        actions={actionsFor(container, { role: 'ADMIN', permissions: ['container:operation'] })}
+        onDelete={() => {}}
+      />
+    );
+    expect(screen.getByRole('button', { name: /删除容器/ })).toBeEnabled();
+    unmount();
+
+    render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={container}
+        actions={actionsFor(container, { role: 'COLLABORATOR', permissions: ['container:operation'] })}
+        onDelete={() => {}}
+        onEdit={() => {}}
+        canManagePeople
+      />
+    );
+    expect(screen.queryByRole('button', { name: /删除容器/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /管理人员/ })).toBeInTheDocument();
+  });
+
+  it('只读模式不渲染删除/解冻/长期控件，解冻只走父级 action', async () => {
+    const user = userEvent.setup();
+    const paused = {
+      key: 24, container_id: 24, container_name: 'paused-one', effective_status: 'paused',
+      accounts: [],
+      is_long_term: true,
+    };
+    const onUnpause = vi.fn();
+    const { unmount } = render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={paused}
+        actions={actionsFor(paused)}
+        onUnpause={onUnpause}
+        onDelete={() => {}}
+        readOnly
+      />
+    );
+    expect(screen.queryByRole('button', { name: /解冻容器/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /删除容器/ })).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    unmount();
+
+    render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={paused}
+        actions={actionsFor(paused, { permissions: ['container:manage'] })}
+        onUnpause={onUnpause}
+        onDelete={() => {}}
+      />
+    );
+    const unpause = screen.getByRole('button', { name: /解冻容器/ });
+    expect(unpause).toBeEnabled();
+    await user.click(unpause);
+    expect(onUnpause).toHaveBeenCalledWith(paused);
+    expect(screen.queryByRole('checkbox')).toBeNull();
   });
 });

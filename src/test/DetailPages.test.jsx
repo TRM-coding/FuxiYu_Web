@@ -5,6 +5,16 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { POLL_TIMEOUT } from '../configs/backend_config';
 
+vi.mock('../contexts/PermissionContext', () => ({
+  usePermission: () => ({
+    entities: ['container:operation', 'container:manage', 'bypass_resource'],
+    userId: 1,
+    userName: 'root_user',
+    loaded: true,
+    hasPermission: () => true,
+  }),
+}));
+
 vi.mock('../api/container_api', () => ({
   addCollaborator: vi.fn(),
   deleteContainer: vi.fn(),

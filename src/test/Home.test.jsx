@@ -15,6 +15,7 @@ vi.mock('../contexts/PermissionContext', () => ({
     userId: 2,
     userName: 'collab_user',
     loaded: true,
+    entities: ['container:operation', 'container:manage'],
     hasPermission: () => true,
   }),
 }));
