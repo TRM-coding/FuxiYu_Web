@@ -44,6 +44,35 @@
 - **WHEN** 新响应只改变当前用户角色或磁盘限额，其他状态与采集时间不变
 - **THEN** 页面仍更新操作入口及展示，不沿用旧权限或旧限额
 
+### Requirement: Home 容器动作使用共享纯函数结果
+
+Home 的 start、stop、restart、unpause、delete、long_term_enable 与 long_term_disable SHALL 使用 `containerActions.js` 同一纯函数结果渲染 `visible`、`enabled`、`reason`、`loading`、`pending`；权限、角色、只读或状态缺失时 MUST 保守禁用。长期启用读取既有 `long_term_container_can_enable` 与 `disk_usage_percent`/`disk_usage.usage_percent`；长期取消按实际 `effective_status` 判断冻结，`freeze_state` 行残留不得永久禁用。页面只保留布局、确认和 API 回调，后端仍是最终裁决。
+
+#### Scenario: 卡片与详情弹窗同源
+
+- **WHEN** 同一容器、同一状态、同一权限上下文分别渲染 Home 卡片与详情弹窗
+- **THEN** 两个入口的删除、启停、解冻与长期结论一致，不因组件不同而漂移
+
+#### Scenario: 长期超限或冻结残留
+
+- **WHEN** 非长期容器的 `long_term_container_can_enable` 为 false，或磁盘用量达到既有 100% 展示阈值；或长期容器已恢复 `online`/`offline` 但 `freeze_state` 行仍存在
+- **THEN** 前者禁用启用并显示既有配额/磁盘原因；后者允许取消长期，不因冻结行残留永久禁用
+
+#### Scenario: 权限或只读上下文缺失
+
+- **WHEN** 调用方缺少 `container:operation`/`container:root`/`container:manage`，或 `readOnly` 缺失、非 boolean、为 true
+- **THEN** 对应动作禁用并给出原因；缺失权限不得默认为可操作，删除也不得发出请求
+
+#### Scenario: 提交前重解析
+
+- **WHEN** 用户已打开确认框或已勾选长期，提交前容器状态、权限或 pending 已变化
+- **THEN** 页面用最新上下文重新解析；结果禁用/隐藏则不调用 API，并更新原因
+
+#### Scenario: 解冻失败不伪造终态
+
+- **WHEN** 解冻请求失败、被拒绝或超时
+- **THEN** 清除该容器的 loading/pending，显示具体错误并重读权威快照；不在 catch 中写 `paused`/`online`，后续权威 `online` 才结束 pending
+
 ## Source references
 
 - [src/pages/Home.jsx](../../../src/pages/Home.jsx)；[src/routes/index.jsx](../../../src/routes/index.jsx)。
@@ -51,7 +80,6 @@
 - 页面直接依赖：`../utils/authHelpers`。
 - 页面直接依赖：`../api/container_api`。
 - 页面直接依赖：`../utils/timeFormat`。
-- 页面直接依赖：`../utils/diskLimit`。
 - 页面直接依赖：`../utils/containerActions`。
 - 页面直接依赖：`../utils/heartbeat`。
 - 页面直接依赖：`../utils/listRefresh`。
@@ -60,4 +88,4 @@
 - 页面直接依赖：`../utils/detailFormat`。
 - 页面直接依赖：`../utils/useAutoHideTopBar`。
 - 页面直接依赖：`../contexts/PermissionContext`。
-- [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：本次既有 21 个测试文件、123 个测试通过；页面测试是否直接覆盖见 Global QUESTIONS。
+- [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：当前测试记录见 `openspec/changes/archive/2026-10-18-align-container-action-eligibility-and-recovery/` 与仓库验证日志；本规格不固化测试文件/用例数字；页面测试是否直接覆盖见 Global QUESTIONS。
