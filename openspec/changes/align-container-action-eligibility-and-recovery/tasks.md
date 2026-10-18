@@ -48,6 +48,7 @@
 - 本提案已在本机隔离 Web 仓库实施并通过定向/全量测试与构建；25/25 task 已勾选。3.2 的长期失败与解冻失败由 ManageMachine 卡片现有 UI 交互验证；删除失败通过 `ContainerDetailModal` 父回调接缝验证（测试替换该组件以暴露页面传入的 `onDelete`，未新增生产按钮），覆盖失败后清 loading/pending、重读、保留行与计数、可重试。
 - ManageMachine/ManageUser 的 `ContainerDetailModal` 仍无生产可达入口，这是既有页面缺口，不是本次新增：ManageMachine 的 `openContainerDetail` 只被 `returnToDetail` 调用，`returnToDetail` 只由 `EditUserModal` 的 `onBack` 触发，而 `EditUserModal` 只由 `openEditModal` 打开，`openEditModal` 又只由 `ContainerDetailModal` 的 `onEdit` 触发，形成不可达闭环；ManageUser 的 `openContainerDetail` 没有调用者。因此删除失败的接缝测试只证明父页面失败恢复契约，不等同于端到端用户删除路径；不通过新增按钮掩盖入口缺失。
 - 复审发现并修正 ManageMachine/ManageUser 渲染侧 ing 看护只更新列表状态、未回写页面快照的问题：`onProgress`/`onTerminal` 现通过页面既有 `patch*Container*` 同步快照，避免打开确认框后外部状态变化时提交前重解析仍读到旧状态；两页均有组件测试覆盖。
+- 父审进一步发现 ManageUser 的 watcher 按 cid 去重后只更新首个 uid：同一容器同时出现在多个已展开用户卡片时，其他 uid 会保留旧状态。现已改为 `patchUserContainerEverywhere`：快照仍只统一更新一次，同时更新所有现有持有该 cid 的用户卡片；新增两个用户共享同一容器的 progress/terminal 测试。ManageMachine 的 containerMap 按机器分组，未发现同 cid 跨机器列表重复的依据，故不扩写。
 - 复审发现 `useContainerSnapshots` 的版本仍按响应到达顺序递增，Home/ManageMachine/ManageUser/ContainerDetailPage 均无请求代际保护；迟到旧响应可能覆盖较新列表/详情快照并影响提交前重解析。该风险未在本次改动中扩大修复范围（需要跨请求/服务端版本的统一方案），建议后续单独决策；提交前仍会重新解析，但不能把到达顺序当作服务端版本。
 - 最小规格澄清建议（不自行改规格）：若要求 ManageMachine 删除失败必须有端到端用户路径，需先把“弹窗入口是否存在”纳入产品决策，或把该删除失败场景明确归到已有入口的 ContainerDetailPage（5.1 已覆盖）；否则保留“组件接缝验证父页面契约、生产入口不伪造”的说明。禁止为测试新增生产按钮。
 - Ctrl 侧 `guard-container-vanish-deletion` 对 unknown 来源区分 `delete_frame`/`snapshot_missing` 及管理员处置出口不在本 Web 变更内；本次未放宽所有 unknown 删除、未新增核实/清理 API，也未配套新增展示，待父代理决策。

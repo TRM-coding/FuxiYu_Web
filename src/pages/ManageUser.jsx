@@ -219,7 +219,7 @@ const ManageUser = () => {
   const ingWatcherRef = useRef(new Map());
   useEffect(() => {
     const current = ingWatcherRef.current;
-    for (const [uid, entry] of Object.entries(containerMap)) {
+    for (const entry of Object.values(containerMap)) {
       for (const c of (entry?.data || [])) {
         const st = (c.effective_status || '').toLowerCase();
         const cid = c.key ? String(c.key) : (c.container_id ? String(c.container_id) : null);
@@ -237,14 +237,14 @@ const ManageUser = () => {
           onProgress: (data) => {
             const st = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!st) return;
-            // 进度也要写回页面快照：否则提交前重解析会读到旧的 online/starting。
-            patchUserContainer(uid, cid, { effective_status: st });
+            // 进度/终态要同时写回所有持有该 cid 的用户卡片和页面快照。
+            patchUserContainerEverywhere(cid, st);
           },
           onTerminal: (data) => {
             const finalSt = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!finalSt) return;
             current.delete(cid);
-            patchUserContainer(uid, cid, { effective_status: finalSt });
+            patchUserContainerEverywhere(cid, finalSt);
           },
         });
         current.set(cid, stop);
@@ -933,6 +933,37 @@ const ManageUser = () => {
           )),
         },
       };
+    });
+  };
+
+  // 同一容器可能同时出现在多个用户的展开卡片里；watcher 按 cid 去重，
+  // 因此进度/终态必须一次更新所有持有该 cid 的卡片，并同步页面快照。
+  const patchUserContainerEverywhere = (containerId, status) => {
+    if (containerId === undefined || containerId === null || String(containerId) === '') return;
+    const cid = String(containerId);
+    const latest = getContainerSnapshot(cid);
+    const fallback = latest || Object.values(containerMapRef.current)
+      .flatMap(entry => entry?.data || [])
+      .find(c => String(c.key || c.container_id) === cid);
+    const patched = fallback
+      ? applyContainerEffectiveStatus({ ...fallback, effective_status: status })
+      : null;
+    const nextStatus = patched?.effective_status || status;
+    if (latest && patched) rememberContainerSnapshot(patched, 'local-status');
+    setContainerMap(prev => {
+      let changed = false;
+      const next = {};
+      for (const [uid, entry] of Object.entries(prev)) {
+        const data = (entry?.data || []).map(c => (
+          String(c.key || c.container_id) === cid
+            ? { ...c, effective_status: nextStatus }
+            : c
+        ));
+        const rowChanged = data.some((c, index) => c !== (entry?.data || [])[index]);
+        if (rowChanged) changed = true;
+        next[uid] = rowChanged ? { ...entry, data } : entry;
+      }
+      return changed ? next : prev;
     });
   };
 

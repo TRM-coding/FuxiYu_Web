@@ -111,6 +111,13 @@ const USER = {
   amount_of_long_term_container: 0,
 };
 
+const USER_B = {
+  ...USER,
+  user_id: 8,
+  username: 'bob',
+  email: 'bob@example.com',
+};
+
 const renderPage = () => render(
   <MemoryRouter>
     <ManageUser />
@@ -349,5 +356,71 @@ describe('ManageUser 共享动作资格且不新增删除入口', () => {
     await user.click(screen.getByRole('button', { name: /确认\s*停\s*止/ }));
 
     await waitFor(() => expect(stopContainer).toHaveBeenCalledWith(12));
+  });
+
+  const sharedContainer = (overrides = {}) => container({
+    effective_status: 'restarting',
+    accounts: [
+      OPERATOR_ROOT,
+      { user_id: 7, username: 'alice', role: 'COLLABORATOR' },
+      { user_id: 8, username: 'bob', role: 'COLLABORATOR' },
+    ],
+    ...overrides,
+  });
+
+  const setupTwoUsersSharingContainer = () => {
+    listAllUserBrefInformation.mockResolvedValue({ users: [USER, USER_B] });
+    listAllContainerBrefInformation.mockImplementation(async ({ user_id }) => {
+      const uid = Number(user_id);
+      if (uid === 7 || uid === 8) {
+        return {
+          containers_info: [sharedContainer()],
+          total_number: 1,
+          total_page: 1,
+        };
+      }
+      return { containers_info: [], total_number: 0, total_page: 1 };
+    });
+  };
+
+  const sharedCards = () => screen.getAllByText('train-a')
+    .map(node => node.closest('.fuxi-nested-child-card'))
+    .filter(Boolean);
+
+  it('两个用户展开同一容器 progress 时两张卡片同步更新', async () => {
+    setupTwoUsersSharingContainer();
+    renderPage();
+    await waitFor(() => expect(sharedCards()).toHaveLength(2));
+    for (const card of sharedCards()) {
+      expect(within(card).getByText('重启中')).toBeInTheDocument();
+    }
+    await waitFor(() => expect(ingWatcherSeam.onProgress).toBeTypeOf('function'));
+
+    await act(async () => {
+      ingWatcherSeam.onProgress({ effective_status: 'online' });
+    });
+
+    await waitFor(() => {
+      for (const card of sharedCards()) {
+        expect(within(card).getByText('运行中')).toBeInTheDocument();
+      }
+    });
+  });
+
+  it('两个用户展开同一容器 terminal 时两张卡片同步更新', async () => {
+    setupTwoUsersSharingContainer();
+    renderPage();
+    await waitFor(() => expect(sharedCards()).toHaveLength(2));
+    await waitFor(() => expect(ingWatcherSeam.onTerminal).toBeTypeOf('function'));
+
+    await act(async () => {
+      ingWatcherSeam.onTerminal({ effective_status: 'offline' });
+    });
+
+    await waitFor(() => {
+      for (const card of sharedCards()) {
+        expect(within(card).getByText('已停止')).toBeInTheDocument();
+      }
+    });
   });
 });
