@@ -39,9 +39,23 @@
   gap: 2px;
 }
 
+.deleted-usage-progress {
+  margin-top: 2px;
+}
+
+.deleted-usage-track-indeterminate {
+  /* 已测量但没有可比上限：整条轨道用斜纹表达成功，不给出任何比例。 */
+  background: repeating-linear-gradient(135deg, #e5eaf1 0 6px, #d8f3e9 6px 12px);
+}
+
 .deleted-usage-meta {
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.deleted-mount-cell .deleted-mount-chip {
+  max-width: 100%;
+  vertical-align: middle;
 }
 
 .deleted-usage-loading {

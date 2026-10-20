@@ -524,12 +524,17 @@ const ContainerDetailPage = () => {
     }
   };
 
+  // GPU 分配与共享内存是运行资源配置，和 CPU/内存/网络/磁盘同属运行指标；
+  // 镜像卡只保留镜像身份与 Dockerfile。
+  const gpuAllocationText = gpuDevices.length ? gpuDevices.join(', ') : formatNumber(allocGpu, ' 张');
   const resourceMetrics = useMemo(() => ([
     { label: 'CPU', value: formatNumber(metrics.cpu_usage_percent, '%'), extra: `配额 ${formatNumber(allocCpu, ' 核')}` },
     { label: '内存', value: formatNumber(metrics.memory_usage_percent, '%'), extra: `${formatNumber(metrics.memory_usage_mb, ' MB')} / ${memoryLimitText} · 配额 ${formatNumber(allocMem, ' GB')}` },
+    { label: 'GPU 分配', value: gpuAllocationText, extra: gpuDevices.length ? '设备编号' : '分配数量' },
+    { label: '共享内存', value: formatNumber(container?.shared_gb, ' GB'), extra: '共享配额' },
     { label: '网络', value: formatNumber(networkTotal, ' MB'), extra: `入 ${formatNumber(metrics.network_rx_mb, ' MB')} / 出 ${formatNumber(metrics.network_tx_mb, ' MB')}` },
     { label: '磁盘', value: formatNumber(diskUsage.total_gb, ' GB'), extra: `上限 ${formatNumber(diskUsage.limit_gb, ' GB')} · IO ${formatNumber(diskIoTotal, ' MB')}` },
-  ]), [container, metrics, networkTotal, diskIoTotal, memoryLimitText, allocCpu, allocMem]);
+  ]), [container, metrics, networkTotal, diskIoTotal, memoryLimitText, allocCpu, allocMem, allocGpu, gpuAllocationText, gpuDevices]);
 
   const resourceSeries = [
     { key: 'cpu', label: 'CPU', color: '#1677ff', fill: 'rgba(22, 119, 255, 0.12)', value: point => point.cpu },
@@ -585,6 +590,21 @@ const ContainerDetailPage = () => {
                       <div className="detail-metric-extra">{item.extra}</div>
                     </div>
                   ))}
+                </div>
+                <div className="detail-field detail-field-bind-mount-path container-runtime-bind-path">
+                  <span className="detail-field-label">宿主 bind 路径</span>
+                  <div className="detail-field-value bind-mount-path-value">
+                    {bindMountPath ? (
+                      <CopyChip value={bindMountPath} className="bind-mount-path-chip" block>
+                        {bindMountPath}
+                      </CopyChip>
+                    ) : (
+                      <Typography.Text type="secondary">未记录</Typography.Text>
+                    )}
+                    <Typography.Text type="secondary" className="bind-mount-path-note">
+                      最近记录，非实时核对
+                    </Typography.Text>
+                  </div>
                 </div>
                 <div className="detail-runtime-list detail-runtime-list-after-chart">
                   <div className="detail-runtime-item">
@@ -806,23 +826,6 @@ const ContainerDetailPage = () => {
                 <h2>镜像信息</h2>
                 <div className="detail-field-grid">
                   <div className="detail-field"><span className="detail-field-label">镜像</span><span className="detail-field-value">{formatContainerImage(container?.image_name)}</span></div>
-                  <div className="detail-field"><span className="detail-field-label">GPU 分配</span><span className="detail-field-value">{gpuDevices.length ? gpuDevices.join(', ') : formatNumber(allocGpu, ' 张')}</span></div>
-                  <div className="detail-field"><span className="detail-field-label">共享内存</span><span className="detail-field-value">{formatNumber(container?.shared_gb, ' GB')}</span></div>
-                  <div className="detail-field detail-field-bind-mount-path">
-                    <span className="detail-field-label">宿主 bind 路径</span>
-                    <div className="detail-field-value bind-mount-path-value">
-                      {bindMountPath ? (
-                        <CopyChip value={bindMountPath} className="bind-mount-path-chip" block>
-                          {bindMountPath}
-                        </CopyChip>
-                      ) : (
-                        <Typography.Text type="secondary">未记录</Typography.Text>
-                      )}
-                      <Typography.Text type="secondary" className="bind-mount-path-note">
-                        最近记录，非实时核对
-                      </Typography.Text>
-                    </div>
-                  </div>
                 </div>
                 {container?.image_dockerfile ? (
                   <pre className="container-dockerfile">{container.image_dockerfile}</pre>

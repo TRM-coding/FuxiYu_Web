@@ -190,8 +190,13 @@ describe('DeletedContainers 首批统计与展示状态', () => {
     expect(within(rowOf('row-3')).queryByText('0 B')).toBeNull();
     expect(within(row5).queryByText('0 B')).toBeNull();
 
-    const expectedOldTime = new Date('2026-09-01T10:00:00Z').toLocaleString('zh-CN', { hour12: false });
-    expect(within(rowOf('row-1')).getByText(`测量于 ${expectedOldTime} · 逻辑大小`)).toBeInTheDocument();
+    const measuredDate = new Date('2026-09-01T10:00:00Z');
+    const pad2 = value => String(value).padStart(2, '0');
+    const expectedShortTime = `${pad2(measuredDate.getMonth() + 1)}-${pad2(measuredDate.getDate())} ${pad2(measuredDate.getHours())}:${pad2(measuredDate.getMinutes())}`;
+    const expectedFullTime = measuredDate.toLocaleString('zh-CN', { hour12: false });
+    const measurementLabel = within(rowOf('row-1')).getByText(`测量 ${expectedShortTime}`);
+    expect(measurementLabel).toHaveAttribute('title', expectedFullTime);
+    expect(within(rowOf('row-1')).getByRole('progressbar')).toBeInTheDocument();
   });
 
   it('缺字段、非 UTC 时间、HTML/未知 error 只降级对应行，合法行照常显示，不回显原文', async () => {

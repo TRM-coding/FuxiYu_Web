@@ -1,4 +1,4 @@
-import { parseServerTime } from '../utils/detailFormat';
+import { formatContainerImage, parseServerTime } from '../utils/detailFormat';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Empty, Modal, Popconfirm, Radio, Spin, Table, Tag, Typography, message } from 'antd';
 import { DeleteOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
@@ -8,6 +8,8 @@ import {
   listDeletedContainers,
   resurrectDeletedContainer,
 } from '../api/container_api';
+import CopyChip from '../components/CopyChip';
+import '../components/NestedEntityGrid.css';
 import { usePermission } from '../contexts/PermissionContext';
 import { handleAuthError } from '../utils/authHelpers';
 import { dockerfileDiff } from '../utils/dockerfileDiff';
@@ -23,6 +25,22 @@ const formatTime = (value) => {
   const date = parseServerTime(value);
   if (!date) return String(value);
   return date.toLocaleString('zh-CN', { hour12: false });
+};
+
+const pad2 = value => String(value).padStart(2, '0');
+
+// 可见文案只保留 MM-DD HH:mm；完整本地时间放在 title 中，仍按浏览器本地时区换算。
+const formatShortMeasureTime = (value) => {
+  const date = parseServerTime(value);
+  if (!date) return '-';
+  return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+};
+
+// 进度条只在下述情况下使用确定比例：记录里已有一个正数比较上限。
+// 当前列表契约没有该字段，页面不新增请求/字段，缺省即走无比例成功轨道。
+const resolveUsageLimitBytes = (record) => {
+  const limit = record?.mount_usage_limit_bytes;
+  return Number.isInteger(limit) && limit > 0 ? limit : null;
 };
 
 
@@ -237,12 +255,43 @@ export default function DeletedContainers() {
     if (usage.status === 'success') {
       const size = formatLogicalBytes(usage.bytes);
       if (!size) return <Typography.Text type="secondary">统计不可用</Typography.Text>;
+      const limitBytes = resolveUsageLimitBytes(record);
+      const percent = limitBytes ? Math.min((usage.bytes / limitBytes) * 100, 100) : null;
+      const roundedPercent = percent == null ? null : Number(percent.toFixed(1));
+      const progressProps = roundedPercent == null
+        ? {
+          role: 'progressbar',
+          'aria-label': '逻辑用量',
+          'aria-valuetext': '已测量，未提供可比上限',
+        }
+        : {
+          role: 'progressbar',
+          'aria-label': '逻辑用量',
+          'aria-valuemin': 0,
+          'aria-valuemax': 100,
+          'aria-valuenow': roundedPercent,
+          'aria-valuetext': `${size}，比较上限 ${formatLogicalBytes(limitBytes)}`,
+        };
       return (
         <div className="deleted-usage-cell">
           <Typography.Text strong title="du -sb 逻辑大小，非物理磁盘块占用">{size}</Typography.Text>
-          <Typography.Text type="secondary" className="deleted-usage-meta">
-            测量于 {formatTime(usage.measuredAt)} · 逻辑大小
-          </Typography.Text>
+          <div className="fuxi-nested-child-disk-line deleted-usage-progress">
+            <Typography.Text
+              type="secondary"
+              className="deleted-usage-meta"
+              title={formatTime(usage.measuredAt)}
+            >
+              测量 {formatShortMeasureTime(usage.measuredAt)}
+            </Typography.Text>
+            <div
+              className={`fuxi-nested-child-disk-track${roundedPercent == null ? ' deleted-usage-track-indeterminate' : ''}`}
+              {...progressProps}
+            >
+              {roundedPercent == null ? null : (
+                <div className="fuxi-nested-child-disk-fill" style={{ width: `${roundedPercent}%` }} />
+              )}
+            </div>
+          </div>
         </div>
       );
     }
@@ -277,20 +326,18 @@ export default function DeletedContainers() {
       ),
     },
     {
-      title: '镜像',
-      // 与容器列表同一口径：后端由容器行推导（归属标识 + 构建版本戳）。
-      // 不再消费快照 JSON 里内嵌的副本——那是把派生值又抄一份再读出来，会与容器行失真。
-      dataIndex: 'image_name',
-      key: 'image_name',
-      ellipsis: true,
-      render: (value) => value || '-',
-    },
-    {
       title: 'Mount',
       dataIndex: 'mount_path',
       key: 'mount_path',
+      className: 'deleted-mount-cell',
       ellipsis: true,
-      render: (value) => value || '-',
+      render: (value) => (
+        value ? (
+          <CopyChip value={value} size="meta" tone="soft" className="deleted-mount-chip">
+            {value}
+          </CopyChip>
+        ) : <Typography.Text type="secondary">无挂载</Typography.Text>
+      ),
     },
     {
       title: '逻辑用量',
@@ -368,6 +415,10 @@ export default function DeletedContainers() {
     const accounts = Array.isArray(snapshot.accounts) ? snapshot.accounts : [];
     return (
       <div className="deleted-container-detail">
+        <div>
+          <span>镜像</span>
+          <strong>{formatContainerImage(record.image_name)}</strong>
+        </div>
         <div>
           <span>资源</span>
           <strong>

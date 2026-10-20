@@ -385,6 +385,10 @@
   grid-column: 1 / -1;
 }
 
+.container-runtime-bind-path {
+  margin-top: 14px;
+}
+
 .bind-mount-path-value {
   min-width: 0;
   display: flex;
