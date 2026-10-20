@@ -63,7 +63,7 @@ Change 'refine-container-detail-and-deleted-list-display' is valid
 | 无上限或非正上限使用无比例成功轨道并说明 | body 和 scenario 明确显示无比例成功轨道、使用 `aria-valuetext` 说明已测量但没有可比上限、不伪造百分比；design 决策 5 给出“已测量，未提供可比上限”的说明语义 | 通过 |
 | pending/error/loading/缺项沿用既有文字状态 | `测量中` 覆盖 pending 和列表加载，沿用“读取统计中/测量中”；`失败、缺项或形状非法` 覆盖 error、缺项、非法形状、无挂载和已清理，沿用既有“统计不可用/无挂载/已清理”，不渲染成功条、不写 0 B | 通过 |
 | 缩短测量文案并保留完整时间 | body 和 scenario 写死 `测量 {MM-DD HH:mm}`，完整时间放在可访问 `title`/提示属性；scenario 明确时间沿用现有浏览器本地化格式；只有成功样本显示时间 | 通过 |
-| 不新增 API、数据库字段、Node 请求或持久化状态 | proposal 第 11 行、design Non-Goals、两份 delta 的 `MUST NOT`/“不引入新的……接口或持久化状态”均有明确声明 | 通过 |
+| 不新增 API、数据库字段、Node 请求或持久化状态 | proposal 第 11 行、design 的非目标部分、两份 delta 的 `MUST NOT`/“不引入新的……接口或持久化状态”均有明确声明 | 通过 |
 
 `proposal.md:10` 也已区分“已删除页 Mount 用小号复制组件”和“详情页宿主 bind 路径继续完整展示并可复制”，没有把详情页路径误写成截断芯片。
 
@@ -81,7 +81,7 @@ Change 'refine-container-detail-and-deleted-list-display' is valid
 
 ## 4. 每个 requirement 的正常与边界场景（通过）
 
-| Requirement | 正常场景 | 边界场景 | 结论 |
+| 规格要求 | 正常场景 | 边界场景 | 结论 |
 |---|---|---|---|
 | `ContainerDetailPage 展示并复制既有宿主 bind 路径`（MODIFIED） | 有记录时完整展示并复制 | 空值/旧 Ctrl 缺字段；最近记录与实时核对的区别；复制失败 | 正常、边界齐全 |
 | `ContainerDetailPage 运行指标资源归属`（ADDED） | GPU/共享内存放入运行指标，镜像卡不再重复 | 缺失/0；镜像内容缺失（空镜像、空 Dockerfile） | 正常、边界齐全 |
@@ -94,7 +94,7 @@ Change 'refine-container-detail-and-deleted-list-display' is valid
 
 - `proposal.md`、`design.md` 和两份 delta spec 的说明性文字均为中文。
 - 英文只出现在结构关键字（`MODIFIED`、`ADDED`、`GIVEN`/`WHEN`/`THEN`、`SHALL`/`MUST NOT`）、代码标识符/路径（`bind_mount_path`、`image_dockerfile`、`du -sb`、`usageById`、`CopyChip`、`meta`、`soft`、`aria-valuetext`、`pending`、`error`、`bytes`、`measured_at`、`title`）、技术/产品名（`GPU`、`API`、`Node`、`Ctrl`、`WSS`、`Dockerfile`、`Mount`）和时间格式占位（`MM-DD HH:mm`）。
-- 没有需要翻译的英文描述句；`Open Questions`、`Goals / Non-Goals` 等是 OpenSpec 结构标题，可保留。
+- 没有需要翻译的英文描述句；结构关键字、代码标识符和技术名称可按原样保留。
 
 ## 6. 非阻塞建议（不影响 VERDICT: APPROVE）
 
@@ -105,7 +105,7 @@ Change 'refine-container-detail-and-deleted-list-display' is valid
 3. **正数上限 scenario 的 GIVEN 可补“上限不为正”**：THEN 已覆盖“没有上限或上限不为正”，GIVEN 只列了有可靠上限、超限、无上限；补上非正上限可使测试用例与 THEN 完全对应。
 4. **进度条可访问语义可再具体化**：spec 的 `aria-valuetext` 已覆盖无比例状态，但正数上限分支没有明确写 `role="progressbar"`/`aria-valuenow`。实现时建议保证进度条有稳定的可访问角色和值；这不影响当前归档。
 5. **样式复用需要落地**：design 复用 `fuxi-nested-child-disk-line` 的文字、track、fill 结构，但这些 class 定义在 `src/components/NestedEntityGrid.css`，`DeletedContainers` 当前没有 import 该 CSS。实现时需显式 import 或在 `DeletedContainers.css` 内复制对应样式，否则无比例轨道可能没有视觉样式。
-6. **测试与 Source references 同步**：实施时更新 `DeletedContainersMountUsage.test.jsx:194` 的旧测量文案断言；若归档同步主规格，Source references 可补 `../components/CopyChip`。本 change 目录没有 `tasks.md`，不在本次 proposal/design/specs 审查范围内，也不作为 VERDICT 依据。
+6. **测试与来源引用同步**：实施时更新 `DeletedContainersMountUsage.test.jsx:194` 的旧测量文案断言；若归档同步主规格，来源引用可补 `../components/CopyChip`。当前 change 已有 `test-plan.md` 和 `tasks.md`，17 个场景均已建立具名测试映射，测试仍需在 apply 阶段实现。
 
 ## 7. 结论
 
@@ -113,4 +113,4 @@ Change 'refine-container-detail-and-deleted-list-display' is valid
 
 VERDICT: APPROVE
 
-本次只重写 `review.md`；未修改代码、测试、其他规格或 QUESTIONS；未提交。
+本次变更已提交为 Web 仓库的 `b81731f`；当前仅完成 OpenSpec 规划与复审，代码实现和场景测试仍待 apply。
