@@ -470,6 +470,8 @@ const ContainerDetailPage = () => {
   const allocMem = container?.alloc_memory_gb ?? container?.memory_gb;
   const allocGpu = container?.alloc_gpu_number ?? container?.gpu_number;
   const title = container?.container_name || `容器 ${containerId}`;
+  // 只消费既有详情响应里的可空字段；不按容器名/机器名/端口拼猜，也不向 Node 核实。
+  const bindMountPath = typeof container?.bind_mount_path === 'string' ? container.bind_mount_path : '';
   const sshEndpoint = container?.machine_ip && container?.port ? `${container.machine_ip}:${container.port}` : '';
   // 端口映射（docker 自动分配，Node inspect 回填落库；后端出参已派生补齐 22→port）
   const portMappings = Array.isArray(container?.port_mappings) ? container.port_mappings : [];
@@ -806,6 +808,21 @@ const ContainerDetailPage = () => {
                   <div className="detail-field"><span className="detail-field-label">镜像</span><span className="detail-field-value">{formatContainerImage(container?.image_name)}</span></div>
                   <div className="detail-field"><span className="detail-field-label">GPU 分配</span><span className="detail-field-value">{gpuDevices.length ? gpuDevices.join(', ') : formatNumber(allocGpu, ' 张')}</span></div>
                   <div className="detail-field"><span className="detail-field-label">共享内存</span><span className="detail-field-value">{formatNumber(container?.shared_gb, ' GB')}</span></div>
+                  <div className="detail-field detail-field-bind-mount-path">
+                    <span className="detail-field-label">宿主 bind 路径</span>
+                    <div className="detail-field-value bind-mount-path-value">
+                      {bindMountPath ? (
+                        <CopyChip value={bindMountPath} className="bind-mount-path-chip" block>
+                          {bindMountPath}
+                        </CopyChip>
+                      ) : (
+                        <Typography.Text type="secondary">未记录</Typography.Text>
+                      )}
+                      <Typography.Text type="secondary" className="bind-mount-path-note">
+                        最近记录，非实时核对
+                      </Typography.Text>
+                    </div>
+                  </div>
                 </div>
                 {container?.image_dockerfile ? (
                   <pre className="container-dockerfile">{container.image_dockerfile}</pre>

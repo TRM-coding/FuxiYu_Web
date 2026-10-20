@@ -32,6 +32,27 @@
   flex-wrap: wrap;
 }
 
+.deleted-usage-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deleted-usage-meta {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.deleted-usage-loading {
+  color: #6b7a90;
+  font-size: 13px;
+}
+
+.deleted-usage-budget-alert {
+  margin-bottom: 16px;
+}
+
 .deleted-container-detail {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

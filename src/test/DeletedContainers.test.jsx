@@ -13,6 +13,7 @@ vi.mock('../contexts/PermissionContext', () => ({
 
 vi.mock('../api/container_api', () => ({
   cleanDeletedContainerMount: vi.fn(),
+  getDeletedContainerMountUsage: vi.fn(),
   listDeletedContainers: vi.fn(),
   resurrectDeletedContainer: vi.fn(),
 }));
@@ -21,7 +22,7 @@ vi.mock('../utils/showErrorModal', () => ({
   default: vi.fn(),
 }));
 
-import { listDeletedContainers, resurrectDeletedContainer } from '../api/container_api';
+import { getDeletedContainerMountUsage, listDeletedContainers, resurrectDeletedContainer } from '../api/container_api';
 import showErrorModal from '../utils/showErrorModal';
 import DeletedContainers from '../pages/DeletedContainers';
 
@@ -36,6 +37,8 @@ describe('DeletedContainers', () => {
   beforeEach(() => {
     listDeletedContainers.mockReset();
     resurrectDeletedContainer.mockReset();
+    getDeletedContainerMountUsage.mockReset();
+    getDeletedContainerMountUsage.mockResolvedValue({ success: 1, usages: [] });
     showErrorModal.mockReset();
     listDeletedContainers.mockResolvedValue({
       success: 1,

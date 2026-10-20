@@ -380,6 +380,34 @@
   word-break: break-word;
 }
 
+/* 宿主 bind 路径是最近记录，可能很长：占满整行并允许任意断行，复制值保持完整。 */
+.detail-field-bind-mount-path {
+  grid-column: 1 / -1;
+}
+
+.bind-mount-path-value {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bind-mount-path-value .bind-mount-path-chip.fuxi-copy-chip {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-overflow: clip;
+  font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.bind-mount-path-note {
+  font-size: 12px;
+}
+
 .detail-port-panel {
   display: grid;
   gap: 16px;

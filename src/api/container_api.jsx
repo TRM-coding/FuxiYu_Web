@@ -1,4 +1,4 @@
-import { BACKEND_ORIGIN, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
+import { BACKEND_ORIGIN, API_ROUTES, REQUEST_TIMEOUT, MOUNT_USAGE_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
 
 
@@ -301,6 +301,107 @@ export const listDeletedContainers = async ({ page_number = 1, page_size = 20 } 
 	}
 };
 
+const normalizeDeletedMountUsageIds = (deletedIds) => {
+	if (!Array.isArray(deletedIds)) {
+		throw new TypeError('deleted_ids must be an array');
+	}
+	const ids = [];
+	const seen = new Set();
+	for (const value of deletedIds) {
+		if (!Number.isInteger(value) || value <= 0) {
+			throw new TypeError('deleted_ids must contain positive integers only');
+		}
+		if (seen.has(value)) continue;
+		seen.add(value);
+		ids.push(value);
+	}
+	if (ids.length > 100) {
+		throw new RangeError('deleted_ids must contain at most 100 ids');
+	}
+	return ids;
+};
+
+/**
+ * 读取当前页已删除容器的 mount 用量。
+ *
+ * 只发送去重后的正整数 deleted_ids；不发送 path/machine_id，也不直接访问 Node。
+ * 响应边界只接受 `success === 1` 且 `usages` 为数组；HTTP 404/405、success=0、
+ * 非数组等整体失败原样抛给调用方降级。逐项字段由展示层严格校验，绝不补 0。
+ * 支持页面通过 `signal` 取消，并带独立短超时（默认 10s，不复用详情 45s）。
+ */
+export const getDeletedContainerMountUsage = async (
+	deletedIds,
+	{ signal = null, timeout = MOUNT_USAGE_TIMEOUT } = {},
+) => {
+	const ids = normalizeDeletedMountUsageIds(deletedIds);
+	if (ids.length === 0) return { success: 1, usages: [] };
+	if (signal?.aborted) {
+		const err = new Error('Get deleted container mount usage aborted');
+		err.name = 'AbortError';
+		throw err;
+	}
+
+	const controller = createController();
+	const timeoutMs = timeout || MOUNT_USAGE_TIMEOUT;
+	let timedOut = false;
+	const timer = setTimeout(() => {
+		timedOut = true;
+		try { controller.abort(); } catch {}
+	}, timeoutMs);
+	const handleExternalAbort = () => {
+		try { controller.abort(); } catch {}
+	};
+
+	try {
+		if (signal) {
+			signal.addEventListener('abort', handleExternalAbort, { once: true });
+			// addEventListener 不会补发已发生的 abort：登记后再确认一次。
+			if (signal.aborted) controller.abort();
+		}
+		const url = new URL(API_ROUTES.CONTAINERS_GET_DELETED_MOUNT_USAGE, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			// 唯一允许进入请求体的业务字段：deleted_ids。路径只留在列表展示层。
+			body: JSON.stringify({ deleted_ids: ids }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+		});
+		const body = await ensureOk(res, 'Get deleted container mount usage');
+		if (!body || typeof body !== 'object' || Array.isArray(body) || body.success !== 1) {
+			const err = new Error('Get deleted container mount usage failed: invalid success envelope');
+			err.status = res.status;
+			err.route = res.url;
+			err.body = body;
+			err.code = 'bad_response';
+			throw err;
+		}
+		if (!Array.isArray(body.usages)) {
+			const err = new Error('Get deleted container mount usage failed: usages must be an array');
+			err.status = res.status;
+			err.route = res.url;
+			err.body = body;
+			err.code = 'bad_response';
+			throw err;
+		}
+		return body;
+	} catch (err) {
+		if (err?.name === 'AbortError' && timedOut) {
+			const timeoutErr = new Error('Get deleted container mount usage request timed out');
+			timeoutErr.name = 'TimeoutError';
+			timeoutErr.code = 'request_timeout';
+			throw timeoutErr;
+		}
+		throw err;
+	} finally {
+		clearTimeout(timer);
+		if (signal) {
+			try { signal.removeEventListener('abort', handleExternalAbort); } catch {}
+		}
+		try { unregisterController(controller); } catch {}
+	}
+};
+
 export const cleanDeletedContainerMount = async (mount_cleanup_id = 0, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
@@ -511,6 +612,7 @@ export default {
 	getContainerStatus,
 	listAllContainerBrefInformation,
 	listDeletedContainers,
+	getDeletedContainerMountUsage,
 	cleanDeletedContainerMount,
 	resurrectDeletedContainer,
 	startContainer,

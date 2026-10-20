@@ -11,6 +11,8 @@ import {
 import { usePermission } from '../contexts/PermissionContext';
 import { handleAuthError } from '../utils/authHelpers';
 import { dockerfileDiff } from '../utils/dockerfileDiff';
+import { formatLogicalBytes, isDeletedMountCleaned, isMeasurableDeletedRecord } from '../utils/mountUsage';
+import { useDeletedMountUsage } from '../utils/useDeletedMountUsage';
 import showErrorModal from '../utils/showErrorModal';
 import './DeletedContainers.css';
 
@@ -26,7 +28,8 @@ const formatTime = (value) => {
 
 const statusTag = (record) => {
   if (!record.mount_path) return <Tag>无挂载</Tag>;
-  if (record.cleaned_at) return <Tag color="red">mount 已删除</Tag>;
+  // mount_cleaned === true 即使 cleaned_at 为空也算已清理，不能再请求扫描。
+  if (isDeletedMountCleaned(record)) return <Tag color="red">已清理</Tag>;
   if (record.cleanup_escalation) return <Tag color="orange">升级清理</Tag>;
   return <Tag color="green">mount 保留</Tag>;
 };
@@ -58,6 +61,13 @@ export default function DeletedContainers() {
   const pageRef = useRef(1);
   const pageSizeRef = useRef(20);
   const requestSeqRef = useRef(0);
+  const {
+    usageById,
+    budgetExhausted,
+    start: startMountUsage,
+    reset: resetMountUsage,
+    invalidate: invalidateMountUsage,
+  } = useDeletedMountUsage();
 
   const canManageContainers = hasPermission('container:manage');
 
@@ -68,6 +78,9 @@ export default function DeletedContainers() {
     const silent = options.silent === true;
     const seq = requestSeqRef.current + 1;
     requestSeqRef.current = seq;
+    // 新的列表请求一开始就让旧统计失效：abort 在途用量、清计时器、推进代次。
+    // 统计只能消费“本次列表成功写入后”的当前页记录。
+    resetMountUsage();
     if (!silent) setLoading(true);
     const fetchPage = async (nextPage) => {
       const res = await listDeletedContainers({ page_number: nextPage, page_size: requestedSize });
@@ -97,6 +110,8 @@ export default function DeletedContainers() {
       setPageSize(requestedSize);
       setRecords(current.list);
       setTotal(current.total);
+      // 列表先渲染；统计异步到达，失败/超时都不回写列表或分页。
+      startMountUsage(current.list, `${appliedPage}:${requestedSize}`);
     } catch (err) {
       if (seq !== requestSeqRef.current) return;
       if (err?.status === 401) {
@@ -112,7 +127,7 @@ export default function DeletedContainers() {
     } finally {
       if (!silent && seq === requestSeqRef.current) setLoading(false);
     }
-  }, [canManageContainers, navigate]);
+  }, [canManageContainers, navigate, resetMountUsage, startMountUsage]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -130,6 +145,8 @@ export default function DeletedContainers() {
 
   const cleanMount = async (record) => {
     if (!record?.mount_cleanup_id) return;
+    // 清理一开始就丢弃该页旧统计与在途响应；失败后也不把旧 bytes 贴回来。
+    invalidateMountUsage();
     setCleaningId(record.mount_cleanup_id);
     try {
       await cleanDeletedContainerMount(record.mount_cleanup_id);
@@ -163,6 +180,8 @@ export default function DeletedContainers() {
    */
   const resurrectContainer = async (record, contentSource = null) => {
     if (!record?.deleted_id || String(record.deleted_id).startsWith('mount-')) return;
+    // 恢复同样让旧统计立即失效；成功后重载列表，已清理/已恢复行不再扫描。
+    invalidateMountUsage();
     setResurrectingId(record.deleted_id);
     try {
       const res = await resurrectDeletedContainer(record.deleted_id, contentSource);
@@ -195,6 +214,40 @@ export default function DeletedContainers() {
     } finally {
       setResurrectingId(null);
     }
+  };
+
+  // 用量只影响本行展示：未请求/已清理行沿用列表事实；畸形/缺项/失败一律不可用，
+  // 任何非成功路径都不会落到 “0 B”。
+  const renderUsageCell = (record) => {
+    if (!record.mount_path) return <Typography.Text type="secondary">无挂载</Typography.Text>;
+    if (isDeletedMountCleaned(record)) return <Typography.Text type="secondary">已清理</Typography.Text>;
+    if (!isMeasurableDeletedRecord(record)) return <Typography.Text type="secondary">统计不可用</Typography.Text>;
+
+    const usage = usageById[record.deleted_id];
+    if (!usage) return <Typography.Text type="secondary">统计不可用</Typography.Text>;
+    if (usage.status === 'loading') {
+      return <span className="deleted-usage-loading">读取统计中</span>;
+    }
+    if (usage.status === 'pending') {
+      return <span className="deleted-usage-loading">测量中</span>;
+    }
+    if (usage.status === 'success') {
+      const size = formatLogicalBytes(usage.bytes);
+      if (!size) return <Typography.Text type="secondary">统计不可用</Typography.Text>;
+      return (
+        <div className="deleted-usage-cell">
+          <Typography.Text strong title="du -sb 逻辑大小，非物理磁盘块占用">{size}</Typography.Text>
+          <Typography.Text type="secondary" className="deleted-usage-meta">
+            测量于 {formatTime(usage.measuredAt)} · 逻辑大小
+          </Typography.Text>
+        </div>
+      );
+    }
+    return (
+      <Typography.Text type={usage.status === 'error' ? 'danger' : 'secondary'}>
+        {usage.message || '统计不可用'}
+      </Typography.Text>
+    );
   };
 
   // 不用 useMemo 缓存：动作回调必须跟随当前页/当前筛选，避免旧页闭包被 columns 长期持有。
@@ -235,6 +288,12 @@ export default function DeletedContainers() {
       key: 'mount_path',
       ellipsis: true,
       render: (value) => value || '-',
+    },
+    {
+      title: '逻辑用量',
+      key: 'mount_usage',
+      width: 210,
+      render: (_, record) => renderUsageCell(record),
     },
     {
       title: '删除时间',
@@ -350,6 +409,16 @@ export default function DeletedContainers() {
           刷新
         </Button>
       </div>
+
+      {budgetExhausted ? (
+        <Alert
+          className="deleted-usage-budget-alert"
+          type="warning"
+          showIcon
+          message="测量未完成"
+          description="多轮查询仍未完成，已停止自动刷新。可点击“刷新”重新开始一轮统计。"
+        />
+      ) : null}
 
       <Spin spinning={loading}>
         {/* 空页也保留 Table 与分页入口：total>0 时当前页可能暂时为空（刚清理/恢复最后一条），

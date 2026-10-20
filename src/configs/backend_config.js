@@ -25,6 +25,10 @@ export const REQUEST_TIMEOUT = 45000;
 // 取 15s = 调整前的有效值，即轮询行为保持原样。
 export const POLL_TIMEOUT = 15000;
 
+// 已删除容器 mount 用量是辅助信息，批量请求只查当前页 ID；刻意用比同步详情（45s）
+// 更短的超时，拒绝慢接口堆叠。页面侧仍只会保持一个在途请求。
+export const MOUNT_USAGE_TIMEOUT = 10000;
+
 export const CREDENTIALS = 'include'; // 携带 cookies
 
 export const API_ROUTES = {
@@ -70,6 +74,7 @@ export const API_ROUTES = {
 	CONTAINERS_UNPAUSE: '/api/containers/unpause_container',
 	CONTAINERS_SET_LONG_TERM: '/api/containers/set_long_term_container',
 	CONTAINERS_LIST_DELETED: '/api/containers/list_deleted_containers',
+	CONTAINERS_GET_DELETED_MOUNT_USAGE: '/api/containers/get_deleted_container_mount_usage',
 	CONTAINERS_CLEAN_DELETED_MOUNT: '/api/containers/clean_deleted_container_mount',
 	CONTAINERS_RESURRECT_DELETED: '/api/containers/resurrect_container',
 
@@ -110,6 +115,7 @@ export default {
 	BACKEND_ORIGIN,
 	REQUEST_TIMEOUT,
 	POLL_TIMEOUT,
+	MOUNT_USAGE_TIMEOUT,
 	CREDENTIALS,
 	API_ROUTES,
 };
