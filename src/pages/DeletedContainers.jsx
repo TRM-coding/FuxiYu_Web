@@ -130,13 +130,16 @@ export default function DeletedContainers() {
   }, [canManageContainers, navigate, resetMountUsage, startMountUsage]);
 
   useEffect(() => {
-    if (!loaded) return;
-    if (!canManageContainers) {
-      setLoading(false);
+    if (!loaded || !canManageContainers) {
+      // 权限快照未就绪/被收回时，既有统计计时器与在途请求也必须停止；
+      // 同时推进列表请求序号，让旧 list 响应不能在权限变化后重新开启统计。
+      resetMountUsage();
+      requestSeqRef.current += 1;
+      if (!canManageContainers) setLoading(false);
       return;
     }
     loadRecords();
-  }, [loaded, canManageContainers, loadRecords]);
+  }, [loaded, canManageContainers, loadRecords, resetMountUsage]);
 
   const handlePageChange = (nextPage, nextPageSize) => {
     const size = Number(nextPageSize) > 0 ? Number(nextPageSize) : pageSizeRef.current;

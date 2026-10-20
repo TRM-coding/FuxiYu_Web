@@ -68,6 +68,13 @@ const MOUNT_USAGE_ERROR_LABELS = {
   node_bad_response: '统计响应异常',
   not_found: '统计不可用（目录不存在）',
   invalid_path: '统计不可用（路径无效）',
+  permission_denied: '统计不可用（无权限读取目录）',
+  timeout: '统计超时',
+  non_zero_exit: '统计不可用（du 退出码非零）',
+  empty_output: '统计不可用（du 无输出）',
+  parse_error: '统计不可用（du 输出无法解析）',
+  du_unavailable: '统计不可用（du 不可用）',
+  du_failed: '统计不可用（du 执行失败）',
 };
 
 export const MOUNT_USAGE_ERROR_CODES = Object.freeze(Object.keys(MOUNT_USAGE_ERROR_LABELS));

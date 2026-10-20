@@ -35,3 +35,11 @@
 - 复跑 `npx vitest run src/test/mountUsage.test.js src/test/containerMountUsageApi.test.js src/test/DeletedContainersMountUsage.test.jsx --maxWorkers=1` 共 40 个用例通过；`src/test/DeletedContainers.test.jsx` 10 个既有用例通过；`npm run build` 通过；`openspec validate ... --strict`、`openspec status ... --json`、`git diff --check` 通过。
 - 预算耗尽文案改为“多轮查询仍未完成，已停止自动刷新”，不再声称实际不超过 10 分钟。
 - 未修改恢复/清理按钮业务资格、既有 `container:manage` 权限、全局 401 `ensureOk → abortAll` 行为；未 commit。
+
+## 最终边界走审修补证据
+
+- stable error allowlist 增补 `permission_denied`、`timeout`、`non_zero_exit`、`empty_output`、`parse_error`、`du_unavailable`、`du_failed` 并映射中文不可用原因；未知 code、HTML、stderr 长文仍统一 generic unavailable，不回显原文。
+- 权限 `loaded`/`canManageContainers` 变为 false 时执行 `resetMountUsage()` 并推进列表请求序号：停止 pending 计时器、abort 在途统计，迟到 list 响应不能重新开启统计；未改原权限规则、恢复/清理资格或新增 machine gate。
+- 新增参数化 pure util 用例与页面 `du_failed` 已知错误用例；新增权限 rerender 后 pending 计时取消、在途统计 abort、迟到 list 响应取消测试。
+- 复跑 `npx vitest run src/test/mountUsage.test.js src/test/DeletedContainersMountUsage.test.jsx --maxWorkers=1` 共 44 个用例通过；`src/test/DeletedContainers.test.jsx` 10 个既有用例通过；`npm run build` 通过。
+- 未 commit。

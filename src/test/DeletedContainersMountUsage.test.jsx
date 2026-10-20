@@ -4,10 +4,12 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
+const permissionState = vi.hoisted(() => ({ loaded: true, canManage: true }));
+
 vi.mock('../contexts/PermissionContext', () => ({
   usePermission: () => ({
-    loaded: true,
-    hasPermission: code => code === 'container:manage',
+    loaded: permissionState.loaded,
+    hasPermission: code => code === 'container:manage' && permissionState.canManage,
   }),
 }));
 
@@ -93,6 +95,8 @@ const renderPage = () => render(
 const rowOf = name => screen.getByText(name).closest('tr');
 
 beforeEach(() => {
+  permissionState.loaded = true;
+  permissionState.canManage = true;
   listDeletedContainers.mockReset();
   getDeletedContainerMountUsage.mockReset();
   cleanDeletedContainerMount.mockReset();
@@ -270,6 +274,7 @@ describe('DeletedContainers 首批统计与展示状态', () => {
       record({ deleted_id: 3, container_name: 'row-3', mount_path: '/m/3' }),
       record({ deleted_id: 4, container_name: 'row-4', mount_path: '/m/4' }),
       record({ deleted_id: 5, container_name: 'row-5', mount_path: '/m/5' }),
+      record({ deleted_id: 6, container_name: 'row-6', mount_path: '/m/6' }),
     ]));
     getDeletedContainerMountUsage.mockResolvedValue({
       success: 1,
@@ -279,6 +284,7 @@ describe('DeletedContainers 首批统计与展示状态', () => {
         { deleted_id: 3, bytes: null, measured_at: null, pending: false, error: 'node_timeout' },
         { deleted_id: 4, bytes: null, measured_at: null, pending: false, error: 'node_bad_response' },
         { deleted_id: 5, bytes: null, measured_at: null, pending: false, error: 'node_unsupported' },
+        { deleted_id: 6, bytes: null, measured_at: null, pending: false, error: 'du_failed' },
       ],
     });
 
@@ -288,6 +294,8 @@ describe('DeletedContainers 首批统计与展示状态', () => {
     expect(screen.getByText('统计超时')).toBeInTheDocument();
     expect(screen.getByText('统计响应异常')).toBeInTheDocument();
     expect(screen.getByText('统计不可用（旧 Node）')).toBeInTheDocument();
+    expect(screen.getByText('统计不可用（du 执行失败）')).toBeInTheDocument();
+    expect(within(rowOf('row-6')).queryByText('统计不可用')).toBeNull();
     expect(screen.queryByText('0 B')).toBeNull();
     expect(within(rowOf('row-2')).getByRole('button', { name: /清理 mount/ })).toBeEnabled();
     expect(within(rowOf('row-5')).getByRole('button', { name: /恢复/ })).toBeEnabled();
@@ -536,5 +544,81 @@ describe('DeletedContainers 有界轮询与取消', () => {
     expect(screen.queryByText('1 KiB')).toBeNull();
     expect(within(rowOf('deleted-train')).getByText('统计不可用')).toBeInTheDocument();
     expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it('权限被收回时停止 pending 计时器，不再发起轮询', async () => {
+    vi.useFakeTimers();
+    listDeletedContainers.mockResolvedValue(listResponse([record()]));
+    getDeletedContainerMountUsage.mockResolvedValue({ success: 1, usages: [usagePending(7)] });
+
+    const { rerender } = renderPage();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2);
+
+    permissionState.canManage = false;
+    rerender(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText('403 - 无容器管理权限')).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['权限被收回', () => { permissionState.canManage = false; }],
+    ['loaded 回退', () => { permissionState.loaded = false; }],
+  ])('%s时 abort 在途统计并丢弃迟到响应', async (_label, revoke) => {
+    const usage = deferred();
+    getDeletedContainerMountUsage.mockReturnValue(usage.promise);
+    const { rerender } = renderPage();
+    await waitFor(() => expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1));
+    const signal = getDeletedContainerMountUsage.mock.calls[0][1].signal;
+
+    revoke();
+    rerender(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+    await act(async () => { await Promise.resolve(); });
+    expect(signal.aborted).toBe(true);
+
+    await act(async () => {
+      usage.resolve({ success: 1, usages: [usageSuccess(7, 1024)] });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText('1 KiB')).toBeNull();
+    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['权限被收回', () => { permissionState.canManage = false; }],
+    ['loaded 回退', () => { permissionState.loaded = false; }],
+  ])('%s后迟到的列表响应不能重新开启统计', async (_label, revoke) => {
+    const list = deferred();
+    listDeletedContainers.mockReturnValue(list.promise);
+    const { rerender } = renderPage();
+    await waitFor(() => expect(listDeletedContainers).toHaveBeenCalledTimes(1));
+
+    revoke();
+    rerender(
+      <MemoryRouter>
+        <DeletedContainers />
+      </MemoryRouter>,
+    );
+    await act(async () => { await Promise.resolve(); });
+
+    await act(async () => {
+      list.resolve(listResponse([record()]));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getDeletedContainerMountUsage).not.toHaveBeenCalled();
+    expect(screen.queryByText('deleted-train')).toBeNull();
   });
 });

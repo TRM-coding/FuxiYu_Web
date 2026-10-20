@@ -200,6 +200,23 @@ describe('用量三态校验', () => {
     expect(normalizeMountUsageItem(failed({ error: '' }))).toBeNull();
   });
 
+  it.each([
+    ['permission_denied', '统计不可用（无权限读取目录）'],
+    ['timeout', '统计超时'],
+    ['non_zero_exit', '统计不可用（du 退出码非零）'],
+    ['empty_output', '统计不可用（du 无输出）'],
+    ['parse_error', '统计不可用（du 输出无法解析）'],
+    ['du_unavailable', '统计不可用（du 不可用）'],
+    ['du_failed', '统计不可用（du 执行失败）'],
+  ])('%s 是合法稳定错误并映射为中文不可用原因', (code, label) => {
+    expect(isStableMountUsageError(code)).toBe(true);
+    expect(normalizeMountUsageItem(failed({ error: code }))).toEqual({
+      status: 'error',
+      reason: code,
+    });
+    expect(describeMountUsageError(code)).toBe(label);
+  });
+
   it('HTML、stderr 长文、未知 code 不回显且判畸形', () => {
     for (const error of [
       '<script>alert(1)</script>',
