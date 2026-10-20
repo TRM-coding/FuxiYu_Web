@@ -6,8 +6,8 @@ QUESTIONS.md 中有 18 个属于 Web 的“无需决策”条目，已有明确�
 
 ## What Changes
 
-- 为 AdminLogs、AnnouncementEditor、CreateImage 等列表请求增加按查询上下文生效的序号或取消保护；权限查询在 `finally` 注销控制器。
-- 修正公告编辑器机器/容器列表与详情请求的零基分页和乱序保护、模板下拉 205 项可达、编辑模板深链携带 ID，以及按钮夺焦后的光标插入。
+- 为 AdminLogs、AnnouncementEditor、CreateImage 等列表/详情请求增加按各自查询上下文生效的序号或取消保护；权限查询在 `finally` 注销控制器。
+- 修正公告编辑器机器和容器的独立选择、各自列表与详情请求的零基分页和乱序保护（容器列表保持 `machine_id:''`、互不清空、卸载不应用）、模板下拉 205 项可达、编辑模板深链携带 ID，以及按钮夺焦后的光标插入。
 - 修正镜像页新建/更新后的关键词、列表、选中项和表单状态；明确选择“清空关键词、空词重取、再选中新项、保留表单”。
 - 补齐注册、验证码、设置、模板、镜像的 `route` 与 `error_reason` 映射，只使用 Ctrl 现有原因，不新增后端协议；删除草稿中的 `frontend--shared-error-display` 能力，把映射分配到对应页面。
 - 修正设置页整数与提醒节点校验，并把 `GROUP_ORDER` 组名对齐为后端实际分组 `容器清理`、`已删除容器`。
@@ -29,7 +29,7 @@ QUESTIONS.md 中有 18 个属于 Web 的“无需决策”条目，已有明确�
 - `frontend--authentication`：权限查询在成功、异常和重复调用路径统一释放控制器。
 - `frontend--build`：全仓 ESLint 归零、测试入口 Node 26 兼容、支持范围与 CI 矩阵。
 - `frontend--page-admin-logs`：周次、筛选和分页请求只应用当前上下文结果。
-- `frontend--page-announcement-editor`：机器/容器列表及详情零基分页与乱序保护、模板下拉分页与深层链接、光标插入。
+- `frontend--page-announcement-editor`：机器/容器独立选择与各自列表/详情乱序保护、零基分页、模板下拉分页与深层链接、光标插入。
 - `frontend--page-container-detail-page`：刷新按钮和容器动作后重取操作历史。
 - `frontend--page-create-image`：关键词请求乱序、新建/更新后的列表与表单状态、镜像错误映射。
 - `frontend--page-docs`：删除全仓零引用的 Docs 旧资源。
@@ -46,7 +46,7 @@ QUESTIONS.md 中有 18 个属于 Web 的“无需决策”条目，已有明确�
 
 | Q | 结论 | 承接能力 | 关键验收 |
 | --- | --- | --- | --- |
-| Q22 | 列表与详情请求按上下文生效 | AdminLogs、AnnouncementEditor、CreateImage | 旧周次/筛选/页码/关键词/机器/详情响应不得覆盖当前结果 |
+| Q22 | 列表与详情请求按各自上下文生效 | AdminLogs、AnnouncementEditor、CreateImage | 旧周次/筛选/页码/关键词/详情响应不得覆盖当前结果；公告机器与容器独立、互不清空、卸载不应用 |
 | Q23 | 输入完整校验且组名对齐 | Settings | 拒绝小数与非法提醒节点；`GROUP_ORDER` 使用 `容器清理`、`已删除容器` |
 | Q24 | 机器/容器列表零基分页 | AnnouncementEditor | 首屏 `page_number=0`；用户列表分页不改 |
 | Q27 | 权限查询释放控制器 | Authentication | 成功、401/异常均 `finally` 注销 |

@@ -1,6 +1,6 @@
 # 任务
 
-第 2 轮审查的 Required Changes 1–6 已由同一审查者定向复核，`APPROVE_WITH_CHANGES`、`CHANGES_APPLIED: yes`。现在开始实施；新增行为先记录失败基线再修复，已有正确行为不人为制造失败。证据位记录真实命令、退出码与测试汇总，不能只写“已通过”。
+第 2 轮 Required Changes 1–6 已由同一审查者定向复核，`APPROVE_WITH_CHANGES`、`CHANGES_APPLIED: yes`，实施已开始。B 范围（Q23、Q27、Q37 注册/设置/镜像、Q63、Q64 与 Register 死校验）已由 `.git/parent-b-acceptance.log` 的 9 文件 144 测试通过证明，红绿证据见 `.git/apply-direct-web-fixes-web-owned-final.log`；C/A 剩余与 Q28 全仓 lint 仍未完成。公告编辑器独立选择修订仍等原独立 reviewer 复核，相关公告任务不因本轮 B 台账转绿。证据位记录真实命令、退出码与测试汇总，不能只写“已通过”。
 
 ## 0. 审查门禁（apply 前）
 
@@ -11,13 +11,13 @@
 
 ## 1. 请求生命周期与乱序保护（Q22、Q27）
 
-- [ ] 1.1 红：写 `AdminLogs.test.jsx` 的 `test_q22_admin_logs_current_response`、`test_q22_admin_logs_stale_week`、`test_q22_admin_logs_stale_filter_page`，以及 `AnnouncementEditor.test.jsx` 的 `test_q22_announcement_stale_container`、`test_q22_announcement_stale_detail`、`CreateImage.test.jsx` 的 `test_q22_create_image_current_keyword`、`test_q22_create_image_stale_keyword`；确认旧列表或旧详情响应覆盖用例按预期失败。
+- [ ] 1.1 红：写 `AdminLogs.test.jsx` 的 `test_q22_admin_logs_current_response`、`test_q22_admin_logs_stale_week`、`test_q22_admin_logs_stale_filter_page`，以及 `AnnouncementEditor.test.jsx` 的 `test_q22_announcement_independent_selectors`、`test_q22_announcement_stale_container`、`test_q22_announcement_stale_detail`、`test_q22_announcement_unmount_no_apply`、`CreateImage.test.jsx` 的 `test_q22_create_image_current_keyword`、`test_q22_create_image_stale_keyword`；确认独立选择被清空、旧列表/详情覆盖或卸载后写入时按预期失败。
   - 证据位：`npm run test:web -- AdminLogs AnnouncementEditor CreateImage` 的失败测试名与原因。
-- [ ] 1.2 绿：为 AdminLogs 的周次/筛选/分页、AnnouncementEditor 的机器/容器列表与 `getDetailInformation`/`getContainerDetailInformation` 详情请求、CreateImage 的关键词/筛选增加页面内序号与可用的 AbortController；响应应用前校验上下文。
-  - 证据位：1.1 测试全绿输出；记录列表与详情请求的取消/序号实现位置。
-- [ ] 1.3 红：写 `permissionControllerRelease.test.js` 的 `test_q27_success_unregisters_controller`、`test_q27_error_unregisters_controller`、`test_q27_repeated_queries_no_accumulation`；确认成功路径与异常路径至少一条失败。
+- [ ] 1.2 绿：为 AdminLogs 的周次/筛选/分页，AnnouncementEditor 机器与容器各自独立的列表及 `getDetailInformation`/`getContainerDetailInformation` 详情请求，CreateImage 的关键词/筛选增加页面内序号与可用的 AbortController；容器列表保持 `machine_id:''`，机器切换不清空容器，容器切换不清空机器，同一选择器旧列表不覆盖新请求，卸载后不应用响应。
+  - 证据位：1.1 测试全绿输出；记录独立选择、各自请求与卸载作废的实现位置。
+- [x] 1.3 红：写 `permissionControllerRelease.test.js` 的 `test_q27_success_unregisters_controller`、`test_q27_error_unregisters_controller`、`test_q27_repeated_queries_no_accumulation`；确认成功路径与异常路径至少一条失败。
   - 证据位：该测试文件的失败输出。
-- [ ] 1.4 绿：`getUserPermissions` 在 `finally` 清理 timer 并 `unregisterController`，成功/401/异常同一路径，允许重复注销不抛错。
+- [x] 1.4 绿：`getUserPermissions` 在 `finally` 清理 timer 并 `unregisterController`，成功/401/异常同一路径，允许重复注销不抛错。
   - 证据位：1.3 测试全绿；记录控制器集合不再积累的断言。
 - [ ] 1.5 证据位：把 Q22、Q27 的测试命令、退出码、通过用例数写入 `verify.md` 对应小节。
   - 证据位：`verify.md` 的 Q22/Q27 小节。
@@ -37,13 +37,13 @@
 
 ## 3. 设置校验、组名与设置错误（Q23、Q37）
 
-- [ ] 3.1 红：写 `Settings.test.jsx` 的 `test_q23_settings_integer_valid`、`test_q23_settings_integer_decimal_rejected`、`test_q23_settings_reminder_valid`、`test_q23_settings_reminder_invalid_field`、`test_q23_settings_group_order`、`test_q23_settings_unknown_group_last`、`test_q37_settings_invalid_setting_mapping`、`test_q37_settings_update_failed_mapping`、`test_q37_settings_string_compatibility`；确认小数、非法节点、错位组名和字符串调用用例失败。
+- [x] 3.1 红：写 `Settings.test.jsx` 的 `test_q23_settings_integer_valid`、`test_q23_settings_integer_decimal_rejected`、`test_q23_settings_reminder_valid`、`test_q23_settings_reminder_invalid_field`、`test_q23_settings_group_order`、`test_q23_settings_unknown_group_last`、`test_q37_settings_invalid_setting_mapping`、`test_q37_settings_update_failed_mapping`、`test_q37_settings_string_compatibility`；确认小数、非法节点、错位组名和字符串调用用例失败。
   - 证据位：`Settings.test.jsx` 失败测试名与输入/渲染差异。
-- [ ] 3.2 绿：整数输入提交前拒绝小数/非数字；提醒节点按逗号逐项校验正整数，空项/非整数/0/负数在“清理提醒节点”字段报错，不静默丢弃。
+- [x] 3.2 绿：整数输入提交前拒绝小数/非数字；提醒节点按逗号逐项校验正整数，空项/非整数/0/负数在“清理提醒节点”字段报错，不静默丢弃。
   - 证据位：3.1 中整数与提醒测试转绿；记录提交前阻断与字段错误。
-- [ ] 3.3 绿：`GROUP_ORDER` 改为 `['容器清理', '磁盘策略', '已删除容器', '公告', '镜像']`，未知分组排最后。
+- [x] 3.3 绿：`GROUP_ORDER` 改为 `['容器清理', '磁盘策略', '已删除容器', '公告', '镜像']`，未知分组排最后。
   - 证据位：3.1 中分组测试转绿；记录 DOM 顺序断言。
-- [ ] 3.4 绿：设置错误调用改传 `err.body || err` 对象、`status`、`route`；补 `/settings` 的 `invalid_setting`、`update_failed` 映射；保留字符串兼容。
+- [x] 3.4 绿：设置错误调用改传 `err.body || err` 对象、`status`、`route`；补 `/settings` 的 `invalid_setting`、`update_failed` 映射；保留字符串兼容。
   - 证据位：3.1 中 Q37 测试转绿；记录弹窗实际文案。
 - [ ] 3.5 证据位：把 Q23、Q37-Settings 的命令、退出码、通过用例数写入 `verify.md`。
   - 证据位：`verify.md` 的 Q23/Q37 小节。
@@ -52,22 +52,23 @@
 
 - [ ] 4.1 红：写 `Register.test.jsx` 的 `test_q37_register_request_code_domain_mapping`、`test_q37_register_code_mapping`、`test_q37_register_structured_call`，`TemplateManager.test.jsx` 的 `test_q37_template_known_reasons`、`test_q37_template_system_delete_mapping`、`test_q37_template_unknown_reason`，`CreateImage.test.jsx` 的 `test_q37_create_image_known_reasons`、`test_q37_create_image_unknown_reason`；确认映射缺键、只传字符串或落“未收录”的用例失败。
   - 证据位：三个测试文件的失败测试名与错误文案。
-- [ ] 4.2 绿：Register 的 `/register`、`/request_register_code` 按规格表补原因（含 `code_creation_failed`）并改结构化调用。
+  - 说明（B）：Register 与 CreateImage 的 Q37 测试已在 B 验收中通过；TemplateManager 由 A 负责，本项不整项勾选。
+- [x] 4.2 绿：Register 的 `/register`、`/request_register_code` 按规格表补原因（含 `code_creation_failed`）并改结构化调用。
   - 证据位：4.1 中 Register 测试转绿；记录调用参数含 `route`。
 - [ ] 4.3 绿：TemplateManager 的 `/announcements/templates` 按规格表补原因，保存/删除改传对象、状态与路由。
   - 证据位：4.1 中 TemplateManager 测试转绿；记录“模板名称已存在”等实际文案。
-- [ ] 4.4 绿：CreateImage 的五个镜像 route 按规格表补原因；确认只映射 Ctrl 现有 reason，不新增协议。
+- [x] 4.4 绿：CreateImage 的五个镜像 route 按规格表补原因；确认只映射 Ctrl 现有 reason，不新增协议。
   - 证据位：4.1 中 CreateImage 测试转绿；记录 route/error_reason 表覆盖。
 - [ ] 4.5 证据位：把 Q37-注册/模板/镜像的命令、退出码、通过用例数写入 `verify.md`。
   - 证据位：`verify.md` 的 Q37 小节。
 
 ## 5. 镜像新建与更新状态（Q63、Q64）
 
-- [ ] 5.1 红：写 `test_q63_create_image_clear_keyword_select_new`、`test_q63_create_image_reload_failure_preserves_form`、`test_q64_create_image_update_refetches_list`、`test_q64_create_image_update_failure_keeps_list`；确认关键词、列表、`selectedId`、表单至少一态失败。
+- [x] 5.1 红：写 `test_q63_create_image_clear_keyword_select_new`、`test_q63_create_image_reload_failure_preserves_form`、`test_q64_create_image_update_refetches_list`、`test_q64_create_image_update_failure_keeps_list`；确认关键词、列表、`selectedId`、表单至少一态失败。
   - 证据位：`CreateImage.test.jsx` 失败测试名与状态快照。
-- [ ] 5.2 绿：新建成功固定为“关键词清空 → 空词重取 → 选中新 `image_id` → 表单保留提交值”；重取失败保留表单并显示错误，不伪造选中。
+- [x] 5.2 绿：新建成功固定为“关键词清空 → 空词重取 → 选中新 `image_id` → 表单保留提交值”；重取失败保留表单并显示错误，不伪造选中。
   - 证据位：5.1 中 Q63 测试转绿；四态断言。
-- [ ] 5.3 绿：更新成功后按当前关键词重取左侧列表并展示最新摘要；失败保留旧列表、不显示成功文案。
+- [x] 5.3 绿：更新成功后按当前关键词重取左侧列表并展示最新摘要；失败保留旧列表、不显示成功文案。
   - 证据位：5.1 中 Q64 测试转绿；更新前后列表调用次数与文案。
 - [ ] 5.4 证据位：把 Q63、Q64 的命令、退出码、通过用例数写入 `verify.md`。
   - 证据位：`verify.md` 的 Q63/Q64 小节。
@@ -80,6 +81,7 @@
   - 证据位：两个 eligibility 测试文件的失败测试名与纯计算断言。
 - [ ] 6.3 红：写 `docs-cleanup.integration.mjs` 的 `test_q36_docs_zero_ref_removed`、`test_q36_docs_keeps_referenced_status_display`、`test_q36_docs_referenced_file_guard`；`Register.test.jsx` 的 `test_q36_register_field_rule_message`、`test_q36_register_no_validate_messages`；`Login.test.jsx` 的 `test_q36_login_structured_error`、`test_q36_login_network_fallback`、`test_q36_login_no_dead_branch_or_debug_console`；确认资源仍存在、`validateMessages` 仍配置、`userMsg`/console 仍在时失败。
   - 证据位：三个测试文件的失败测试名与源码命中行。
+  - 说明（B）：Register 两条已通过（见 6.9）；Docs/Login 未完成，故本项不整项勾选。
 - [ ] 6.4 绿：ManageMachine 容器标题跳 `/index/containers/:containerId`；删除旧 `ContainerDetailModal`、`openContainerDetail`、`returnToDetail`、`detailModalVisible` 及弹窗专用回调；不新增卡片删除入口，只清理旧弹窗来源的不可达删除确认回跳链，实际删除仍走专用详情页。
   - 证据位：6.1 中 ManageMachine 测试转绿；源码符号扫描为空。
 - [ ] 6.5 绿：ManageUser 容器行保留现有导航并阻止行选择冒泡；删除旧 `ContainerDetailModal`、`openContainerDetail`、`detailModalVisible` 及死状态，不新增详情入口。
@@ -90,7 +92,10 @@
   - 证据位：6.1 中 Q59/Q60 测试转绿；第一次/第二次数请求参数与第 5/6 条断言。
 - [ ] 6.8 绿：删除 Docs 零引用资源并保留 `statusDisplay`；删除 Register `validateMessages` 保留字段消息；删除 Login `userMsg` 与两处调试 console，保留结构化错误与网络中文兜底。
   - 证据位：6.3 中 Q36 测试转绿；引用扫描、构建与源码搜索输出。
-- [ ] 6.9 证据位：把 Q35、Q36、Q59、Q60 的命令、退出码、通过用例数写入 `verify.md`。
+  - 说明（B）：Register 删除 `validateMessages` 已由 6.9 证明；Docs/Login 未完成，故本项不整项勾选。
+- [x] 6.9 B 已证 Register 死校验：`test_q36_register_field_rule_message`、`test_q36_register_no_validate_messages` 在 `.git/parent-b-acceptance.log` 9 文件 144 通过中通过；`Register.jsx` 已不再配置 `validateMessages`，字段规则消息保留。
+  - 证据位：`.git/parent-b-acceptance.log` 的 144 passed 汇总与所需 9 文件范围；`.git/apply-direct-web-fixes-web-owned-final.log` 的红绿证据段。
+- [ ] 6.10 证据位：把 Q35、Q36、Q59、Q60 的命令、退出码、通过用例数写入 `verify.md`。
   - 证据位：`verify.md` 的 Q35/Q36/Q59/Q60 小节。
 
 ## 7. 解冻保页、详情历史与 404（Q69、Q61、Q66）

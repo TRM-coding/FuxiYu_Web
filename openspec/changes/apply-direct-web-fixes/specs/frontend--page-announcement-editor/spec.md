@@ -4,27 +4,39 @@
 
 ## ADDED Requirements
 
-### Requirement: AnnouncementEditor 机器和容器列表及详情请求使用零基分页并保护乱序
+### Requirement: AnnouncementEditor 机器和容器独立选择并各自保护列表与详情请求
 
-机器和容器列表 SHALL 使用 `page_number=0` 与现有 `page_size=500`，MUST NOT 再把 1 当作首页；用户列表的分页口径不在本要求内，MUST NOT 一并替换。机器/容器选择变化产生的列表请求，以及 `getDetailInformation`、`getContainerDetailInformation` 详情请求，SHALL 使用同一上下文保护（取消或递增序号）；旧列表或旧详情响应 MUST NOT 覆盖当前选择。
+机器和容器是独立的公告属性选择器。机器/容器列表 SHALL 使用 `page_number=0` 与现有 `page_size=500`；容器列表请求 SHALL 使用 `machine_id:''`，MUST NOT 跟随当前机器选择过滤。机器选择变化 MUST NOT 清空或重载容器选择/列表；容器选择变化 MUST NOT 清空机器选择/详情。机器和容器各自的列表请求及 `getDetailInformation`/`getContainerDetailInformation` 详情请求 SHALL 使用各自上下文的取消或递增序号；旧响应 MUST NOT 覆盖对应选择，组件卸载后 MUST NOT 再应用任何列表或详情响应。用户列表分页口径不在本要求内，MUST NOT 一并替换。
 
 #### Scenario: 首屏请求第 0 页
 
 - **GIVEN** 公告编辑器首次展开机器或容器选择器
 - **WHEN** 页面请求列表
-- **THEN** 请求携带 `page_number=0`、`page_size=500`，返回结果按当前选择写入
+- **THEN** 机器/容器列表均携带 `page_number=0`、`page_size=500`，容器列表携带 `machine_id=''`，结果按各自选择写入
 
-#### Scenario: 切换机器后旧容器响应晚到
+#### Scenario: 机器切换保留独立容器选择
 
-- **GIVEN** 用户先选择机器 A，再切换到机器 B
-- **WHEN** 机器 A 的容器请求晚于机器 B 的请求返回
-- **THEN** 机器 A 的旧列表被丢弃，容器选择仍显示机器 B 的结果
+- **GIVEN** 用户已独立选择机器 A 与容器 B
+- **WHEN** 用户切换到机器 C
+- **THEN** 容器选择仍为 B，容器列表不按机器重载或过滤；选择器仍可独立选择其他容器，不清空机器选择
+
+#### Scenario: 同一选择器旧列表响应晚到
+
+- **GIVEN** 同一选择器在列表尚未加载完成时再次展开，产生后一次列表请求
+- **WHEN** 前一次请求晚于后一次返回
+- **THEN** 仅应用后一次列表，旧响应不覆盖选项，也不提前结束当前加载状态；机器与容器选择器各自判断请求序号
 
 #### Scenario: 旧机器或容器详情响应晚到
 
-- **GIVEN** 用户已从机器 A/容器 A 切换到机器 B/容器 B
-- **WHEN** A 的 `getDetailInformation` 或 `getContainerDetailInformation` 响应晚于 B 返回
-- **THEN** 旧 `machineDetail`/`containerDetail` 被丢弃，编辑器属性仍对应当前选择
+- **GIVEN** 机器和容器已分别切换到当前选择，旧详情请求仍在途
+- **WHEN** 旧 `getDetailInformation` 或 `getContainerDetailInformation` 响应晚于当前请求返回
+- **THEN** 旧 `machineDetail`/`containerDetail` 被丢弃，各自详情仍对应当前选择，且不清空另一独立选择
+
+#### Scenario: 卸载后旧列表或详情响应不应用
+
+- **GIVEN** 机器或容器的列表/详情请求仍在途
+- **WHEN** 公告编辑器卸载后这些响应返回
+- **THEN** 不更新已卸载页面的机器/容器列表或详情，也不清空另一独立选择
 
 ### Requirement: AnnouncementEditor 模板下拉分页与编辑深链
 

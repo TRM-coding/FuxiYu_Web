@@ -1,50 +1,73 @@
-# 审查结论：apply-direct-web-fixes（第 2 轮，定向复核）
+# 审查结论：apply-direct-web-fixes（第 3 轮，Q22 公告选择定向重审）
 
 ## 审查元数据
 
-- **Review round**: 2
-- **Prior round**: 第 1 轮为 REVISE；第 2 轮结论为 APPROVE_WITH_CHANGES，列出了 C5 与 M8–M11，对应 6 项 Required Changes。本轮只复核这 6 项，不重新审计其他模块。
-- **Recheck scope**: Required Changes 1–6 的当前磁盘内容；未重审 Required Changes 1–6 之外的模块，也未重审旧 C1–C4/M1–M7（上一轮已确认 fixed）。
-- **Reviewer context**: 独立上下文审查；未读取作者会话，未使用跨模型 CLI；只读当前相关 files 与只读命令。
+- **Review round**: 3
+- **Prior round**: 第 1 轮 REVISE；第 2 轮 APPROVE_WITH_CHANGES/yes（6 项 Required Changes 已应用并保留证据）。本轮只重审 Q22 公告选择规格修订，不重审其他 6 项。
+- **Reviewer context**: 独立上下文审查；未读取作者会话，未使用跨模型 CLI；只读当前规划文件、`git HEAD` UI/API 与只读命令。
 - **Tool restrictions**: 只读 read/grep/pwsh；唯一写入本 review.md；未修改源码、测试、主规格、归档，未提交；未读取环境秘密或凭据。
-- **Artifacts reviewed（仅 6 项相关）**: `proposal.md`、`design.md`、`specs/frontend--page-manage-machine/spec.md`、`specs/frontend--page-manage-user/spec.md`、`specs/frontend--page-announcement-editor/spec.md`、`specs/frontend--page-register/spec.md`、`test-plan.md`、`tasks.md`；Ctrl 只读 `services/user_tasks.py`、`api/user_api.py` 用于确认 `code_creation_failed` 仍是现有原因；`git status --short` 确认源码未变。
-- **Source/DB/interface**: `git status --short` 只有 `openspec/changes/apply-direct-web-fixes/` 未跟踪；源码、DB、接口均未改。
-- **Staleness**: 本复核只对当前 6 项相关文件内容有效；这 6 项任一项再改，结论失效。其他模块未重审。
+- **Scope**: 当前 Q22 公告选择修订（proposal/design/delta spec/test-plan/tasks）；A 的源码/tests 正在修改，不在本轮审查边界，也未作为证据；HEAD 仅用于对照现有 UI/API。
+- **Staleness**: 本结论只对下表所列当前规划文件 hash 与 Q22 相关语义有效；A 的实施状态行（green/red/勾选）变化不改变 Q22 规划语义，但 Q22 场景/映射/要求再改则本轮结论失效。
 
-## 必需修订 1–6 复核
+### 当前适用文件 hash / 边界
 
-| # | 复核项 | 状态 | 当前证据 |
-| --- | --- | --- | --- |
-| 1 | ManageMachine 同名 MODIFIED，保留旧场景名，删除 Modal 父契约；卡片无删除按钮，删除资格只作纯计算，实际删除走已有详情页，不新增入口 | 满足 | `specs/frontend--page-manage-machine/spec.md:51` 有 `## MODIFIED Requirements`；`:53` 与主规格同名；`:57-81` 沿用旧场景名；MODIFIED 段内已无 `ContainerDetailModal`/`该弹窗`。`:9` 明确机器卡片没有删除按钮、只清理旧不可达回跳、实际删除沿专用页；`:55` 明确删除资格只作为共享纯函数结果断言；`:17-21` 已把 ADDED 的“删除确认取消”假前提改为旧实现不可达链路。design `:24`、`:102`，tasks `:83`、`:87`，test-plan `:56-60` 同步。 |
-| 2 | ManageUser 同名 MODIFIED，保留旧场景名，删除 Modal 父契约，不新增删除/详情入口 | 满足 | `specs/frontend--page-manage-user/spec.md:29` 有 `## MODIFIED Requirements`；`:31` 与主规格同名；`:35-63` 沿用旧场景名；MODIFIED 段内已无 `ContainerDetailModal`/`该弹窗`。`:53-57` 明确不保留旧只读组件契约或父回调断言，卡片无删除按钮/删除 API；tasks `:85-87`、test-plan `:64-68` 同步。 |
-| 3 | AnnouncementEditor 列表与两个详情请求均有乱序 case | 满足 | `specs/frontend--page-announcement-editor/spec.md:7` 标题已含“列表及详情请求”，`:9` 明确 `getDetailInformation`/`getContainerDetailInformation` 与列表共用上下文保护；`:23-27` 有“旧机器或容器详情响应晚到”场景。test-plan `:27` 有 `test_q22_announcement_stale_detail`，tasks `:14`、`:16` 已纳入两个详情请求；design `:54` 同步。一个详情场景覆盖两个接口的同一失败模式，test-plan 用一个具名测试断言两者；符合“一个场景多个测试/无需 1:1 再造测试”的口径。 |
-| 4 | 验证码 `code_creation_failed` 映射 + design 8+4 | 满足 | `specs/frontend--page-register/spec.md:46` 已有 `| /request_register_code | code_creation_failed | 验证码生成失败，请稍后重试 |`；design `:77` 为“8+4 个原因”并列出 `code_creation_failed`；test-plan `:78`、`:102` 与 tasks `:55` 已覆盖该行。Ctrl `services/user_tasks.py:523-525` 仍返回该现有 reason，未新增协议。 |
-| 5 | Q28 直接 `npm run lint` + 配置差异机械验收，不增加包装 | 满足 | test-plan `:14-15` 为“非可执行规格：直接机械验证”，`:100` 明确不在 `npm test` 内重复运行 lint；tasks `:111` 直接记录 lint 失败基线与 `git diff`/`rg` 策略扫描，`:119-120` 直接记录 0/0 与配置差异。当前 test-plan/tasks 已无 `lint-policy` 测试文件；`npm run lint` 当前 329 errors/20 warnings（exit 1）是 apply 前预期红灯，不是本项未满足。 |
-| 6 | tasks 9.4 正常实现提交 | 满足 | tasks `:134` 已改为“正常提交本变更的源码、测试与配置；提交边界只包含本变更交付，不混入 review.md、主规格、归档、QUESTIONS 或规划文档”；已删除“未修改源码”“不提交”。父提交规划 baseline 后再提交实现；9.4 不再承担规划期核对。规划工件已在父 baseline 正常版本管理，9.4 的“不混入规划文档”只表示实现提交不重复携带它们，不构成对已批准规划工件的排除。 |
+| 文件 | SHA256 |
+| --- | --- |
+| `openspec/changes/apply-direct-web-fixes/proposal.md` | `77FD9BE2D4AA159E49798B20B6B894D1B91853A8C3BE28565AF042094F2AAA28` |
+| `openspec/changes/apply-direct-web-fixes/design.md` | `69B3B6E22BD1E20FAA205D56E935A694DB2513DC4CD114434631A2CB7236AAF2` |
+| `openspec/changes/apply-direct-web-fixes/specs/frontend--page-announcement-editor/spec.md` | `7485E7A3240A19CC0280B860ECBAFF343FDB70CE15D9B629E21D0DA702D5F6BB` |
+| `openspec/changes/apply-direct-web-fixes/test-plan.md` | `7DD809A5F4C24F50F7D798828B20B054677745B79777B9A811CD6735C2CC1734` |
+| `openspec/changes/apply-direct-web-fixes/tasks.md` | `F24BE89D26AB1CFF693A9F9BA6F96E65E0471D376C5949A22339B2DD639453B6` |
+| UI/API 对照基线 `HEAD` | `9cee764c19a251f400e4402752c9ce2c783a1611` |
+
+**边界**：A 工作区的 source/tests 修改不在本审查内；`HEAD` 只用于确认现有 UI/API 语义。test-plan/tasks 中的 green/red 状态行是 A 实施进度，不作为本轮规划语义证据。
+
+## Q22 修订复核
+
+| 检查项 | 结论 | 证据 |
+| --- | --- | --- |
+| 原 spec 的 machine→container 联动是误扩，本次收回 | 成立 | `HEAD` 的 `src/pages/AnnouncementEditor.jsx` 本就有两个独立 Select 与两个独立 state：`:91`/`:96` 分别保存 machine/container，`:362-370`/`:399-407` 的 `onChange` 互不驱动；`:147-173` 的 `loadMachines`/`loadContainers` 是两条独立列表加载，容器列表 `:165` 固定 `machine_id:''`，没有按当前机器过滤。HEAD 的旧 delta 确曾有“切换机器后旧容器响应”和 design“容器列表序号绑定 selectedMachineId”的联动写法；当前 diff 已删除这些句子，改为独立选择、各自请求。 |
+| 列表 `machine_id:''` 与现有 API/UI 一致 | 成立 | 当前 spec `:9`/`:15` 明确容器列表 `machine_id:''`、不跟随当前机器；HEAD `AnnouncementEditor.jsx:165` 已是 `machine_id:''`；HEAD `src/api/container_api.jsx:253` 的 `listAllContainerBrefInformation` 已接收 `machine_id/page_number/page_size`，`src/api/machine_api.jsx:224` 同理。无新接口、字段、DB 或协议。 |
+| 机器与容器独立，互不清空；`independent_selectors` 场景可执行 | 成立 | 当前 spec `:9`、`:17-21`；HEAD 两个 Select 的 `value/onChange` 分离，机器切换只 set `selectedMachineId`，容器切换只 set `selectedContainerId`；机器/容器 detail effect 分别依赖各自 id（`:179-187`/`:193-211`）。test-plan `:26` 映射 `test_q22_announcement_independent_selectors`，tasks `:14` 已列该测试，`:16` green 覆盖互不清空。 |
+| 同一选择器旧列表响应晚到不再假定“选择触发列表重载” | 成立 | 当前 spec `:23-27` 的触发是“列表尚未加载完成时再次展开”，不是选择变化；HEAD 的 `loadMachines`/`loadContainers` 只在 `onDropdownVisibleChange(open)` 调用，且在列表尚未填充时再次展开会发起后一次请求，deferred promise 可控。test-plan `:27` 映射 `test_q22_announcement_stale_container`，tasks `:14`/`:16` 已列同一选择器旧列表不覆盖新请求；没有“选择即重载”的假定。 |
+| 两个 detail 请求各自选择上下文；`stale_detail` 可执行 | 成立 | 当前 spec `:29-33`；HEAD machine/container detail effect 分离（`:179-187`/`:193-211`），各自依赖 `selectedMachineId`/`selectedContainerId`。test-plan `:28` 映射 `test_q22_announcement_stale_detail`，tasks `:14` 已列。 |
+| 卸载后不应用在途列表/详情；`unmount_no_apply` 可执行 | 成立 | 当前 spec `:35-39`；HEAD 当前无卸载作废逻辑，这是 Q22 请求生命周期的补齐，不是新业务/DB/协议；test-plan `:29` 映射 `test_q22_announcement_unmount_no_apply`，tasks `:14` 已列。 |
+| 场景映射完整、无遗漏 | 成立 | 当前 test-plan `:25-29` 覆盖首屏、independent_selectors、stale_container、stale_detail、unmount；tasks `:14` 1.1 已列 `test_q22_announcement_independent_selectors`、`test_q22_announcement_stale_container`、`test_q22_announcement_stale_detail`、`test_q22_announcement_unmount_no_apply`，`:16` green 同步；test-plan `:102` 说明 independent_selectors/stale_container/unmount，stale_detail 由 `:28` 行覆盖。独立选择与同选择器旧列表分别映射，未再把 machine 切换当作容器重载触发器。 |
+| 无新业务/DB/协议 | 成立 | 只用 HEAD 现有 `listAllMachineBrefInformation`、`listAllContainerBrefInformation`、`getDetailInformation`、`getContainerDetailInformation`；`machine_id:''`、`page_number/page_size` 均为现有参数。首屏 `page_number=0` 属既有 Q24 修订，不是 Q22 新增协议。 |
+
+## 其他已审核证据（保留，不重审）
+
+| 已审核项 | 保留证据 |
+| --- | --- |
+| ManageMachine 同名 MODIFIED | delta `:51-85` 仍为同名 MODIFIED、旧场景名、无 `ContainerDetailModal` 父契约；卡片无删除按钮、删除资格纯计算、实际删除沿详情页。 |
+| ManageUser 同名 MODIFIED | delta `:29-63` 仍为同名 MODIFIED、旧场景名、无 Modal 父契约；不新增删除/详情入口。 |
+| 前次 Q22 detail/unmount | 本次 Q22 修订已覆盖 detail 与 unmount，并保留 test-plan `:28-29` / tasks `:14` 的映射；无回退。 |
+| Register `code_creation_failed` | spec `:46` 行、design 8+4 仍保留；Ctrl 现有 reason，无新协议。 |
+| Q28 直接 lint | test-plan `:14-15`/`:103` 仍为直接机械验证，不恢复测试包装；tasks 8.1/8.5 仍直接记录。 |
+| tasks 9.4 正常提交 | tasks `:139` 仍为正常提交源码/测试/配置，不回到规划期“未提交”检查。 |
 
 ## 复核发现
 
-- C5、M8、M9、M10、M11 均已按上表当前磁盘内容满足；没有未闭合的 Critical 或 Moderate。
-- M10/M11 的旧结论来自父更正前的快照；当前 test-plan/tasks 已分别改为直接 lint 与正常实现提交，本轮以当前文件为准。
-- 模板/规格描述性标题中文化仅是标题文案，无行为变化；未据此新增任何要求。
-- 只复核了 Required Changes 1–6；旧 C1–C4/M1–M7 维持上一轮 fixed，未重新审计其他模块。
+- 未发现新的 Critical 或 Moderate；Q22 修订是收回误扩，不是新增业务或协议。
+- `independent_selectors` 与 `stale_container` 在 test-plan/tasks 均有具名映射，且场景触发与 HEAD UI/API 一致；没有假定“选择会触发列表重载”。
+- A 的 source/tests 正在完成，未纳入本轮；本轮只评规划语义，未把 green/red 实施状态当作通过证据。
 
 ## 嵌入指令 / 注入尝试
 
-**Detected:** 无。被审文件中的复核状态说明是数据，不构成要求审查者改变结论的指令。
+**Detected:** 无。被审文件中的状态说明是数据，不构成要求审查者改变结论的指令。
 
 ## 结论
 
-6 项 Required Changes 已全部满足；保留 APPROVE_WITH_CHANGES 作为本轮定向复核结论，完成信号置 yes。
+本次实际读取了当前规划文件与 `git HEAD` UI/API：Q22 修订正确收回了 machine→container 误扩，机器/容器独立、容器列表 `machine_id:''`、各自列表/详情序号、卸载不应用均有可执行场景与映射；无新增业务/DB/协议，也无新增 Required Changes。前次 6 项证据保留。canonical 值经本次复核重新确认，不是沿用旧结论。
 
 VERDICT: APPROVE_WITH_CHANGES
 
-## 必需修订（已应用并复核）
+## 必需修订（已应用 / 无新增）
 
-1–6 均已按上表证据应用，无剩余 Required Changes。完成信号为审查者确认，后续 apply 可按 tasks 0.1 读取本行。
+前次 6 项已应用并保留证据；Q22 修订无新增 Required Changes，故本轮完成信号仍为 yes（审查者确认，非沿用旧值）。
 
 CHANGES_APPLIED: yes
 
 ## 作者反驳
 
-无新增作者反驳；C5/M8–M11 均按 fixed 复核。旧 C1–C4/M1–M7 不在本轮重审范围。
+无新增作者反驳；Q22 修订按本次定向复核结论处理，其他 6 项不在本轮重审范围。

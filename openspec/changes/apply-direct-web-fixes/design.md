@@ -22,7 +22,7 @@
 | M6 Q23 组名错位 | Settings 固定 `容器清理`、`已删除容器` 与完整顺序 |
 | M7 Q69 scope creep | ManageMachine 只保留解冻，删除“其他容器操作”，补切页竞态 |
 | C5 主规格仍要求旧弹窗 | ManageMachine/ManageUser delta 各补同名 `MODIFIED Requirements` 完整块，保留原场景名并删除弹窗父回调契约 |
-| M8 公告详情请求乱序 | AnnouncementEditor 的 `getDetailInformation`/`getContainerDetailInformation` 共用上下文保护，新增 `test_q22_announcement_stale_detail` |
+| M8 公告详情请求乱序 | AnnouncementEditor 的机器/容器独立选择与各自列表/详情上下文保护，新增 `test_q22_announcement_stale_detail` 与 `test_q22_announcement_unmount_no_apply` |
 | M9 验证码生成失败漏映射 | Register `/request_register_code` 增加 `code_creation_failed`，设计计数改为 8+4 |
 | M10 Q28 测试包装 | 按父修订保持直接 `npm run lint` + 配置差异/`rg` 策略扫描，不恢复 lint 测试文件 |
 | M11 规划期提交检查 | tasks 9.4 改为正常实现提交源码、测试与配置，并保留不混入 review/主规格等边界 |
@@ -48,10 +48,10 @@
 
 ### 1. 请求生命周期：页面内序号优先，取消只用于该请求
 
-会因周次、筛选、页码、关键词或机器选择变化而重发的请求，统一采用“页面内递增序号 + 可用时 AbortController”的双保险：响应应用前比较序号和当前上下文，不匹配则丢弃；取消只针对该页面发起的请求，MUST NOT 对业务列表调用全局 `abortAll`，避免把其他页面或认证请求一并取消。
+会因周次、筛选、页码、关键词或各自属性选择变化而重发的请求，统一采用“页面内递增序号 + 可用时 AbortController”的双保险：响应应用前比较序号和当前上下文，不匹配则丢弃；取消只针对该页面发起的请求，MUST NOT 对业务列表调用全局 `abortAll`，避免把其他页面或认证请求一并取消。
 
 - AdminLogs：周次、筛选、分页共用一个查询序号；旧请求完成时只释放自身资源。
-- AnnouncementEditor：机器和容器列表分别保存选择上下文；容器列表序号绑定 `selectedMachineId`，`getDetailInformation`/`getContainerDetailInformation` 详情请求共用同一上下文保护，旧详情不得写入当前 `machineDetail`/`containerDetail`。
+- AnnouncementEditor：机器与容器是独立的公告属性选择器；两者各自保存选择与请求序号，容器列表固定使用 `machine_id:''`，机器切换不清空或重载容器选择/列表，容器切换不清空机器选择/详情；`getDetailInformation`/`getContainerDetailInformation` 详情请求同样按各自上下文保护，卸载时作废全部在途响应。
 - CreateImage：列表序号绑定 `keyword`、`mineOnly` 与资源范围；新建/更新后的重取也使用新序号。
 - ManageUser：只删除死弹窗链，不扩展为全页请求重构；现有用户/权限请求行为保持。
 - Q27：`getUserPermissions` 在 `finally` 统一 `unregisterController` 并清理 `timer`；成功、401、异常和组件卸载同一路径，不重复注册，不因重复注销抛错。
