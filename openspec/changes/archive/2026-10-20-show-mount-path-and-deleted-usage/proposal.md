@@ -33,5 +33,5 @@ Web 需要在既有列表之上异步补充只读统计：完整展示最近记�
 - 外部契约：复用既有 `container:manage` 权限和既有详情请求；新增 Web→Ctrl 只读统计请求。完整请求/响应与字段语义写在 [design.md](design.md)，本仓无需读取兄弟仓文档即可实现。
 - 不修改 Ctrl/Node 实现，不修改正式主规格、archive 或 Global；本阶段只产出 Web 规划文档，不实施、不测试、不提交。
 - 兄弟仓同名配套 change（仅作跨仓关联，本仓契约自足）：
-  - [Ctrl: show-mount-path-and-deleted-usage](../../../../FuxiYu_CtrKernel/openspec/changes/show-mount-path-and-deleted-usage/proposal.md)
-  - [Node: show-mount-path-and-deleted-usage](../../../../FuxiYu_NodeKernel/openspec/changes/show-mount-path-and-deleted-usage/proposal.md)
+  - [Ctrl: show-mount-path-and-deleted-usage](../../../../../FuxiYu_CtrKernel/openspec/changes/archive/2026-10-20-show-mount-path-and-deleted-usage/proposal.md)
+  - [Node: show-mount-path-and-deleted-usage](../../../../../FuxiYu_NodeKernel/openspec/changes/archive/2026-10-20-show-mount-path-and-deleted-usage/proposal.md)

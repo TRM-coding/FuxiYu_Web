@@ -267,8 +267,8 @@ Content-Type: application/json
 
 ## Source references
 
-- [src/pages/ContainerDetailPage.jsx](../../../src/pages/ContainerDetailPage.jsx)、[src/pages/DeletedContainers.jsx](../../../src/pages/DeletedContainers.jsx)
-- [src/api/container_api.jsx](../../../src/api/container_api.jsx)、[src/configs/backend_config.js](../../../src/configs/backend_config.js)
-- [src/components/CopyChip.jsx](../../../src/components/CopyChip.jsx)、[src/utils/detailFormat.js](../../../src/utils/detailFormat.js)
-- [src/test/DeletedContainers.test.jsx](../../../src/test/DeletedContainers.test.jsx)、[src/test/ContainerDetailEligibility.test.jsx](../../../src/test/ContainerDetailEligibility.test.jsx)
-- 兄弟仓同名 change（只读关联）：[Ctrl](../../../../FuxiYu_CtrKernel/openspec/changes/show-mount-path-and-deleted-usage/proposal.md)、[Node](../../../../FuxiYu_NodeKernel/openspec/changes/show-mount-path-and-deleted-usage/proposal.md)
+- [src/pages/ContainerDetailPage.jsx](../../../../src/pages/ContainerDetailPage.jsx)、[src/pages/DeletedContainers.jsx](../../../../src/pages/DeletedContainers.jsx)
+- [src/api/container_api.jsx](../../../../src/api/container_api.jsx)、[src/configs/backend_config.js](../../../../src/configs/backend_config.js)
+- [src/components/CopyChip.jsx](../../../../src/components/CopyChip.jsx)、[src/utils/detailFormat.js](../../../../src/utils/detailFormat.js)
+- [src/test/DeletedContainers.test.jsx](../../../../src/test/DeletedContainers.test.jsx)、[src/test/ContainerDetailEligibility.test.jsx](../../../../src/test/ContainerDetailEligibility.test.jsx)
+- 兄弟仓同名 change（只读关联）：[Ctrl](../../../../../FuxiYu_CtrKernel/openspec/changes/archive/2026-10-20-show-mount-path-and-deleted-usage/proposal.md)、[Node](../../../../../FuxiYu_NodeKernel/openspec/changes/archive/2026-10-20-show-mount-path-and-deleted-usage/proposal.md)
