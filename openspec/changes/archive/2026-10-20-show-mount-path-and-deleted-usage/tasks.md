@@ -42,4 +42,5 @@
 - 权限 `loaded`/`canManageContainers` 变为 false 时执行 `resetMountUsage()` 并推进列表请求序号：停止 pending 计时器、abort 在途统计，迟到 list 响应不能重新开启统计；未改原权限规则、恢复/清理资格或新增 machine gate。
 - 新增参数化 pure util 用例与页面 `du_failed` 已知错误用例；新增权限 rerender 后 pending 计时取消、在途统计 abort、迟到 list 响应取消测试。
 - 复跑 `npx vitest run src/test/mountUsage.test.js src/test/DeletedContainersMountUsage.test.jsx --maxWorkers=1` 共 44 个用例通过；`src/test/DeletedContainers.test.jsx` 10 个既有用例通过；`npm run build` 通过。
-- 未 commit。
+- 主代理独立复跑 util、API、详情路径、统计页面与既有已删除列表共 **68 passed**；[三仓接口回放](../../../../../FuxiYu_CtrKernel/test/container/test_mount_usage_cross_repo.py) 消费实际 Ctrl 序列化响应，校验已知错误、未知错误与真实测量时间。
+- 实现、走审修补与主规格归档由主代理按阶段本地提交；未推送或部署。
