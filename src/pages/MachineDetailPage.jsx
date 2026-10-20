@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Col, Input, InputNumber, message, Modal, Row, Select, Slider, Spin, Switch, Tag, Typography } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, DesktopOutlined, EditOutlined, ReloadOutlined, SafetyCertificateOutlined, SaveOutlined } from '@ant-design/icons';
@@ -83,6 +83,8 @@ const MachineDetailPage = () => {
   // 降低内存上限时共享上限被自动下调过：给出可见提示，避免用户以为值没变
   const [sharedAutoReduced, setSharedAutoReduced] = useState(false);
   const limitsInitializedRef = useRef(false);
+  const snapshot = useMemo(() => machine?.runtime_snapshot || {}, [machine]);
+  const gpus = useMemo(() => (Array.isArray(snapshot.gpu) ? snapshot.gpu : []), [snapshot]);
 
   const openEditBasic = () => {
     setBasicDraft({
@@ -169,7 +171,7 @@ const MachineDetailPage = () => {
     }
   };
 
-  const loadDetail = async ({ silent = false } = {}) => {
+  const loadDetail = useCallback(async ({ silent = false } = {}) => {
     if (!machineId) return;
     if (!silent) setLoading(true);
     try {
@@ -181,9 +183,9 @@ const MachineDetailPage = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  };
+  }, [machineId]);
 
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     if (!machineId) return;
     try {
       // 轮询用短超时（POLL_TIMEOUT）：5s 的 setInterval 没有 in-flight 守卫，
@@ -203,13 +205,13 @@ const MachineDetailPage = () => {
     } catch (err) {
       console.warn('machine status polling failed', err);
     }
-  };
+  }, [machineId]);
 
   useEffect(() => {
     loadDetail();
     const timer = setInterval(loadStatus, 5000);
     return () => clearInterval(timer);
-  }, [machineId]);
+  }, [loadDetail, loadStatus]);
 
   // 机器首次加载后初始化编辑草稿（loadStatus 轮询不重置草稿）
   useEffect(() => {
@@ -232,13 +234,10 @@ const MachineDetailPage = () => {
       ? machine.gpu_allow_list.map(Number).filter(Number.isInteger)
       : Array.from({ length: gpuTotal }, (_, i) => i);
     setSelectedGpuIndices(new Set(allow));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [machine]);
+  }, [machine, gpus.length]);
 
-  const snapshot = machine?.runtime_snapshot || {};
   const status = String(machine?.is_maintenance ? 'maintenance' : (machine?.machine_status || 'offline')).toLowerCase();
   const statusDisplay = getMachineStatusDisplay(status);
-  const gpus = Array.isArray(snapshot.gpu) ? snapshot.gpu : [];
   const gpuTotal = gpus.length || machine?.gpu_number || 0;
   const limitsDirty = useMemo(() => {
     if (!machine || !limitDraft) return false;
@@ -373,7 +372,17 @@ const MachineDetailPage = () => {
       value: machine?.machine_description ? '已填写' : '暂无',
       extra: machine?.machine_description || '暂无备注',
     },
-  ]), [machine, snapshot, gpus.length]);
+  ]), [
+    machine,
+    snapshot,
+    gpus.length,
+    gpuAllowCount,
+    diskMount.percent,
+    diskMount.used_gb,
+    diskMount.total_gb,
+    diskDockerData.used_gb,
+    diskDockerData.total_gb,
+  ]);
 
   const resourceSeries = [
     { key: 'cpu', label: 'CPU', color: '#1677ff', fill: 'rgba(22, 119, 255, 0.12)', value: point => point.cpu },
@@ -406,8 +415,7 @@ const MachineDetailPage = () => {
       }
       return next;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [machine, snapshot?.gpu]);
+  }, [machine, snapshot?.gpu, gpus]);
 
   const gpuMissing = (Array.isArray(machine?.gpu_allow_list) && machine.gpu_allow_list.length
     ? machine.gpu_allow_list.map(Number)

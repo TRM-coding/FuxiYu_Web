@@ -35,13 +35,13 @@ const AdminProfile = () => {
         const res = await getUserDetailInformation(Number(currentUserId));
         const info = (res && (res.user_info || res.data)) || res || {};
         setUserInfo(info);
-      } catch (e) {
+      } catch {
         // 401 不在这里处理：api 层统一发信号、App 级监听器清快照并回登录页。
         // 其它失败保持原行为——不弹框（这一页空着比误报更不打扰）。
       }
     };
     loadDetail();
-  }, [permLoaded, hasPermission]);
+  }, [permLoaded, hasPermission, currentUserId, navigate]);
 
   return (
     <div className="ap-wrap">

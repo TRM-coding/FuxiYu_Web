@@ -146,8 +146,14 @@ export default function RbacMatrix() {
     () => groups.find(group => String(group.id) === String(selectedGroupId)) || null,
     [groups, selectedGroupId],
   );
-  const currentCodes = creating ? (draft.__new__ || []) : (draft[selectedGroupId] || []);
-  const currentLockedCodes = creating ? [] : (selectedGroup?.locked_entity_codes || []);
+  const currentCodes = useMemo(
+    () => (creating ? (draft.__new__ || []) : (draft[selectedGroupId] || [])),
+    [creating, draft, selectedGroupId],
+  );
+  const currentLockedCodes = useMemo(
+    () => (creating ? [] : (selectedGroup?.locked_entity_codes || [])),
+    [creating, selectedGroup],
+  );
   const currentLockedSet = useMemo(() => new Set(currentLockedCodes), [currentLockedCodes]);
   const permissionSections = useMemo(() => buildPermissionSections(entities), [entities]);
   const validCodeSet = useMemo(() => new Set(entities.map(entity => entity.code)), [entities]);

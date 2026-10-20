@@ -8,11 +8,14 @@ import { handleAuthError } from '../utils/authHelpers';
 import showErrorModal from '../utils/showErrorModal';
 import './Settings.css';
 
-const GROUP_ORDER = ['容器策略', '磁盘策略', '已删除清理', '公告', '镜像'];
+// 与 Ctrl 实际分组逐字对齐；未知分组按 999 排最后，不能把已知组挤出顺序。
+const GROUP_ORDER = ['容器清理', '磁盘策略', '已删除容器', '公告', '镜像'];
+const REMINDER_HOURS_KEY = 'container.cleanup_reminder_hours';
 
 const normalizeValue = (item, value) => {
   if (item.value_type === 'boolean') return Boolean(value);
   if (item.value_type === 'integer') {
+    // 加载时保留服务端原值：非法小数不能在这里被静默取整，保存前必须报错。
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : (item.min_value ?? 0);
   }
@@ -21,8 +24,47 @@ const normalizeValue = (item, value) => {
 
 const sameValue = (item, a, b) => {
   if (item.value_type === 'boolean') return Boolean(a) === Boolean(b);
-  if (item.value_type === 'integer') return Number(a) === Number(b);
+  if (item.value_type === 'integer') {
+    const aBlank = a === '' || a === null || a === undefined;
+    const bBlank = b === '' || b === null || b === undefined;
+    if (aBlank || bBlank) return aBlank && bBlank;
+    return Number(a) === Number(b);
+  }
   return String(a ?? '') === String(b ?? '');
+};
+
+const isBlank = value => value === '' || value === null || value === undefined;
+
+const validateReminderHours = (value) => {
+  const text = String(value ?? '');
+  if (!text.trim()) return '清理提醒节点至少需要一个正整数';
+  for (const part of text.split(',')) {
+    const item = part.trim();
+    if (!item) return '清理提醒节点不能包含空项';
+    if (!/^\d+$/.test(item)) {
+      return `清理提醒节点必须为逗号分隔的正整数（非法项：${item}）`;
+    }
+    const hours = Number(item);
+    if (!Number.isSafeInteger(hours) || hours <= 0) {
+      return `清理提醒节点必须为正整数（非法项：${item}）`;
+    }
+  }
+  return '';
+};
+
+const validateSettingValue = (item, value) => {
+  if (item.key === REMINDER_HOURS_KEY) return validateReminderHours(value);
+  if (item.value_type !== 'integer') return '';
+  if (isBlank(value)) return '该设置必须为整数';
+  const number = Number(value);
+  if (!Number.isInteger(number)) return '该设置必须为整数';
+  if (item.min_value != null && number < item.min_value) {
+    return `该设置不能小于 ${item.min_value}`;
+  }
+  if (item.max_value != null && number > item.max_value) {
+    return `该设置不能大于 ${item.max_value}`;
+  }
+  return '';
 };
 
 function SettingControl({ item, value, onChange }) {
@@ -38,13 +80,14 @@ function SettingControl({ item, value, onChange }) {
   }
 
   if (item.value_type === 'integer') {
+    // 原样保留 null/小数，交给保存前校验；这里取整或回落 min 会掩盖非法输入。
     return (
       <InputNumber
         value={value}
         min={item.min_value ?? undefined}
         max={item.max_value ?? undefined}
         addonAfter={item.unit || undefined}
-        onChange={(next) => onChange(next ?? item.min_value ?? 0)}
+        onChange={onChange}
       />
     );
   }
@@ -75,6 +118,8 @@ export default function Settings() {
   const [draft, setDraft] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // 字段级校验：非法值在对应设置项下就地提示，并阻止整次保存。
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const canManageSettings = hasPermission('settings:manage');
 
@@ -86,6 +131,7 @@ export default function Settings() {
       const list = Array.isArray(res?.settings) ? res.settings : [];
       setSettings(list);
       setDraft(Object.fromEntries(list.map(item => [item.key, normalizeValue(item, item.value)])));
+      setFieldErrors({});
     } catch (err) {
       // 401 认证失效交给全局；403 是业务拒绝，留在本页并显示后端原因。
       if (err?.status === 401) {
@@ -94,7 +140,8 @@ export default function Settings() {
       }
       showErrorModal({
         title: '读取设置失败',
-        message: err?.body?.message || err?.message || '无法读取系统设置',
+        // 传 err.body 对象而不是它的 message 字符串，路由 + error_reason 映射才能命中。
+        message: err?.body || err || '无法读取系统设置',
         status: err?.status,
         route: err?.route,
       });
@@ -138,20 +185,42 @@ export default function Settings() {
 
   const updateDraft = (key, value) => {
     setDraft(prev => ({ ...prev, [key]: value }));
+    // 用户重新输入时先撤掉该字段的旧错误，下一次保存再统一校验。
+    setFieldErrors(prev => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const resetDraft = () => {
     setDraft(Object.fromEntries(settings.map(item => [item.key, normalizeValue(item, item.value)])));
+    setFieldErrors({});
+  };
+
+  const collectFieldErrors = () => {
+    const errors = {};
+    for (const item of settings) {
+      const error = validateSettingValue(item, draft[item.key]);
+      if (error) errors[item.key] = error;
+    }
+    return errors;
   };
 
   const saveSettings = async () => {
     if (!dirtyCount) return;
+    // 先校验、后提交：整数小数/空值、提醒节点非法项都不能被静默取整或丢弃。
+    const errors = collectFieldErrors();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     setSaving(true);
     try {
       const res = await updateSystemSettings(dirtyValues);
       const list = Array.isArray(res?.settings) ? res.settings : [];
       setSettings(list);
       setDraft(Object.fromEntries(list.map(item => [item.key, normalizeValue(item, item.value)])));
+      setFieldErrors({});
       message.success('设置已保存');
     } catch (err) {
       // 同上：403 走普通错误反馈，不导航。
@@ -161,7 +230,7 @@ export default function Settings() {
       }
       showErrorModal({
         title: '保存设置失败',
-        message: err?.body?.message || err?.message || '无法保存系统设置',
+        message: err?.body || err || '无法保存系统设置',
         status: err?.status,
         route: err?.route,
       });
@@ -224,6 +293,11 @@ export default function Settings() {
                           onChange={(value) => updateDraft(item.key, value)}
                         />
                       </div>
+                      {fieldErrors[item.key] ? (
+                        <div className="settings-item-error" role="alert">
+                          {fieldErrors[item.key]}
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>

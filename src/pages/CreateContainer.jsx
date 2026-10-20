@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Typography, Input, InputNumber, Button, Card, Tag, message, Empty, Spin, Slider, Select } from 'antd';
 import { SearchOutlined, CheckCircleFilled, ThunderboltOutlined, CodeOutlined, LockOutlined } from '@ant-design/icons';
@@ -171,7 +171,7 @@ const CreateContainer = () => {
   const [rootUsersLoading, setRootUsersLoading] = useState(false);
   const [ownerUserId, setOwnerUserId] = useState(null);
 
-  const fetchImages = async (keyword = '') => {
+  const fetchImages = useCallback(async (keyword = '') => {
     setImagesLoading(true);
     try {
       const res = await listImageBrefInformation({
@@ -197,14 +197,14 @@ const CreateContainer = () => {
     } finally {
       setImagesLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchImages(imageKeyword);
     }, 250);
     return () => clearTimeout(timer);
-  }, [imageKeyword]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [imageKeyword, fetchImages]);
 
   const selectImage = (image) => {
     const imageId = image?.image_id;
@@ -216,7 +216,7 @@ const CreateContainer = () => {
     setSelectedImage(image);
   };
 
-  const fetchMachines = async () => {
+  const fetchMachines = useCallback(async () => {
     setMachinesLoading(true);
     try {
       // 后端分页 0-based；创建页一次性拉取在线机器候选
@@ -255,24 +255,15 @@ const CreateContainer = () => {
     } finally {
       setMachinesLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchMachines();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchMachines]);
 
   // 从管理页「创建容器」跳转进入：机器列表加载完成后自动选中对应机器（仅执行一次）
   const preselectMachineId = location.state?.machineId ?? null;
   const preselectHandledRef = useRef(false);
-  useEffect(() => {
-    if (preselectHandledRef.current || !preselectMachineId || machines.length === 0) return;
-    const target = machines.find(m => String(m.machine_id ?? m.id) === String(preselectMachineId));
-    if (target) {
-      preselectHandledRef.current = true;
-      handleSelectMachine(target);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [machines, preselectMachineId]);
 
   // 代建门禁：走 PermissionContext（App 级那一次请求），页面不再自己发一份。
   // 未加载完/权限接口失败 → 保守隐藏选择器（按无代建能力处理）。
@@ -286,7 +277,7 @@ const CreateContainer = () => {
 
   // 切换机器：四项配额一起收敛进新机器的机器配置限额（未知上限收敛到最小值），
   // 共享内存还要同时受「本次申请内存」约束，避免留下必然被后端拒绝的旧值。
-  const computeQuotaForMachine = (m) => {
+  const computeQuotaForMachine = useCallback((m) => {
     const isGpu = (m.machine_type || '').toUpperCase() === 'GPU';
     const cpuLimit = knownLimit(m.max_cpu_core_number);
     const memLimit = knownLimit(m.max_memory_gb);
@@ -300,11 +291,11 @@ const CreateContainer = () => {
       memory: nextMemory,
       shared: clampQuota(sharedGb ?? 0, nextSharedTop, 0),
     };
-  };
+  }, [memoryGb, gpuCount, cpuCount, sharedGb]);
 
   // 选择机器：配额初始化/收敛进新机器的上限；CPU 机器 GPU 恒为 0。
   // 代建者：拉取该机器已授权用户作为 ROOT 用户候选，默认当前用户。
-  const handleSelectMachine = async (m) => {
+  const handleSelectMachine = useCallback(async (m) => {
     const mid = m.machine_id ?? m.id;
     if (selectedMachine && String(selectedMachine.machine_id ?? selectedMachine.id) === String(mid)) {
       setSelectedMachine(null);
@@ -354,7 +345,17 @@ const CreateContainer = () => {
     } finally {
       setRootUsersLoading(false);
     }
-  };
+  }, [selectedMachine, computeQuotaForMachine, hasManage, currentUserId]);
+
+  // 从管理页「创建容器」跳转进入：机器列表加载完成后自动选中对应机器（仅执行一次）
+  useEffect(() => {
+    if (preselectHandledRef.current || !preselectMachineId || machines.length === 0) return;
+    const target = machines.find(m => String(m.machine_id ?? m.id) === String(preselectMachineId));
+    if (target) {
+      preselectHandledRef.current = true;
+      handleSelectMachine(target);
+    }
+  }, [machines, preselectMachineId, handleSelectMachine]);
 
   const machineType = (selectedMachine?.machine_type || '').toUpperCase();
   const isGpuMachine = machineType === 'GPU';
@@ -393,7 +394,6 @@ const CreateContainer = () => {
       return;
     }
     if (sharedGb != null && sharedGb > effectiveLimits.shared) setSharedGb(effectiveLimits.shared);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMachine, memoryGb, sharedGb, effectiveLimits.shared]);
 
   // 滑条与数字输入走同一个收敛函数，保证两者读数与上口径一致
@@ -476,7 +476,7 @@ const CreateContainer = () => {
       try {
         // 跳转「我的容器」并携带 startHeartbeat，由 Home 跟踪启动状态
         navigate('/index', { state: { startHeartbeat: { machine_id: machineId, container_name: payload.container.NAME } } });
-      } catch (e) {
+      } catch {
         navigate('/index');
       }
     } catch (err) {

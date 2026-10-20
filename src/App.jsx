@@ -1,6 +1,6 @@
 import { HashRouter } from "react-router-dom"
 import AppRoutes from "./routes"
-import { PermissionProvider } from "./contexts/PermissionContext"
+import { PermissionProvider } from "./contexts/PermissionProvider"
 
 function App() {
   return (

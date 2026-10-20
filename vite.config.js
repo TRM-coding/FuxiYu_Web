@@ -42,7 +42,7 @@ export default defineConfig(({ mode }) => {
               key: fs.readFileSync(keyPath),
             }
           }
-        } catch (e) {
+        } catch {
           // fall through to use default self-signed
         }
         // No cert files available: allow Vite to use a generated self-signed cert.

@@ -5,7 +5,7 @@ import ConfirmModal from '../components/ConfirmModal';
 const hideExistingModals = () => {
   const modals = Array.from(document.querySelectorAll('.ant-modal'));
   const masks = Array.from(document.querySelectorAll('.ant-modal-mask'));
-  modals.forEach((el, i) => {
+  modals.forEach((el) => {
     el.dataset._prevDisplay = el.style.display || '';
     el.style.display = 'none';
   });
@@ -44,8 +44,22 @@ const MACHINE_SCOPE_MESSAGES = {
 
 export const routeErrorMap = {
     // 用户相关
-    '/register': { username_exists: '用户名已存在', email_exists: '邮箱已存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线' },
-    '/request_register_code': { missing_email: '请输入邮箱' },
+    '/register': {
+      username_exists: '用户名已存在',
+      email_exists: '邮箱已存在',
+      no_none_ascii: '禁止非ASCII字符（请勿输入中文）',
+      invalid_username: '用户名仅允许英文、数字和下划线',
+      registration_code_required: '请填写注册验证码',
+      registration_code_invalid: '注册验证码无效或已过期',
+      mail_send_failed: '验证邮件发送失败',
+      email_domain_not_allowed: '该邮箱域名不允许注册',
+    },
+    '/request_register_code': {
+      missing_email: '请输入邮箱',
+      email_domain_not_allowed: '该邮箱域名不允许注册',
+      mail_send_failed: '验证邮件发送失败',
+      code_creation_failed: '验证码生成失败，请稍后重试',
+    },
     '/login': { user_not_found: '用户不存在', password_incorrect: '密码错误' },
     '/users/change_password': { old_password_incorrect: '旧密码不正确', no_none_ascii: '禁止非ASCII字符（请勿输入中文）' },
     '/users/delete_user': { wild_container: '存在无主容器，无法删除用户', missing_user_id: '缺少 user_id' },
@@ -152,6 +166,39 @@ export const routeErrorMap = {
     // 设置相关
     '/settings': { invalid_setting: '设置项不合法', update_failed: '保存设置失败' },
 
+    // 公告模板（列表/保存/删除同路由；深链为同前缀的 /{id}）
+    '/announcements/templates': {
+      duplicate_entry: '模板名称已存在',
+      missing_field: '缺少模板必填字段',
+      not_found: '模板不存在',
+      cannot_delete_system_template: '系统模板不可删除',
+    },
+
+    // 镜像模板：五个入口各自只映射 Ctrl 已存在的 error_reason。
+    '/images/create_image': {
+      duplicate_entry: '镜像名称已存在',
+      invalid_status: '镜像状态不合法',
+      create_failed: '创建镜像失败',
+    },
+    '/images/update_image': {
+      duplicate_entry: '镜像名称已存在',
+      invalid_status: '镜像状态不合法',
+      image_not_found: '镜像不存在',
+      update_failed: '更新镜像失败',
+    },
+    '/images/delete_image': { image_not_found: '镜像不存在' },
+    '/images/set_image_valid_range': {
+      invalid_valid_range: '镜像可见范围不合法',
+      image_not_found: '镜像不存在',
+      set_valid_range_failed: '设置镜像可见范围失败',
+    },
+    '/images/set_image_visible_users': {
+      not_custom_range: '只有自定义可见范围才能设置用户名单',
+      unknown_user: '用户名单中存在不存在的用户',
+      image_not_found: '镜像不存在',
+      set_visible_users_failed: '保存镜像可见用户失败',
+    },
+
     // 通用/鉴权
     '': { invalid_token: '身份验证失败，请重新登录', insufficient_permission: '权限不足', unexpected_response: '远端返回意外响应', NODE_error: '节点错误' },
     '*': {
@@ -221,7 +268,14 @@ const resolveReasonMessage = (errorReason, routePath) => {
   return null;
 };
 
-const showErrorModal = ({ title = '错误', message = '发生错误', status, route } = {}) => {
+const showErrorModal = (input = {}) => {
+  // 历史调用存在只传字符串的写法；统一归一化，避免把字符串当对象解构后
+  // 退化成“发生错误”，也不改变对象调用（含 err.body）的既有语义。
+  const params = typeof input === 'string' ? { message: input } : (input || {});
+  const { title = '错误', status, route } = params;
+  // message 是可变绑定：下面会把字符串里的 JSON 对象解析出来替换它；用 const 会在
+  // 解析分支运行时抛错，退化为原字符串展示。
+  let message = params.message === undefined ? '发生错误' : params.message;
   if (typeof document === 'undefined') return Promise.resolve({ confirmed: false, status });
   // Determine HTTP status: prefer explicit, otherwise try to parse from message text
   let code = Number(status);
@@ -242,7 +296,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
         const candidate = s.slice(first, i + 1);
         try {
           return JSON.parse(candidate);
-        } catch (e) {
+        } catch {
           return null;
         }
       }
@@ -286,7 +340,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
       if (cloned.status !== undefined) delete cloned.status;
       //if (Object.keys(cloned).length > 0) extraDetails = cloned;
     }
-  } catch (e) {
+  } catch {
     displayMessage = typeof message === 'string' ? message : '发生错误';
   }
 
@@ -299,7 +353,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
         code = Number(found[1]);
         displayMessage = `${found[1]} 错误`;
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -315,7 +369,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
     } else if (message && message.response && message.response.url) {
       routePath = (new URL(message.response.url, window.location.origin)).pathname;
     }
-  } catch (e) {
+  } catch {
     routePath = '';
   }
 
@@ -386,7 +440,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
       hint = '';
   }
 
-    const { modals, masks } = hideExistingModals();
+    hideExistingModals();
 
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -395,7 +449,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
   const cleanup = () => {
     try {
       root.unmount();
-    } catch (e) {
+    } catch {
       // ignore
     }
     if (container.parentNode) container.parentNode.removeChild(container);

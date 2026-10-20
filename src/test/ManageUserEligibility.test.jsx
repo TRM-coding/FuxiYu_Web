@@ -1,8 +1,12 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { resolveContainerActions } from '../utils/containerActions';
 
 const permissionState = vi.hoisted(() => ({
   entities: ['bypass_auth_entity', 'container:operation', 'container:manage'],
@@ -245,7 +249,7 @@ describe('ManageUser 共享动作资格且不新增删除入口', () => {
     expect(listAllContainerBrefInformation.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('解冻失败清 pending/loading 且无“已解冻”，按钮可恢复', async () => {
+  it('test_q35_manage_user_unpause_failure_recovery', async () => {
     const user = userEvent.setup();
     permissionState.entities = ['bypass_auth_entity', 'container:manage'];
     listAllContainerBrefInformation.mockResolvedValue({
@@ -422,5 +426,129 @@ describe('ManageUser 共享动作资格且不新增删除入口', () => {
         expect(within(card).getByText('已停止')).toBeInTheDocument();
       }
     });
+  });
+
+  const resolveFor = (containerOverrides = {}, contextOverrides = {}) => resolveContainerActions({
+    container: {
+      effective_status: 'online',
+      is_long_term: false,
+      long_term_container_can_enable: true,
+      disk_usage_percent: 20,
+      ...containerOverrides,
+    },
+    context: {
+      permissions: ['container:operation'],
+      containerRole: 'ROOT',
+      readOnly: false,
+      ...contextOverrides,
+    },
+  });
+
+  it('test_q35_manage_user_shared_action_consistency', () => {
+    const result = resolveFor();
+    expect(result.actions.stop).toMatchObject({ visible: true, enabled: true });
+    expect(result.actions.start).toMatchObject({ visible: true, enabled: false });
+    expect(result.actions.delete).toMatchObject({ visible: true, enabled: true });
+    expect(result.longTerm).toMatchObject({ visible: true, enabled: true, direction: 'enable' });
+
+    for (const file of [
+      'src/pages/ManageUser.jsx',
+      'src/pages/ManageMachine.jsx',
+      'src/pages/ContainerDetailPage.jsx',
+      'src/pages/Home.jsx',
+    ]) {
+      const source = fs.readFileSync(path.resolve(process.cwd(), file), 'utf8');
+      expect(source, file).toContain('resolveContainerActions');
+    }
+  });
+
+  it('test_q35_manage_user_role_matrix', () => {
+    const root = resolveFor();
+    const admin = resolveFor({}, { containerRole: 'ADMIN' });
+    const collaborator = resolveFor({}, { containerRole: 'COLLABORATOR' });
+    const missing = resolveFor({}, { containerRole: null });
+
+    expect(root.actions.stop.enabled).toBe(true);
+    expect(admin.actions.stop.enabled).toBe(true);
+    expect(admin.longTerm.enabled).toBe(false);
+    expect(collaborator.actions.stop.visible).toBe(false);
+    expect(collaborator.longTerm).toMatchObject({ visible: true, enabled: false });
+    expect(missing.actions.stop.visible).toBe(false);
+    expect(missing.longTerm).toMatchObject({ visible: true, enabled: false });
+    expect(missing.actions.delete.visible).toBe(false);
+  });
+
+  it('test_q35_manage_user_long_term_fields', () => {
+    const quotaFull = resolveFor({ effective_status: 'offline', long_term_container_can_enable: false });
+    expect(quotaFull.longTerm).toMatchObject({ visible: true, enabled: false, reason: 'long_term_limit_reached' });
+
+    const diskFull = resolveFor({ effective_status: 'offline', disk_usage_percent: 100 });
+    expect(diskFull.longTerm).toMatchObject({ visible: true, enabled: false, reason: 'disk_usage_over_limit' });
+
+    const pausedResidual = resolveFor({
+      effective_status: 'online',
+      is_long_term: true,
+      freeze_state: { is_frozen: true, days_frozen: 3 },
+      long_term_container_can_enable: false,
+      disk_usage_percent: 100,
+    });
+    expect(pausedResidual.longTerm).toMatchObject({ visible: true, enabled: true, checked: true });
+
+    const paused = resolveFor({ effective_status: 'paused' }, { permissions: ['container:manage'] });
+    expect(paused.actions.unpause).toMatchObject({ visible: true, enabled: true });
+  });
+
+  it('test_q35_manage_user_no_delete_or_modal_contract', async () => {
+    renderPage();
+    const card = await waitForCard();
+    expect(within(card).queryByRole('button', { name: /删\s*除容器/ })).toBeNull();
+    expect(within(card).queryByRole('button', { name: /详\s*情/ })).toBeNull();
+
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/ManageUser.jsx'), 'utf8');
+    expect(source).not.toMatch(/ContainerDetailModal/);
+    expect(source).not.toMatch(/openContainerDetail/);
+    expect(source).not.toMatch(/detailModalVisible/);
+    expect(source).not.toMatch(/deleteContainer\(/);
+  });
+
+  it('test_q59_parent_controls_second_page_with_page_size_four', async () => {
+    const user = userEvent.setup();
+    const firstPage = ['train-a', 'train-b', 'train-c', 'train-d'].map((name, index) => container({
+      container_id: 100 + index,
+      container_name: name,
+    }));
+    const secondPage = ['train-e', 'train-f'].map((name, index) => container({
+      container_id: 110 + index,
+      container_name: name,
+    }));
+    listAllContainerBrefInformation.mockImplementation(async ({ page_number = 0 }) => ({
+      containers_info: page_number === 1 ? secondPage : firstPage,
+      total_number: 6,
+      total_page: 2,
+    }));
+
+    renderPage();
+    await user.click(await screen.findByText('表格'));
+    expect(await screen.findByText('alice')).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /编辑用户/ }));
+
+    const expanded = await waitFor(() => {
+      const node = document.querySelector('.manage-user-expanded');
+      expect(node).not.toBeNull();
+      return node;
+    });
+    const pagination = expanded.querySelector('.ant-pagination');
+    expect(pagination).not.toBeNull();
+    listAllContainerBrefInformation.mockClear();
+
+    fireEvent.click(within(pagination).getByTitle('2'));
+
+    await waitFor(() => expect(listAllContainerBrefInformation).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 7,
+      page_number: 1,
+      page_size: 4,
+    })));
+    expect(await screen.findByText('train-e')).toBeInTheDocument();
+    expect(listAllContainerBrefInformation.mock.calls.every(([params]) => params.page_size === 4)).toBe(true);
   });
 });

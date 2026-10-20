@@ -163,6 +163,8 @@ describe('DetailPages snapshot polling', () => {
     // 跟着同步请求放宽到 45s 会长出一堆并发（2026-09 决策）
     await waitFor(() => expect(getContainerStatus).toHaveBeenCalledWith(12, POLL_TIMEOUT));
     expect(getContainerDetailInformation).toHaveBeenCalledTimes(1);
+    // 轮询 setState 后的重渲染不得重新执行加载 effect（否则会重复拉详情并重设定时器）。
+    expect(globalThis.setInterval.mock.calls.filter(([, delay]) => delay === 5000)).toHaveLength(1);
     await waitFor(() => expect(screen.getAllByText('运行中').length).toBeGreaterThan(0));
     expect(screen.getAllByText(/2026\/8\/29/).length).toBeGreaterThan(0);
     expect(screen.getByText('端口管理')).toBeInTheDocument();

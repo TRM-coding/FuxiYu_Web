@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckOutlined, ReloadOutlined, UnlockOutlined, TeamOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Form, Tag, message, InputNumber, Segmented, Checkbox, Modal } from 'antd';
@@ -9,11 +9,10 @@ import { handleAuthError } from '../utils/authHelpers';
 import { listAllUserBrefInformation, deleteUser, updateUser, resetPassword } from '../api/user_api';
 import { getRbacMatrix, getUserRbacGroups, setUserRbacGroups } from '../api/rbac_api';
 import { usePermission } from '../contexts/PermissionContext';
-import { listAllContainerBrefInformation, getContainerDetailInformation, removeCollaborator, setLongTermContainer, startContainer, stopContainer, restartContainer, unpauseContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, removeCollaborator, setLongTermContainer, startContainer, stopContainer, restartContainer, unpauseContainer } from '../api/container_api';
 import './ManageUser.css';
 import NestedEntityGrid from '../components/NestedEntityGrid';
 import CopyChip from '../components/CopyChip';
-import ContainerDetailModal from '../components/ContainerDetailModal';
 import ManageUserInTable from './ManageUserInTable';
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
@@ -134,12 +133,13 @@ const ManageUser = () => {
   const usersRef = useRef(users);
   const containerMapRef = useRef(containerMap);
   const searchContainerNameRef = useRef(searchContainerName);
+  const patchUserContainerEverywhereRef = useRef(null);
 
   usersRef.current = users;
   containerMapRef.current = containerMap;
   searchContainerNameRef.current = searchContainerName;
 
-  const applyContainerEffectiveStatus = (container) => {
+  const applyContainerEffectiveStatus = useCallback((container) => {
     const cid = container?.key || container?.container_id;
     if (!cid) return container;
     const key = String(cid);
@@ -154,7 +154,7 @@ const ManageUser = () => {
       pendingContainerTransitionRef.current.delete(key);
     }
     return { ...container, effective_status: result.status };
-  };
+  }, []);
 
   const markContainerTransition = (container, transitionStatus, targetStatus) => {
     const cid = container?.key || container?.container_id;
@@ -238,20 +238,19 @@ const ManageUser = () => {
             const st = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!st) return;
             // 进度/终态要同时写回所有持有该 cid 的用户卡片和页面快照。
-            patchUserContainerEverywhere(cid, st);
+            patchUserContainerEverywhereRef.current?.(cid, st);
           },
           onTerminal: (data) => {
             const finalSt = data && data.effective_status ? String(data.effective_status).toLowerCase() : null;
             if (!finalSt) return;
             current.delete(cid);
-            patchUserContainerEverywhere(cid, finalSt);
+            patchUserContainerEverywhereRef.current?.(cid, finalSt);
           },
         });
         current.set(cid, stop);
       }
     }
-  // 页面级 patch 函数随渲染更新；本 effect 只按 containerMap 变化重跑，避免每帧重建 watcher。
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // 页面级 patch 函数通过 ref 保持最新；本 effect 只按 containerMap 变化重跑，避免每帧重建 watcher。
   }, [containerMap]);
 
   // 卸载时停止全部 ing watcher
@@ -264,12 +263,9 @@ const ManageUser = () => {
   }, []);
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   const [containerActionMap, setContainerActionMap] = useState({});
-  const [detailModalVisible, setDetailModalVisible] = useState(false);
-  const [selectedContainer, setSelectedContainer] = useState(null);
   const {
     remember: rememberContainerSnapshot,
     rememberList: rememberContainerList,
-    markUnavailable: markContainerUnavailable,
     get: getContainerSnapshot,
   } = useContainerSnapshots();
   // matched user ids from top-level container name search
@@ -494,7 +490,7 @@ const ManageUser = () => {
             messageText = `${messageText}。受影响容器: ${list}`;
           }
         }
-      } catch (e) {
+      } catch {
         // fall back to err.message
       }
       await showErrorModal({ message:  messageText, status, route: err?.route || err?.response?.url });
@@ -637,19 +633,8 @@ const ManageUser = () => {
     return <Tag color={color}>{roleText}</Tag>;
   };
 
-  // 获取用户在某个容器中的角色
-  const getUserRoleInContainer = (accounts, username) => {
-    if (!accounts || !Array.isArray(accounts)) return null;
-    for (const account of accounts) {
-      if (Array.isArray(account) && account[0] === username) {
-        return account[1];
-      }
-    }
-    return null;
-  };
-
   // 获取用户的所有容器（带角色信息）
-  const fetchContainersForUser = async (userId, pageNumber = 0, containerName = searchContainerName, options = {}) => {
+  const fetchContainersForUser = useCallback(async function fetchContainersForUserImpl(userId, pageNumber = 0, containerName = searchContainerNameRef.current, options = {}) {
     const { silent = false } = options;
     if (!userId) return;
     const id = String(userId);
@@ -770,7 +755,7 @@ const ManageUser = () => {
         setContainerMap(prev => ({ ...prev, [id]: { loading: false, data: [], page: pageNumber, total_page: 1 } }));
       }
     }
-  };
+  }, [applyContainerEffectiveStatus, rememberContainerList]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -805,7 +790,7 @@ const ManageUser = () => {
         document.removeEventListener('visibilitychange', refreshLoadedContainers);
       }
     };
-  }, []);
+  }, [fetchContainersForUser]);
 
   const getUserContainers = (username) => {
     const user = users.find(u => u.username === username);
@@ -821,54 +806,6 @@ const ManageUser = () => {
       ...container,
       longTerm: resolveActionsFor(container).longTerm,
     }));
-  };
-
-  const openContainerDetail = async (container) => {
-    if (!container) return;
-    const cid = container.key || container.container_id;
-    if (!cid) return;
-    try {
-      setSelectedContainer(null);
-      const res = await getContainerDetailInformation(Number(cid));
-      const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
-      if (!detail || (typeof detail === 'object' && Object.keys(detail).length === 0)) {
-        markContainerUnavailable(cid);
-        await showErrorModal({ message: '未能获取容器详情' });
-        return;
-      }
-      const mapped = {
-        key: detail.container_id ? String(detail.container_id) : String(cid),
-        container_name: detail.container_name || detail.name || container.container_name || '',
-        image_name: detail.image_name || container.image_name || '',
-        port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
-        effective_status: (detail.effective_status || '').toLowerCase(),
-        machine_ip: detail.machine_ip || container.machine_ip || '',
-        machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
-        cpu_number: detail.cpu_number ?? container.cpu_number ?? null,
-        gpu_number: detail.gpu_number ?? container.gpu_number ?? 0,
-        memory_gb: detail.memory_gb ?? container.memory_gb ?? 0,
-        shared_gb: detail.shared_gb ?? container.shared_gb ?? 0,
-        disk_usage: detail.disk_usage ?? container.disk_usage ?? null,
-        disk_total_gb: detail.disk_total_gb ?? container.disk_total_gb ?? null,
-        disk_limit_gb: detail.disk_limit_gb ?? container.disk_limit_gb ?? null,
-        disk_usage_percent: detail.disk_usage_percent ?? container.disk_usage_percent ?? null,
-        is_long_term: detail.is_long_term ?? container.is_long_term,
-        long_term_container_can_enable: detail.long_term_container_can_enable ?? container.long_term_container_can_enable,
-        long_term_container_blocked_user_ids: detail.long_term_container_blocked_user_ids ?? container.long_term_container_blocked_user_ids ?? [],
-        long_term_container_remaining_by_user: detail.long_term_container_remaining_by_user ?? container.long_term_container_remaining_by_user ?? {},
-        freeze_state: detail.freeze_state ?? container.freeze_state ?? null,
-        freeze_first_frozen_at: detail.freeze_first_frozen_at ?? container.freeze_first_frozen_at ?? null,
-        freeze_grace_until: detail.freeze_grace_until ?? container.freeze_grace_until ?? null,
-        freeze_days_frozen: detail.freeze_days_frozen ?? container.freeze_days_frozen ?? null,
-        runtime_metrics: detail.runtime_metrics ?? container.runtime_metrics ?? null,
-        accounts: detail.accounts || detail.account_list || container.accounts || [],
-      };
-      rememberContainerSnapshot(mapped, 'detail');
-      setSelectedContainer(mapped);
-      setDetailModalVisible(true);
-    } catch (err) {
-      await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-    }
   };
 
   const handleLongTermChange = async (userRecord, containerRecord, checked) => {
@@ -966,6 +903,8 @@ const ManageUser = () => {
       return changed ? next : prev;
     });
   };
+
+  patchUserContainerEverywhereRef.current = patchUserContainerEverywhere;
 
   const preflightUserAction = (actionKey, userRecord, containerRecord) => {
     const latest = getLatestContainer(containerRecord);
@@ -1251,15 +1190,17 @@ const ManageUser = () => {
   });
 
   const visibleUserKeys = filteredUserData.map(user => String(user.key)).join('|');
+  const filteredUserDataRef = useRef(filteredUserData);
+  filteredUserDataRef.current = filteredUserData;
   React.useEffect(() => {
-    filteredUserData.forEach(user => {
+    filteredUserDataRef.current.forEach(user => {
       const id = String(user.key);
       const total = Number(user.amount_of_container ?? user.amountOfContainer ?? 0);
-      if (!containerMap[id] && total > 0) {
+      if (!containerMapRef.current[id] && total > 0) {
         fetchContainersForUser(id);
       }
     });
-  }, [visibleUserKeys]);
+  }, [visibleUserKeys, fetchContainersForUser]);
 
   // 切换展开状态
   const toggleExpand = (userId) => {
@@ -1335,7 +1276,7 @@ const ManageUser = () => {
         );
       }
       case 'removeAssociation': {
-        const { username, container } = data || {};
+        const { container } = data || {};
         return (
           <div className="manage-user-modal-remove">
             <Row gutter={[0, 12]}>
@@ -1455,19 +1396,6 @@ const ManageUser = () => {
           loading={modal.loading}
         />
       )}
-
-      <ContainerDetailModal
-        visible={detailModalVisible}
-        container={selectedContainer}
-        onClose={() => {
-          setDetailModalVisible(false);
-          setSelectedContainer(null);
-        }}
-        usersList={users.map(u => ({ id: u.key, name: u.username, username: u.username }))}
-        currentUserName={currentUserName}
-        currentUserId={currentUserId}
-        readOnly
-      />
 
       <div className="manage-user-root">
         {/* 1. 搜索区域（固定顶部） */}

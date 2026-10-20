@@ -25,7 +25,7 @@ const CopyChip = ({
     try {
       await navigator.clipboard.writeText(text);
       message.success('已复制');
-    } catch (err) {
+    } catch {
       message.error('复制失败');
     }
   };

@@ -31,7 +31,7 @@ const LoginBlock = () => {
 				// 身份与权限都还没拿到；换账号时同样靠它覆盖上一个人的权限。
 				try {
 					await refresh();
-				} catch (e) {
+				} catch {
 					// 快照没拿到不该挡住"登录成功"这件事本身；进站后任何请求都会再给出答案
 				}
 				message.success('登录成功');
@@ -40,21 +40,11 @@ const LoginBlock = () => {
 				throw new Error('Login failed');
 			}
 		} catch (err) {
-			console.error('Login error:', err);
-			const errMsg = err.message || '请求发生错误';
-			let userMsg = errMsg;
-			if (errMsg.includes('Failed to fetch') || errMsg.toLowerCase().includes('refused') || errMsg.toLowerCase().includes('network')) {
-				userMsg = '无法连接到后端服务（连接被拒绝），请确认后端已启动并且 BACKEND_BASE_URL 配置正确。';
-			} else if (errMsg.toLowerCase().includes('timed out')) {
-				userMsg = '请求超时，请稍后重试。';
-			}
-			// use showErrorModal to display exceptions
-			await showErrorModal({ title: '登录出错', message: err?.body || err || userMsg, status: err?.status || undefined, route: err?.route || err?.response?.url });
+			await showErrorModal({ title: '登录出错', message: err?.body || err, status: err?.status || undefined, route: err?.route || err?.response?.url });
 		}
 	};
 
-	const onFinishFailed = errorInfo => {
-		console.log('Failed:', errorInfo);
+	const onFinishFailed = () => {
 		setConfirmTitle('表单校验失败');
 		setConfirmMessage('请检查表单字段是否填写正确。');
 		setConfirmContent(null);

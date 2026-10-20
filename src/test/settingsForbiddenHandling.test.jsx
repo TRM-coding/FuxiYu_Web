@@ -58,6 +58,7 @@ describe('Settings 业务失败的状态码分流', () => {
     localStorage.setItem('currentUserName', 'op1');
     listSystemSettings.mockRejectedValue(Object.assign(new Error('forbidden'), {
       status: 403,
+      route: 'https://ctrl/api/settings',
       body: { success: 0, message: '没有读取系统设置的权限', error_reason: 'insufficient_permission' },
     }));
 
@@ -66,8 +67,14 @@ describe('Settings 业务失败的状态码分流', () => {
     await waitFor(() => expect(showErrorModal).toHaveBeenCalledTimes(1));
     expect(showErrorModal.mock.calls[0][0]).toMatchObject({
       title: '读取设置失败',
-      message: '没有读取系统设置的权限',
+      // 结构化错误必须保留 body 对象，路由映射才能命中 insufficient_permission。
+      message: {
+        success: 0,
+        message: '没有读取系统设置的权限',
+        error_reason: 'insufficient_permission',
+      },
       status: 403,
+      route: 'https://ctrl/api/settings',
     });
     expect(screen.getByTestId('path')).toHaveTextContent('/admin/settings');
     expect(localStorage.getItem('currentUserName')).toBe('op1');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutlined, UnlockOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Tag, message, Checkbox } from 'antd';
@@ -7,7 +7,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer, unpauseContainer } from '../api/container_api';
-import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
+import { formatCleanupCountdown } from '../utils/timeFormat';
 import {
   CONTAINER_TERMINAL_STATES,
   createContainerStatusTransition,
@@ -21,7 +21,6 @@ import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint }
 import { useContainerSnapshots } from '../utils/containerSnapshots';
 import { useLocation } from 'react-router-dom';
 import { listAllUserBrefInformation } from '../api/user_api';
-import { isAbortError } from '../utils/requestManager';
 import { formatContainerImage } from '../utils/detailFormat';
 import ContainerDetailModal from '../components/ContainerDetailModal';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
@@ -51,8 +50,6 @@ const MODAL_ACTION_ERROR_TITLES = {
 };
 
 const Home = () => {
-  const [value3, setValue3] = useState('Any');
-  const [position, setPosition] = useState('end');
   const { barRef: statsBarRef, barStyle: statsBarStyle } = useAutoHideTopBar();
   const navigate = useNavigate();
 
@@ -63,9 +60,9 @@ const Home = () => {
   // containers state loaded from backend
   const [containers, setContainers] = useState(initialContainers);
   const [loadingContainers, setLoadingContainers] = useState(false);
-  const [sshRefreshingMap, setSshRefreshingMap] = useState({});
   const [longTermRemaining, setLongTermRemaining] = useState(null);
   const [longTermLimit, setLongTermLimit] = useState(null);
+  const longTermStateRef = useRef({ remaining: null, limit: null });
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
   const [unpauseMap, setUnpauseMap] = useState({});
   const pendingContainerTransitionRef = useRef(new Map());
@@ -78,7 +75,7 @@ const Home = () => {
     get: getContainerSnapshot,
   } = useContainerSnapshots();
 
-  const applyContainerEffectiveStatus = (container) => {
+  const applyContainerEffectiveStatus = useCallback((container) => {
     const cid = container?.key || container?.container_id;
     if (!cid) return container;
     const key = String(cid);
@@ -93,9 +90,9 @@ const Home = () => {
       pendingContainerTransitionRef.current.delete(key);
     }
     return { ...container, effective_status: result.status };
-  };
+  }, []);
 
-  const markContainerTransition = (container, transitionStatus, targetStatus) => {
+  const markContainerTransition = useCallback((container, transitionStatus, targetStatus) => {
     const cid = container?.key || container?.container_id;
     if (!cid) return;
     pendingContainerTransitionRef.current.set(
@@ -105,13 +102,13 @@ const Home = () => {
         startedAt: Date.now(),
       }),
     );
-  };
+  }, []);
 
-  const clearContainerTransition = (cid) => {
+  const clearContainerTransition = useCallback((cid) => {
     if (cid) pendingContainerTransitionRef.current.delete(String(cid));
-  };
+  }, []);
 
-  const patchContainerStatus = (cid, status) => {
+  const patchContainerStatus = useCallback((cid, status) => {
     setContainers(prev => prev.map(c => (
       String(c.key) === String(cid)
         ? applyContainerEffectiveStatus({ ...c, effective_status: status })
@@ -124,7 +121,7 @@ const Home = () => {
         'local-status',
       );
     }
-  };
+  }, [applyContainerEffectiveStatus, getContainerSnapshot, rememberContainerSnapshot]);
 
   const resolveActionsFor = (record, extraLoading = {}) => {
     const key = record?.key || record?.container_id;
@@ -156,10 +153,9 @@ const Home = () => {
   };
 
 
-  const refreshSshTimeForContainer = async (containerId, options = {}) => {
+  const refreshSshTimeForContainer = useCallback(async (containerId, options = {}) => {
     const { silent = false } = options;
     if (!containerId) return null;
-    setSshRefreshingMap(prev => ({ ...prev, [String(containerId)]: true }));
     try {
       const res = await refreshLastSshLoginTime(Number(containerId));
       const value = (res && Object.prototype.hasOwnProperty.call(res, 'last_ssh_login_time'))
@@ -188,12 +184,10 @@ const Home = () => {
         await showErrorModal({ message: err?.body || err || '刷新 SSH 登录时间失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       }
       return null;
-    } finally {
-      setSshRefreshingMap(prev => ({ ...prev, [String(containerId)]: false }));
     }
-  };
+  }, []);
 
-  const refreshSshTimeForAllContainers = async (list) => {
+  const refreshSshTimeForAllContainers = useCallback(async (list) => {
     if (!Array.isArray(list) || list.length === 0) return;
     await Promise.allSettled(
       list
@@ -201,7 +195,11 @@ const Home = () => {
         .filter(Boolean)
         .map(cid => refreshSshTimeForContainer(cid, { silent: true }))
     );
-  };
+  }, [refreshSshTimeForContainer]);
+
+  useEffect(() => {
+    longTermStateRef.current = { remaining: longTermRemaining, limit: longTermLimit };
+  }, [longTermRemaining, longTermLimit]);
 
   useEffect(() => {
     if (!currentUserId) return; // wait until we have the id
@@ -246,10 +244,10 @@ const Home = () => {
         }));
         const nextRemaining = Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_remaining')
           ? Number(res.long_term_container_remaining)
-          : longTermRemaining;
+          : longTermStateRef.current.remaining;
         const nextLimit = Object.prototype.hasOwnProperty.call(res || {}, 'long_term_container_limit')
           ? Number(res.long_term_container_limit)
-          : longTermLimit;
+          : longTermStateRef.current.limit;
         rememberContainerList(mapped, 'home', 'list');
         const fingerprint = containerListFingerprint(mapped, {
           long_term_container_remaining: nextRemaining,
@@ -290,7 +288,7 @@ const Home = () => {
         document.removeEventListener('visibilitychange', refreshIfVisible);
       }
     };
-  }, [currentUserId]);
+  }, [currentUserId, applyContainerEffectiveStatus, rememberContainerList, refreshSshTimeForAllContainers]);
 
   // 渲染侧 ing 看护（状态驱动，补手动刷新/他人操作后进页的缺口）：
   // 列表出现 ing 态 → 自动轮询至终态并更新该项；动作驱动的操作心跳不受影响。
@@ -325,7 +323,7 @@ const Home = () => {
       });
       current.set(cid, stop);
     }
-  }, [containers]);
+  }, [containers, patchContainerStatus]);
 
   // 卸载时停止全部 ing watcher
   useEffect(() => {
@@ -476,7 +474,7 @@ const Home = () => {
                 }
                 return c;
               }));
-            } catch (e) {
+            } catch {
               // ignore update errors
             }
             return;
@@ -490,17 +488,16 @@ const Home = () => {
               }
               return c;
             }));
-          } catch (e) {
+          } catch {
             // ignore update errors
           }
         },
       });
-    } catch (e) {
+    } catch {
       // ignore
     }
     // containers 变化时重试匹配（Apply 导航后列表异步加载）；心跳自终止，无需 cleanup
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location, currentUserId, containers]);
+  }, [location, currentUserId, containers, clearContainerTransition, markContainerTransition, patchContainerStatus]);
 
   // Modal state
   const [modal, setModal] = useState({
@@ -519,7 +516,6 @@ const Home = () => {
   const [reopenDetailOnCancel, setReopenDetailOnCancel] = useState(false);
 
   // edit-user modal state
-  const [editVisible, setEditVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState(null);
   const [usersList, setUsersList] = useState([]);
@@ -532,11 +528,6 @@ const Home = () => {
     setEditModalVisible(true);
   };
 
-  const closeEditModal = () => {
-    setEditModalVisible(false);
-    setSelectedContainer(null);
-  };
-
   // 从编辑返回详情页：重新拉取详情并显示
   const returnToDetail = async () => {
     setEditModalVisible(false);
@@ -546,7 +537,7 @@ const Home = () => {
     }
     try {
       await openContainerDetail(selectedContainer);
-    } catch (e) {
+    } catch {
       // fallback to simply showing detail if fetch fails
       setDetailVisible(true);
     }
@@ -558,13 +549,6 @@ const Home = () => {
     setEditModalVisible(false);
     setSelectedContainer(null);
     setDetailContainer(null);
-  };
-
-  const handleEditSave = (updated) => {
-    // update local containers list to reflect edits
-    setContainers(prev => prev.map(c => (String(c.key) === String(updated.key) ? { ...c, ...updated } : c)));
-    message.success('容器用户信息已保存');
-    closeEditModal();
   };
 
   // start/stop/restart 的接口返回是「受理/处理中」（Ctrl 等到 Node 受理后返回 success=1 的
@@ -602,7 +586,7 @@ const Home = () => {
           message.success({ content: `容器 ${record.container_name} 已启动`, key: `start-${cid}`, duration: 2 });
         }
       });
-    } catch (e) {
+    } catch {
       message.success({ content: `启动指令已发送`, key: `start-${cid}`, duration: 2 });
     }
     return true;
@@ -639,7 +623,7 @@ const Home = () => {
           message.success({ content: `容器 ${record.container_name} 已停止`, key: `stop-${cid}`, duration: 2 });
         }
       });
-    } catch (e) {
+    } catch {
       message.success({ content: `停止指令已发送`, key: `stop-${cid}`, duration: 2 });
     }
     return true;
@@ -683,7 +667,7 @@ const Home = () => {
           message.success({ content: `容器 ${record.container_name} 已重启`, key: `restart-${cid}`, duration: 2 });
         }
       });
-    } catch (e) {
+    } catch {
       message.success({ content: `重启指令已发送`, key: `restart-${cid}`, duration: 2 });
     }
     return true;
@@ -697,26 +681,19 @@ const Home = () => {
       setDetailVisible(false);
     } else if (editModalVisible) {
       setModalParent('edit');
-      setEditVisible(false);
     } else {
       setModalParent(null);
     }
     setModal({ visible: true, type, loading: false, data });
   };
 
-  const handleInvite = record => openConfirm('invite', { record });
-  const handleDeleteContainer = record => openConfirm('delete', { record });
   const handleLeave = record => openConfirm('leave', { record });
-  const handleRemoveUser = (record, username) => openConfirm('removeUser', { record, username });
-  const handleChangeRole = (record, username) => openConfirm('changeRole', { record, username });
 
   const closeModal = () => {
     setModal({ visible: false, type: '', loading: false, data: null });
     // if a parent modal was hidden to show confirmation, reopen it on cancel
     if (modalParent === 'detail') {
       setDetailVisible(true);
-    } else if (modalParent === 'edit') {
-      setEditVisible(true);
     }
     setModalParent(null);
   };
@@ -868,11 +845,6 @@ const Home = () => {
     setReopenDetailOnCancel(true);
     setDetailVisible(false);
     setModal({ visible: true, type: 'delete', loading: false, data: { record: container } });
-  };
-
-  const onChange3 = ({ target: { value } }) => {
-    console.log('radio3 checked', value);
-    setValue3(value);
   };
 
   const getModalConfig = () => {

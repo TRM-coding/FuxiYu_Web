@@ -527,7 +527,7 @@ export default function DeletedContainers() {
           <div style={{ marginBottom: 16 }}>
             <Typography.Text strong>逐行差异</Typography.Text>
             <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
-              − 原快照独有（{contentChoice.diff.removed} 行）　+ 当前模板独有（{contentChoice.diff.added} 行）
+              − 原快照独有（{contentChoice.diff.removed} 行） + 当前模板独有（{contentChoice.diff.added} 行）
             </Typography.Text>
             <div className="dc-diff">
               {contentChoice.diff.rows.map((row, idx) => {

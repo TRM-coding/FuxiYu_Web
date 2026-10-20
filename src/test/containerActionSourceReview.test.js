@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import process from 'node:process';
 import { describe, it, expect } from 'vitest';
 
 const read = relative => fs.readFileSync(path.resolve(process.cwd(), relative), 'utf8');
@@ -58,16 +59,23 @@ describe('源码审查：只有一套容器动作规则', () => {
     expect(source).toContain('unpauseAction?.visible');
   });
 
-  it('ManageMachine 的弹窗调用不伪造系统管理员，人员管理用显式能力', () => {
+  it('ManageMachine 卡片不再挂旧详情弹窗，删除资格仍由共享动作工具给出', () => {
     const source = read('src/pages/ManageMachine.jsx');
-    const start = source.indexOf('<ContainerDetailModal');
-    const end = source.indexOf('/>', start);
-    expect(start).toBeGreaterThan(-1);
-    const call = source.slice(start, end);
-    expect(call).not.toContain('forceSystemAdmin');
-    expect(call).not.toContain('isRoot');
-    expect(call).toContain('canManagePeople');
-    expect(call).toContain('actions={selectedActions}');
+    expect(source).not.toMatch(/ContainerDetailModal|openContainerDetail|returnToDetail|detailModalVisible/);
+    expect(source).toContain('resolveContainerActions');
+    expect(source).not.toMatch(/deleteContainer\(/);
+    expect(source).not.toMatch(/openDeleteContainerConfirm|handleDeleteContainerConfirm/);
+  });
+
+  it('实际删除入口只在专用容器详情页', () => {
+    const detailPage = read('src/pages/ContainerDetailPage.jsx');
+    expect(detailPage).toContain('deleteContainer(');
+    expect(detailPage).toContain('actions?.delete.visible');
+    expect(detailPage).toContain("preflightDetailAction('delete')");
+
+    for (const file of ['src/pages/ManageMachine.jsx', 'src/pages/ManageUser.jsx', 'src/pages/ManageUserInTable.jsx']) {
+      expect(read(file), file).not.toMatch(/deleteContainer\(/);
+    }
   });
 
   it('删除不推导解除关联，共享七动作不含 leave', () => {

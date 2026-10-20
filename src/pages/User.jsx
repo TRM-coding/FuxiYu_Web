@@ -1,7 +1,7 @@
 // src/pages/User.jsx
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Form, Input, DatePicker, Button, Row, Col, Space, message, InputNumber, Typography, Statistic, Tooltip } from 'antd';
+import { Card, Form, Input, DatePicker, Button, Row, Col, Space, InputNumber, Typography, Statistic, Tooltip } from 'antd';
 import { LogoutOutlined } from '@ant-design/icons';
 import showErrorModal from '../utils/showErrorModal';
 import { clearAuth } from '../utils/authHelpers';
@@ -20,12 +20,10 @@ const User = () => {
   const [graduation_year, setGraduationYear] = useState(null);
   const [originalInfo, setOriginalInfo] = useState({ username: '', email: '', graduation_year: null });
   const [usernameMsg, setUsernameMsg] = useState(null);
-  const [emailMsg, setEmailMsg] = useState(null);
   const [yearMsg, setYearMsg] = useState(null);
   const [passwordMsg, setPasswordMsg] = useState(null);
   const [passwordMsgType, setPasswordMsgType] = useState(null);
   const [usernameInvalid, setUsernameInvalid] = useState(false);
-  const [emailInvalid, setEmailInvalid] = useState(false);
   const [currentPasswordInvalid, setCurrentPasswordInvalid] = useState(false);
   const [newPasswordInvalid, setNewPasswordInvalid] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -56,7 +54,6 @@ const User = () => {
         });
         // clear inline messages when data loads
         setUsernameMsg(null);
-        setEmailMsg(null);
         setYearMsg(null);
         setPasswordMsg(null);
         setPasswordMsgType(null);
@@ -68,7 +65,6 @@ const User = () => {
         setCurrentPassword('');
         setNewPassword('');
         setUsernameInvalid(false);
-        setEmailInvalid(false);
         setCurrentPasswordInvalid(false);
         setNewPasswordInvalid(false);
       } catch (err) {
@@ -103,7 +99,7 @@ const User = () => {
       setPasswordMsgType('success');
       setCurrentPassword('');
       setNewPassword('');
-      try { form.setFieldsValue({ current_password: '', new_password: '' }); } catch (e) {}
+      form.setFieldsValue({ current_password: '', new_password: '' });
       setTimeout(() => { setPasswordMsg(null); setPasswordMsgType(null); }, 3000);
     } catch (err) {
       console.error('change password failed', err);
@@ -120,14 +116,12 @@ const User = () => {
 
   const isAllAscii = (s) => {
     if (s === null || s === undefined) return true;
-    try {
-      return /^[\x00-\x7F]*$/.test(String(s));
-    } catch (e) { return false; }
+    return Array.from(String(s)).every(ch => ch.charCodeAt(0) <= 0x7F);
   };
 
   const isValidUsername = (s) => {
     if (s === null || s === undefined) return false;
-    try { return /^[A-Za-z0-9_]+$/.test(String(s)); } catch (e) { return false; }
+    return /^[A-Za-z0-9_]+$/.test(String(s));
   };
 
   const handleLogout = async () => {

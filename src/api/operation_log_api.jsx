@@ -7,7 +7,7 @@ import { createController, unregisterController, abortAll } from '../utils/reque
 const createTimeoutController = (timeout) => {
 	const controller = createController();
 	const timer = setTimeout(() => {
-		try { controller.abort(); } catch (e) {}
+		controller.abort();
 	}, timeout || REQUEST_TIMEOUT);
 	return { controller, timer };
 };
@@ -17,7 +17,7 @@ const ensureOk = async (res, action) => {
 		let body = null;
 		try {
 			body = await res.json();
-		} catch (e) {
+		} catch {
 			body = await res.text().catch(() => null);
 		}
 		const text = body && typeof body === 'string' ? body : (body ? JSON.stringify(body) : null);
@@ -27,7 +27,7 @@ const ensureOk = async (res, action) => {
 		err.body = body;
 		if (res.status === 401) {
 			// 唯一信号：不在包装器里碰 localStorage / cookie / window.location。
-			try { abortAll('auth'); } catch (e) {}
+			abortAll('auth');
 		}
 		throw err;
 	}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -39,6 +39,52 @@ import { getUserPermissions } from '../api/user_api';
 import { PermissionProvider } from '../contexts/PermissionContext';
 import AdminLogs from '../pages/AdminLogs';
 
+const DEFAULT_LOG = {
+  id: 1,
+  operator_user_id: null,
+  operation: 'update_machine',
+  target_type: 'machine',
+  target_id: 3,
+  detail: { before: { machine_status: 'online' }, after: { machine_status: 'maintenance' } },
+  success: true,
+  error_reason: null,
+  created_at: '2026-08-16T08:00:00',
+};
+
+const defaultListResponse = () => ({ logs: [DEFAULT_LOG], total_pages: 1 });
+
+const makeLog = (id, displayName) => ({
+  ...DEFAULT_LOG,
+  id,
+  operation: 'update_setting',
+  target_type: 'system_setting',
+  target_id: id,
+  target_display_name: displayName,
+  detail: {},
+});
+
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+};
+
+/** 在筛选栏里点选 antd Select 的某个选项（取最新打开的那份下拉）。 */
+const selectFilterOption = async (label, optionText) => {
+  const trigger = screen.getByText(label).closest('.ant-col').querySelector('.ant-select-selector');
+  fireEvent.mouseDown(trigger);
+  const option = await waitFor(() => {
+    const options = Array.from(document.querySelectorAll('.ant-select-item-option'))
+      .filter(el => (el.textContent || '').includes(optionText));
+    if (!options.length) throw new Error(`未找到选项：${optionText}`);
+    return options[options.length - 1];
+  });
+  fireEvent.click(option);
+};
+
+const paginationItem = (pageNumber) => document.querySelector(`.ant-pagination-item-${pageNumber}`);
+
 const renderPage = () => render(
   <MemoryRouter>
     <PermissionProvider>
@@ -58,8 +104,117 @@ describe('AdminLogs 日志页', () => {
   beforeEach(() => {
     localStorage.setItem('currentUserName', 'operator1');
     localStorage.setItem('currentUserId', '1');
-    listOperationLogs.mockClear();
+    listOperationLogs.mockReset();
+    listOperationLogs.mockResolvedValue(defaultListResponse());
     getUserPermissions.mockReset();
+  });
+
+  it('test_q22_admin_logs_current_response 当前上下文响应应用日志、总数与分页状态', async () => {
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
+    listOperationLogs.mockResolvedValue({
+      logs: [makeLog(21, '当前周日志')],
+      total_pages: 4,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/当前周日志/)).toBeInTheDocument();
+    expect(listOperationLogs).toHaveBeenCalledTimes(1);
+    // total_pages=4、page_size=20 → 分页入口显示 4 页
+    expect(paginationItem(4)).toBeTruthy();
+    expect(paginationItem(1)).toHaveClass('ant-pagination-item-active');
+  });
+
+  it('test_q22_admin_logs_stale_week 旧周次响应晚到时不得覆盖上一周结果', async () => {
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
+    const currentWeek = deferred();
+    const previousWeek = deferred();
+    listOperationLogs
+      .mockImplementationOnce(() => currentWeek.promise)
+      .mockImplementationOnce(() => previousWeek.promise);
+
+    renderPage();
+    await waitFor(() => expect(listOperationLogs).toHaveBeenCalledTimes(1));
+
+    await userEvent.click(screen.getByRole('button', { name: /上一周/ }));
+    await waitFor(() => expect(listOperationLogs).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      previousWeek.resolve({ logs: [makeLog(31, '上一周日志')], total_pages: 3 });
+    });
+    expect(await screen.findByText(/上一周日志/)).toBeInTheDocument();
+
+    await act(async () => {
+      currentWeek.resolve({ logs: [makeLog(32, '本周迟到日志')], total_pages: 1 });
+    });
+
+    expect(screen.queryByText(/本周迟到日志/)).not.toBeInTheDocument();
+    expect(screen.getByText(/上一周日志/)).toBeInTheDocument();
+    expect(paginationItem(3)).toBeTruthy();
+  });
+
+  it('test_q22_admin_logs_stale_filter_page 旧筛选响应晚到时不得覆盖当前筛选结果', async () => {
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
+    const oldFilter = deferred();
+    const newFilter = deferred();
+    listOperationLogs
+      .mockResolvedValueOnce({ logs: [makeLog(41, '初始筛选结果')], total_pages: 1 })
+      .mockImplementationOnce(() => oldFilter.promise)
+      .mockImplementationOnce(() => newFilter.promise);
+
+    renderPage();
+    expect(await screen.findByText(/初始筛选结果/)).toBeInTheDocument();
+
+    await selectFilterOption('操作类型', '删除容器');
+    await waitFor(() => expect(listOperationLogs).toHaveBeenCalledTimes(2));
+    await selectFilterOption('操作类型', '更新机器');
+    await waitFor(() => expect(listOperationLogs).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      newFilter.resolve({ logs: [makeLog(42, '新筛选结果')], total_pages: 1 });
+    });
+    expect(await screen.findByText(/新筛选结果/)).toBeInTheDocument();
+
+    await act(async () => {
+      oldFilter.resolve({ logs: [makeLog(43, '旧筛选迟到结果')], total_pages: 5 });
+    });
+
+    expect(screen.queryByText(/旧筛选迟到结果/)).not.toBeInTheDocument();
+    expect(screen.getByText(/新筛选结果/)).toBeInTheDocument();
+    // 旧响应的 total_pages 也不得改写当前分页入口
+    expect(paginationItem(5)).toBeNull();
+  });
+
+  it('test_q22_admin_logs_stale_page 旧页响应晚到时不得把列表和当前页拉回旧页', async () => {
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
+    const oldPageTwo = deferred();
+    const newPageOne = deferred();
+    listOperationLogs
+      .mockResolvedValueOnce({ logs: [makeLog(51, '第一页初始结果')], total_pages: 3 })
+      .mockImplementationOnce(() => oldPageTwo.promise)
+      .mockImplementationOnce(() => newPageOne.promise);
+
+    renderPage();
+    expect(await screen.findByText(/第一页初始结果/)).toBeInTheDocument();
+
+    fireEvent.click(paginationItem(2));
+    await waitFor(() => expect(listOperationLogs).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(paginationItem(1));
+    await waitFor(() => expect(listOperationLogs).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      newPageOne.resolve({ logs: [makeLog(52, '第一页新结果')], total_pages: 3 });
+    });
+    expect(await screen.findByText(/第一页新结果/)).toBeInTheDocument();
+
+    await act(async () => {
+      oldPageTwo.resolve({ logs: [makeLog(53, '第二页迟到结果')], total_pages: 3 });
+    });
+
+    expect(screen.queryByText(/第二页迟到结果/)).not.toBeInTheDocument();
+    expect(screen.getByText(/第一页新结果/)).toBeInTheDocument();
+    expect(paginationItem(1)).toHaveClass('ant-pagination-item-active');
   });
 
   it('渲染日志行：操作名走中文映射，操作人为系统', async () => {

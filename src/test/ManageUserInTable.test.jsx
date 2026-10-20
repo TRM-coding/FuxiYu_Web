@@ -1,6 +1,6 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import ManageUserInTable from '../pages/ManageUserInTable';
 
 const EditUserRow = () => <div>editor</div>;
@@ -174,5 +174,155 @@ describe('ManageUserInTable 长期列', () => {
     expect(within(expanded).queryByRole('button', { name: /^停\s*止$/ })).toBeNull();
     expect(within(expanded).queryByRole('button', { name: /解冻/ })).toBeNull();
     expect(screen.getByRole('button', { name: /删\s*除/ })).toBeInTheDocument();
+  });
+});
+
+const pageContainers = (names) => names.map((name, index) => ({
+  ...CONTAINER,
+  key: String(100 + index),
+  container_id: String(100 + index),
+  container_name: name,
+}));
+
+const tableProps = (overrides = {}) => ({
+  dataSource: [USER],
+  usersLoading: false,
+  expandedRowKeys: ['7'],
+  setExpandedRowKeys: () => {},
+  selectedRowKey: '7',
+  setSelectedRowKey: () => {},
+  fetchContainersForUser: () => {},
+  getUserContainers: () => [],
+  containerMap: {},
+  handleLongTermChange: () => {},
+  handleRemoveUserFromContainer: () => {},
+  handleDeleteUser: () => {},
+  handleResetPassword: () => {},
+  showUserGroupsAction: false,
+  handleOpenUserGroups: () => {},
+  toggleExpand: () => {},
+  renderContainerStatus: status => <span>{status}</span>,
+  renderContainerRoleTag: role => <span>{role}</span>,
+  EditUserRow,
+  ...overrides,
+});
+
+const firstPageEntry = (data) => ({
+  7: {
+    data,
+    total_number: 6,
+    total_page: 2,
+    page: 0,
+    page_size: 4,
+    loading: false,
+  },
+});
+
+describe('ManageUserInTable 行操作与子容器分页', () => {
+  it('test_q60_edit_action_does_not_select_row', () => {
+    const setSelectedRowKey = vi.fn();
+    const toggleExpand = vi.fn();
+    render(<ManageUserInTable {...tableProps({ expandedRowKeys: [], setSelectedRowKey, toggleExpand })} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /编辑用户/ }));
+
+    expect(toggleExpand).toHaveBeenCalledWith('7');
+    expect(setSelectedRowKey).not.toHaveBeenCalled();
+  });
+
+  it('test_q60_other_actions_do_not_bubble', () => {
+    const setSelectedRowKey = vi.fn();
+    const toggleExpand = vi.fn();
+    const handleDeleteUser = vi.fn();
+    const handleResetPassword = vi.fn();
+    const handleOpenUserGroups = vi.fn();
+
+    render(<ManageUserInTable {...tableProps({
+      expandedRowKeys: [],
+      setSelectedRowKey,
+      toggleExpand,
+      handleDeleteUser,
+      handleResetPassword,
+      handleOpenUserGroups,
+      showUserGroupsAction: true,
+    })} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /删\s*除/ }));
+    fireEvent.click(screen.getByRole('button', { name: /重置密码/ }));
+    fireEvent.click(screen.getByRole('button', { name: /权限组/ }));
+
+    expect(handleDeleteUser).toHaveBeenCalledTimes(1);
+    expect(handleResetPassword).toHaveBeenCalledTimes(1);
+    expect(handleOpenUserGroups).toHaveBeenCalledTimes(1);
+    expect(setSelectedRowKey).not.toHaveBeenCalled();
+    expect(toggleExpand).not.toHaveBeenCalled();
+  });
+
+  it('test_q59_six_containers_second_page_reachable', () => {
+    const firstPage = pageContainers(['train-a', 'train-b', 'train-c', 'train-d']);
+    const secondPage = pageContainers(['train-e', 'train-f']);
+    const fetchContainersForUser = vi.fn();
+    const before = tableProps({
+      fetchContainersForUser,
+      getUserContainers: () => firstPage,
+      containerMap: firstPageEntry(firstPage),
+    });
+
+    const { rerender } = render(<ManageUserInTable {...before} />);
+
+    const expanded = document.querySelector('.manage-user-expanded');
+    expect(expanded).not.toBeNull();
+    expect(within(expanded).getByText('train-d')).toBeInTheDocument();
+    const pagination = expanded.querySelector('.ant-pagination');
+    expect(pagination).not.toBeNull();
+    expect(within(pagination).getByTitle('2')).toBeInTheDocument();
+
+    fireEvent.click(within(pagination).getByTitle('2'));
+    expect(fetchContainersForUser).toHaveBeenCalledWith('7', 1);
+
+    rerender(<ManageUserInTable {...{
+      ...before,
+      fetchContainersForUser,
+      getUserContainers: () => secondPage,
+      containerMap: {
+        7: {
+          data: secondPage,
+          total_number: 6,
+          total_page: 2,
+          page: 1,
+          page_size: 4,
+          loading: false,
+        },
+      },
+    }} />);
+
+    const secondExpanded = document.querySelector('.manage-user-expanded');
+    expect(within(secondExpanded).getByText('train-e')).toBeInTheDocument();
+    expect(within(secondExpanded).getByText('train-f')).toBeInTheDocument();
+    expect(fetchContainersForUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('test_q59_total_at_most_four_no_pagination', () => {
+    const four = pageContainers(['train-a', 'train-b', 'train-c', 'train-d']);
+    const fetchContainersForUser = vi.fn();
+    render(<ManageUserInTable {...tableProps({
+      fetchContainersForUser,
+      getUserContainers: () => four,
+      containerMap: {
+        7: {
+          data: four,
+          total_number: 4,
+          total_page: 1,
+          page: 0,
+          page_size: 4,
+          loading: false,
+        },
+      },
+    })} />);
+
+    const expanded = document.querySelector('.manage-user-expanded');
+    expect(expanded).not.toBeNull();
+    expect(expanded.querySelector('.ant-pagination')).toBeNull();
+    expect(fetchContainersForUser).not.toHaveBeenCalled();
   });
 });

@@ -1,17 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { listAllMachineBrefInformation, getDetailInformation, registerMachine, removeMachine, addMachinePermission, removeMachinePermission, listMachinePermissions } from '../api/machine_api';
-import { listAllContainerBrefInformation, getContainerDetailInformation, addCollaborator, removeCollaborator, updateRole, createContainer, deleteContainer, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
-import { ReloadOutlined, UserOutlined, CrownOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, PlusOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, ContainerOutlined, UnlockOutlined } from '@ant-design/icons';
-import { Typography, Row, Col, Button, Input, Space, Tag, Modal, Descriptions, Avatar, List, Form, Select, message, Popconfirm, InputNumber, Radio, Slider, Checkbox } from 'antd';
+import { listAllContainerBrefInformation, startContainer, stopContainer, restartContainer, setLongTermContainer, refreshLastSshLoginTime, unpauseContainer } from '../api/container_api';
+import { ReloadOutlined, UserOutlined, CrownOutlined, UserAddOutlined, SafetyCertificateOutlined, LoadingOutlined, DesktopOutlined, PlusOutlined, DeleteOutlined, UnlockOutlined } from '@ant-design/icons';
+import { Typography, Row, Col, Button, Input, Space, Tag, Modal, Form, Select, message, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
-import EditUserModal from '../components/EditUserModal';
-import ContainerDetailModal from '../components/ContainerDetailModal';
 import { handleAuthError } from '../utils/authHelpers';
 import { listAllUserBrefInformation, getUserDetailInformation } from '../api/user_api';
 import { usePermission } from '../contexts/PermissionContext';
-import { isAbortError } from '../utils/requestManager';
 import { useNavigate } from 'react-router-dom';
 import useAutoHideTopBar from '../utils/useAutoHideTopBar';
 import CopyChip from '../components/CopyChip';
@@ -25,7 +22,6 @@ import {
 } from '../utils/containerActions';
 import { useContainerSnapshots } from '../utils/containerSnapshots';
 import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint, machineListFingerprint } from '../utils/listRefresh';
-const { Option } = Select;
 
 import { startContainerStatusHeartbeat, watchIngContainerUntilTerminal, ING_CONTAINER_STATES } from '../utils/heartbeat';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
@@ -72,7 +68,7 @@ const ManageMachine = () => {
   const [machines, setMachines] = useState([]);
   const [machinesLoading, setMachinesLoading] = useState(false);
   // machine status transition loading flags: { [machineId]: boolean }
-  const [machineStatusLoadingMap, setMachineStatusLoadingMap] = useState({});
+  const [machineStatusLoadingMap] = useState({});
   const [selectedRowKey, setSelectedRowKey] = useState(null);
   // containers per machine cache: { [machineId]: { loading: bool, data: [] } }
   const [containerMap, setContainerMap] = useState({});
@@ -80,6 +76,7 @@ const ManageMachine = () => {
   const [unpauseLoadingMap, setUnpauseLoadingMap] = useState({});
   const [sshRefreshingMap, setSshRefreshingMap] = useState({});
   const pendingContainerTransitionRef = useRef(new Map());
+  const containerRequestSeqRef = useRef({});
   const machineListFingerprintRef = useRef('');
   const containerListFingerprintRef = useRef({});
   const searchMachineRef = useRef(searchMachine);
@@ -88,7 +85,6 @@ const ManageMachine = () => {
   const {
     remember: rememberContainerSnapshot,
     rememberList: rememberContainerList,
-    markUnavailable: markContainerUnavailable,
     get: getContainerSnapshot,
   } = useContainerSnapshots();
   const {
@@ -103,7 +99,7 @@ const ManageMachine = () => {
   searchContainerNameRef.current = searchContainerName;
   containerMapRef.current = containerMap;
 
-  const applyContainerEffectiveStatus = (container) => {
+  const applyContainerEffectiveStatus = useCallback((container) => {
     const cid = container?.key || container?.container_id;
     if (!cid) return container;
     const key = String(cid);
@@ -118,7 +114,7 @@ const ManageMachine = () => {
       pendingContainerTransitionRef.current.delete(key);
     }
     return { ...container, effective_status: result.status };
-  };
+  }, []);
 
   const markContainerTransition = (container, transitionStatus, targetStatus) => {
     const cid = container?.key || container?.container_id;
@@ -136,7 +132,7 @@ const ManageMachine = () => {
     if (cid) pendingContainerTransitionRef.current.delete(String(cid));
   };
 
-  const patchMachineContainerStatus = (mid, cid, status) => {
+  const patchMachineContainerStatus = useCallback((mid, cid, status) => {
     const latest = getContainerSnapshot(cid);
     const patched = latest
       ? applyContainerEffectiveStatus({ ...latest, effective_status: status })
@@ -157,7 +153,7 @@ const ManageMachine = () => {
       }
       return copy;
     });
-  };
+  }, [applyContainerEffectiveStatus, getContainerSnapshot, rememberContainerSnapshot]);
 
   const resolveActionsFor = (record, extraLoading = {}) => {
     const key = record?.key || record?.container_id;
@@ -181,7 +177,7 @@ const ManageMachine = () => {
         stop: extraLoading.stop === true,
         restart: extraLoading.restart === true,
         unpause: extraLoading.unpause === true || unpauseLoadingMap[loadingKey] === true,
-        delete: extraLoading.delete === true || containerDeleteLoading,
+        delete: extraLoading.delete === true,
         long_term_enable: extraLoading.long_term_enable === true || longTermUpdatingMap[loadingKey] === true,
         long_term_disable: extraLoading.long_term_disable === true || longTermUpdatingMap[loadingKey] === true,
       },
@@ -255,9 +251,8 @@ const ManageMachine = () => {
         current.set(cid, stop);
       }
     }
-  // 页面级 patch 函数随渲染更新；本 effect 只按 containerMap 变化重跑，避免每帧重建 watcher。
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerMap]);
+  // 页面级 patch 函数已稳定；本 effect 只按 containerMap 变化重跑，避免每帧重建 watcher。
+  }, [containerMap, patchMachineContainerStatus]);
 
   // 卸载时停止全部 ing watcher
   useEffect(() => {
@@ -271,17 +266,7 @@ const ManageMachine = () => {
   const containerSearchTimerRef = useRef(null);
   const lastContainerSearchKeywordRef = useRef('');
 
-  const stopEventPropagation = (e) => {
-    try {
-      if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
-    } catch (err) {
-      // ignore
-    }
-  };
-
-  // users fetched from backend (used for selecting when adding users to a container)
-  const [usersList, setUsersList] = useState([]);
-  const [usersLoading, setUsersLoading] = useState(false);
+  // 机器权限弹窗状态
   const [permissionModalVisible, setPermissionModalVisible] = useState(false);
   const [permissionModalLoading, setPermissionModalLoading] = useState(false);
   const [permissionModalSubmitting, setPermissionModalSubmitting] = useState(false);
@@ -316,10 +301,6 @@ const ManageMachine = () => {
     }
   }, [navigate, permLoaded, hasPermission]);
 
-  // 弹窗状态
-  const [detailModalVisible, setDetailModalVisible] = useState(false);
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [selectedContainer, setSelectedContainer] = useState(null);
   // 对话框状态
   const [actionModal, setActionModal] = useState({ visible: false, type: '', loading: false, data: null });
   // 添加宿主机弹窗
@@ -336,10 +317,6 @@ const ManageMachine = () => {
   // 拉回来的过滤计数，拿它当判据会让同一个按钮的行为随搜索框内容变。
   // status: checking=核对中（确认按钮先禁用）· ok=已拿到 · unknown=取不到（交给后端 409 兜底）
   const [deleteTargetBusy, setDeleteTargetBusy] = useState({ status: 'ok', count: 0 });
-  // 删除容器的二次确认状态
-  const [containerDeleteConfirmVisible, setContainerDeleteConfirmVisible] = useState(false);
-  const [deleteTargetContainer, setDeleteTargetContainer] = useState(null);
-  const [containerDeleteLoading, setContainerDeleteLoading] = useState(false);
 
   const openActionConfirm = (type, data) => {
     setActionModal({ visible: true, type, loading: false, data });
@@ -525,32 +502,13 @@ const ManageMachine = () => {
     return () => clearTimeout(timer);
   }, [searchMachine]);
 
-  // 选择要加入的用户
-  useEffect(() => {
-    let mounted = true;
-    const loadUsers = async () => {
-      setUsersLoading(true);
-      try {
-        const res = await listAllUserBrefInformation({ page_number: 1, page_size: 500 });
-        const items = (res && (res.users || res.users_info || res.data || res.users_list)) || [];
-        const mapped = items.map(u => ({ id: u.user_id || u.id || u.uid || u.userId, username: u.username || u.name || String(u.id), name: u.display_name || u.name || u.username }));
-        if (mounted) setUsersList(mapped);
-      } catch (err) {
-        console.error('Failed to load users', err);
-        if (mounted) setUsersList([]);
-      } finally {
-        if (mounted) setUsersLoading(false);
-      }
-    };
-    loadUsers();
-    return () => { mounted = false; };
-  }, []);
-
-  const fetchContainersForMachine = async (machineId, pageNumber = 0, containerName = searchContainerName, options = {}) => {
+  const fetchContainersForMachine = useCallback(async function fetchContainersForMachineImpl(machineId, pageNumber = 0, containerName = searchContainerNameRef.current, options = {}) {
     const { silent = false } = options;
     // avoid duplicate fetch
     if (!machineId) return;
     const mid = String(machineId);
+    const requestSeq = (containerRequestSeqRef.current[mid] || 0) + 1;
+    containerRequestSeqRef.current[mid] = requestSeq;
     // if same page already loaded, skip
     //if (containerMap[mid]?.loading || (containerMap[mid]?.data && containerMap[mid]?.page === pageNumber)) return;
     // mark loading
@@ -565,6 +523,8 @@ const ManageMachine = () => {
         page_number: pageNumber,
         page_size: pageSize,
       });
+      // 旧请求晚到时直接丢弃，不能覆盖用户已经切到的新页/新筛选。
+      if (containerRequestSeqRef.current[mid] !== requestSeq) return;
       const items = (res && (res.containers_info || res.containers)) || [];
       const total_page = (res && (res.total_page || res.totalPages || res.total_pages)) || 1;
       const total_number = Number(res && (res.total_number ?? res.totalNumber ?? res.total)) || items.length;
@@ -626,6 +586,10 @@ const ManageMachine = () => {
           container_name: String(containerName || '').trim(),
         },
       }));
+      // 仅当响应总数证明当前页已越界时才回退到有效页；否则保持当前页。
+      if (pageNumber > 0 && total_page > 0 && pageNumber >= total_page) {
+        void fetchContainersForMachineImpl(mid, Math.max(0, total_page - 1), containerName, { silent: true });
+      }
     } catch (err) {
       console.error('fetchContainersForMachine failed', machineId, err);
       // fallback: keep loading false but no data so UI will use local mock
@@ -633,7 +597,7 @@ const ManageMachine = () => {
         setContainerMap(prev => ({ ...prev, [mid]: { loading: false, data: [], page: pageNumber, total_page: 1 } }));
       }
     }
-  };
+  }, [applyContainerEffectiveStatus, rememberContainerList]);
 
   useEffect(() => {
     let mounted = true;
@@ -668,7 +632,7 @@ const ManageMachine = () => {
         document.removeEventListener('visibilitychange', refreshLoadedContainers);
       }
     };
-  }, []);
+  }, [fetchContainersForMachine]);
 
   const handleLongTermChange = async (containerRecord, checked) => {
     const record = getLatestContainer(containerRecord);
@@ -756,7 +720,7 @@ const ManageMachine = () => {
         containerSearchTimerRef.current = null;
       }
     };
-  }, [searchContainerName, searchMachine, machines]);
+  }, [searchContainerName, searchMachine, machines, fetchContainersForMachine]);
 
   const filteredMachineData = machines.filter(machine => {
     const keyword = (searchContainerName || '').trim().toLowerCase();
@@ -786,67 +750,11 @@ const ManageMachine = () => {
   useEffect(() => {
     machines.forEach(machine => {
       const mid = String(machine.key);
-      const entry = containerMap[mid];
+      const entry = containerMapRef.current[mid];
       if (entry && Array.isArray(entry.data)) return; // 已有数据不重复拉
       fetchContainersForMachine(mid, 0);
     });
-  }, [machines]);
-
-  // 处理容器搜索输入
-
-  // 打开容器详情弹窗: 先从后端获取详情数据再展示
-  const openContainerDetail = async (container) => {
-    if (!container) return;
-    const cid = container.key || container.container_id || container.container_id === 0 ? container.key || container.container_id : null;
-    try {
-      // show small loading state by clearing selection
-      setSelectedContainer(null);
-      // fetch detail from server
-      const res = await getContainerDetailInformation(cid);
-      // support multiple possible response shapes
-      const detail = (res && (res.container_info || res.container || res.data || res.container_detail)) || res || null;
-      if (!detail || (typeof detail === 'object' && Object.keys(detail).length === 0)) {
-        markContainerUnavailable(cid);
-        await showErrorModal({ message: '未能获取容器详情' });
-        return;
-      }
-      const mapped = {
-        key: detail.container_id ? String(detail.container_id) : (container.key || String(Date.now())),
-        container_name: detail.container_name || detail.name || container.container_name || '',
-        image_name: detail.image_name || container.image_name || '',
-        port: detail.port ? String(detail.port) : (detail.port_str || container.port || ''),
-        effective_status: (detail.effective_status || '').toLowerCase(),
-        machine_ip: detail.machine_ip || container.machine_ip || '',
-        machine_id: detail.machine_id ? String(detail.machine_id) : (container.machine_id ? String(container.machine_id) : ''),
-        cpu_number: detail.cpu_number ?? container.cpu_number ?? null,
-        gpu_number: detail.gpu_number ?? container.gpu_number ?? 0,
-        memory_gb: detail.memory_gb ?? container.memory_gb ?? 0,
-        shared_gb: detail.shared_gb ?? container.shared_gb ?? 0,
-        disk_usage: detail.disk_usage ?? container.disk_usage ?? null,
-        disk_total_gb: detail.disk_total_gb ?? container.disk_total_gb ?? null,
-        disk_limit_gb: detail.disk_limit_gb ?? container.disk_limit_gb ?? null,
-        disk_usage_percent: detail.disk_usage_percent ?? container.disk_usage_percent ?? null,
-        is_long_term: detail.is_long_term ?? container.is_long_term,
-        long_term_container_can_enable: detail.long_term_container_can_enable ?? container.long_term_container_can_enable,
-        long_term_container_blocked_user_ids: detail.long_term_container_blocked_user_ids ?? container.long_term_container_blocked_user_ids ?? [],
-        long_term_container_remaining_by_user: detail.long_term_container_remaining_by_user ?? container.long_term_container_remaining_by_user ?? {},
-        freeze_state: detail.freeze_state ?? container.freeze_state ?? null,
-        freeze_first_frozen_at: detail.freeze_first_frozen_at ?? container.freeze_first_frozen_at ?? null,
-        freeze_grace_until: detail.freeze_grace_until ?? container.freeze_grace_until ?? null,
-        freeze_days_frozen: detail.freeze_days_frozen ?? container.freeze_days_frozen ?? null,
-        runtime_metrics: detail.runtime_metrics ?? container.runtime_metrics ?? null,
-        owners: detail.owners || detail.owner_list || container.owners || [],
-        accounts: detail.accounts || detail.account_list || container.accounts || []
-      };
-      rememberContainerSnapshot(mapped, 'detail');
-      setSelectedContainer(mapped);
-      setDetailModalVisible(true);
-    } catch (err) {
-      console.error('getContainerDetailInformation failed', err);
-      await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-      return;
-    }
-  };
+  }, [machines, fetchContainersForMachine]);
 
   const loadPermissionUsers = async (page = 1, append = false) => {
     let mapped = [];
@@ -1027,7 +935,7 @@ const ManageMachine = () => {
         setAddHostLoading(false);
         if (success) setAddHostVisible(false);
       }
-    } catch (err) {
+    } catch {
       // validation failed
     }
   };
@@ -1093,6 +1001,19 @@ const ManageMachine = () => {
     })();
   };
 
+  // 解冻成功后只有在页码、搜索词、机器筛选和请求序号都仍是操作开始时的快照时才刷新。
+  // 用户中途切页/改筛选时，旧刷新直接丢弃，避免把列表拉回旧上下文。
+  const refreshUnpauseRow = async ({ mid, page, containerName, machineSearch, requestSeq }) => {
+    const entry = containerMapRef.current[mid] || {};
+    const samePage = (entry.page ?? 0) === page;
+    const sameKeyword = String(entry.container_name ?? String(searchContainerNameRef.current || '').trim()).trim()
+      === String(containerName || '').trim();
+    const sameMachineSearch = String(searchMachineRef.current || '').trim() === machineSearch;
+    const sameRequestSeq = (containerRequestSeqRef.current[mid] || 0) === requestSeq;
+    if (!samePage || !sameKeyword || !sameMachineSearch || !sameRequestSeq) return;
+    await fetchContainersForMachine(mid, page, containerName, { silent: true });
+  };
+
   const handleUnpauseContainer = async (sourceRecord) => {
     const record = getLatestContainer(sourceRecord);
     const cid = record?.key || record?.container_id;
@@ -1107,6 +1028,14 @@ const ManageMachine = () => {
       message.warning(getContainerActionReasonText(before.actions.unpause.reason) || '当前不可解冻');
       return false;
     }
+    const entry = containerMapRef.current[mid] || {};
+    const unpauseContext = {
+      mid,
+      page: entry.page ?? 0,
+      containerName: entry.container_name ?? String(searchContainerNameRef.current || '').trim(),
+      machineSearch: String(searchMachineRef.current || '').trim(),
+      requestSeq: containerRequestSeqRef.current[mid] || 0,
+    };
     setUnpauseLoadingMap(prev => ({ ...prev, [key]: true }));
     try {
       await unpauseContainer(Number(cid));
@@ -1132,6 +1061,7 @@ const ManageMachine = () => {
       } catch {
         // 受理后仍以权威轮询为准；心跳启动失败不清除已受理的 pending。
       }
+      await refreshUnpauseRow(unpauseContext);
       return true;
     } catch (err) {
       clearContainerTransition(cid);
@@ -1141,94 +1071,6 @@ const ManageMachine = () => {
     } finally {
       setUnpauseLoadingMap(prev => ({ ...prev, [key]: false }));
     }
-  };
-
-  const openDeleteContainerConfirm = (container) => {
-    setDeleteTargetContainer(container);
-    // 隐藏详情弹窗以展示二次确认
-    setDetailModalVisible(false);
-    setContainerDeleteConfirmVisible(true);
-  };
-
-  // 确认删除容器：提交前用最新快照重解析；失败保留原行并重读。
-  const handleDeleteContainerConfirm = async () => {
-    if (!deleteTargetContainer) return;
-    const record = getLatestContainer(deleteTargetContainer);
-    if (!record) {
-      message.warning(getContainerActionReasonText('container_no_longer_available'));
-      setContainerDeleteConfirmVisible(false);
-      setDeleteTargetContainer(null);
-      return;
-    }
-    const cid = record.key || record.container_id;
-    const before = resolveActionsFor(record, { delete: false }).actions.delete;
-    if (!before.visible || !before.enabled) {
-      message.warning(getContainerActionReasonText(before.reason) || '当前不可删除');
-      setContainerDeleteConfirmVisible(false);
-      setDeleteTargetContainer(null);
-      await reloadContainerRow(record);
-      return;
-    }
-    setContainerDeleteLoading(true);
-    const mid = String(record.machine_id || '');
-    let success = false;
-    try {
-      await deleteContainer(cid);
-      markContainerUnavailable(cid);
-      setContainerMap(prev => {
-        const copy = { ...prev };
-        if (copy[mid] && Array.isArray(copy[mid].data)) {
-          copy[mid] = { ...copy[mid], data: copy[mid].data.filter(c => c.key !== record.key && String(c.container_id) !== String(cid)) };
-        }
-        return copy;
-      });
-      if (selectedContainer && (selectedContainer.key === record.key || String(selectedContainer.container_id) === String(cid))) {
-        closeAllModals();
-      }
-      message.success('容器已删除');
-      success = true;
-    } catch (err) {
-      console.error('deleteContainer failed', err);
-      await showErrorModal({ message: err?.body || err || '删除容器失败，请重试', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-      await reloadContainerRow(record);
-    } finally {
-      setContainerDeleteLoading(false);
-      if (success) {
-        setContainerDeleteConfirmVisible(false);
-        setDeleteTargetContainer(null);
-        setDetailModalVisible(false);
-        setSelectedContainer(null);
-      }
-    }
-  };
-
-  // 打开编辑弹窗
-  const openEditModal = (container) => {
-    setSelectedContainer(container);
-    setDetailModalVisible(false);
-    setEditModalVisible(true);
-  };
-
-  // 从编辑返回详情页（编辑为实时更新）——重新拉取容器详情并显示
-  const returnToDetail = async () => {
-    setEditModalVisible(false);
-    if (!selectedContainer) {
-      setDetailModalVisible(true);
-      return;
-    }
-    try {
-      await openContainerDetail(selectedContainer);
-    } catch (e) {
-      // fallback: still show detail modal
-      setDetailModalVisible(true);
-    }
-  };
-
-  // 打开编辑弹窗
-  const closeAllModals = () => {
-    setDetailModalVisible(false);
-    setEditModalVisible(false);
-    setSelectedContainer(null);
   };
 
   // 这里的容器操作函数（启动/停止/重启）只在 API 受理后置 pending；
@@ -1262,7 +1104,7 @@ const ManageMachine = () => {
             message.success({ content: `容器 ${container.container_name} 已启动`, key: `start-${cid}`, duration: 2 });
           }
         });
-      } catch (e) {
+      } catch {
         message.success({ content: `启动指令已发送`, key: `start-${cid}`, duration: 2 });
       }
       return true;
@@ -1305,7 +1147,7 @@ const ManageMachine = () => {
             message.success({ content: `容器 ${container.container_name} 已停止`, key: `stop-${cid}`, duration: 2 });
           }
         });
-      } catch (e) {
+      } catch {
         message.success({ content: `停止指令已发送`, key: `stop-${cid}`, duration: 2 });
       }
       return true;
@@ -1355,7 +1197,7 @@ const ManageMachine = () => {
             message.success({ content: `容器 ${container.container_name} 已重启`, key: `restart-${cid}`, duration: 2 });
           }
         });
-      } catch (e) {
+      } catch {
         message.success({ content: `重启指令已发送`, key: `restart-${cid}`, duration: 2 });
       }
       return true;
@@ -1617,13 +1459,6 @@ const ManageMachine = () => {
     );
   };
 
-  const selectedLatest = selectedContainer
-    ? (getContainerSnapshot(selectedContainer.key) || selectedContainer)
-    : null;
-  const selectedActions = selectedLatest ? resolveActionsFor(selectedLatest).actions : null;
-  const selectedStatus = String(selectedLatest?.effective_status || '').toLowerCase();
-  const canManagePeople = hasPermission('container:manage') && selectedStatus === 'online';
-
   return (
     <>
       <ContainerActionConfirmModal
@@ -1790,30 +1625,6 @@ const ManageMachine = () => {
         confirmText="删除"
       />
 
-      {/* 删除容器 - 二次确认 */}
-      <ContainerActionConfirmModal
-        visible={containerDeleteConfirmVisible}
-        action="delete"
-        container={deleteTargetContainer}
-        onConfirm={handleDeleteContainerConfirm}
-        onCancel={() => { setContainerDeleteConfirmVisible(false); setDeleteTargetContainer(null); setDetailModalVisible(true); }}
-        loading={containerDeleteLoading}
-      />
-
-      {/* 容器详情弹窗 */}
-      <ContainerDetailModal
-        visible={detailModalVisible}
-        container={selectedLatest}
-        onClose={closeAllModals}
-        onEdit={openEditModal}
-        onUnpause={handleUnpauseContainer}
-        onDelete={openDeleteContainerConfirm}
-        usersList={usersList}
-        actions={selectedActions}
-        canLeave={false}
-        canManagePeople={canManagePeople}
-      />
-
       {/* 添加容器 确认弹窗（包含表单） */}
       <Modal
         open={permissionModalVisible}
@@ -1904,16 +1715,6 @@ const ManageMachine = () => {
       </Modal>
 
 
-      {/* 编辑用户弹窗 */}
-      <EditUserModal
-        visible={editModalVisible}
-        container={selectedContainer}
-        onClose={closeAllModals}
-        onBack={returnToDetail}
-        usersList={usersList}
-        usersLoading={usersLoading}
-        forceSystemAdmin={true}
-      />
     </>
   );
 };

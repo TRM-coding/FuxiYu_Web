@@ -5,7 +5,7 @@ import { createController, unregisterController, abortAll } from '../utils/reque
 const createTimeoutController = (timeout) => {
 	const controller = createController();
 	const timer = setTimeout(() => {
-		try { controller.abort(); } catch (e) {}
+		controller.abort();
 	}, timeout || REQUEST_TIMEOUT);
 	return { controller, timer };
 };
@@ -21,7 +21,7 @@ const ensureOk = async (res, action) => {
 		let body = null;
 		try {
 			body = await res.json();
-		} catch (e) {
+		} catch {
 			body = await res.text().catch(() => null);
 		}
 		const text = body && typeof body === 'string' ? body : (body ? JSON.stringify(body) : null);
@@ -30,7 +30,7 @@ const ensureOk = async (res, action) => {
 		err.route = res.url;
 		err.body = body;
 		if (res.status === 401) {
-			try { abortAll('auth'); } catch (e) {}
+			abortAll('auth');
 			// 401 只发信号（abortAll → 'auth:expired'），统一由 App 级监听器处置：
 			// 不碰 localStorage（本地身份已废除）/ cookie（HttpOnly，删不掉）/ 硬跳转（会打风暴）。
 			// 403 是一般权限拒绝：不清身份、不中断其它请求，交给调用方展示拒绝原因。
@@ -69,7 +69,7 @@ export const createContainer = async (payload = {}, timeout = null) => {
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Create container request timed out');
 		throw err;
 	}
@@ -94,7 +94,7 @@ export const deleteContainer = async (container_id = 0, timeout = null) => {
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Delete container request timed out');
 		throw err;
 	}
@@ -119,7 +119,7 @@ export const addCollaborator = async ({ user_id = '', container_id = 0, role = '
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Add collaborator request timed out');
 		throw err;
 	}
@@ -144,7 +144,7 @@ export const removeCollaborator = async ({ user_id = '', container_id = 0 } = {}
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Remove collaborator request timed out');
 		throw err;
 	}
@@ -169,7 +169,7 @@ export const updateRole = async ({ container_id = 0, user_id = '', updated_role 
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Update role request timed out');
 		throw err;
 	}
@@ -194,7 +194,7 @@ export const getContainerDetailInformation = async (container_id = 0, timeout = 
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Get container detail request timed out');
 		throw err;
 	}
@@ -219,7 +219,7 @@ export const getContainerOperationLogs = async (container_id = 0, timeout = null
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Get container operation logs request timed out');
 		throw err;
 	}
@@ -244,7 +244,7 @@ export const getContainerStatus = async (container_id = 0, timeout = null) => {
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Get container status request timed out');
 		throw err;
 	}
@@ -272,7 +272,7 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('List containers request timed out');
 		throw err;
 	}
@@ -295,7 +295,7 @@ export const listDeletedContainers = async ({ page_number = 1, page_size = 20 } 
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('List deleted containers request timed out');
 		throw err;
 	}
@@ -346,10 +346,10 @@ export const getDeletedContainerMountUsage = async (
 	let timedOut = false;
 	const timer = setTimeout(() => {
 		timedOut = true;
-		try { controller.abort(); } catch {}
+		controller.abort();
 	}, timeoutMs);
 	const handleExternalAbort = () => {
-		try { controller.abort(); } catch {}
+		controller.abort();
 	};
 
 	try {
@@ -396,9 +396,9 @@ export const getDeletedContainerMountUsage = async (
 	} finally {
 		clearTimeout(timer);
 		if (signal) {
-			try { signal.removeEventListener('abort', handleExternalAbort); } catch {}
+			signal.removeEventListener('abort', handleExternalAbort);
 		}
-		try { unregisterController(controller); } catch {}
+		unregisterController(controller);
 	}
 };
 
@@ -419,7 +419,7 @@ export const cleanDeletedContainerMount = async (mount_cleanup_id = 0, timeout =
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Clean deleted container mount request timed out');
 		throw err;
 	}
@@ -448,7 +448,7 @@ export const resurrectDeletedContainer = async (deleted_id = 0, content_source =
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Resurrect deleted container request timed out');
 		throw err;
 	}
@@ -473,13 +473,13 @@ export const startContainer = async (container_id = 0, timeout = null) => {
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Start container request timed out');
 		throw err;
 	}
 };
 
-export const stopContainer = async (container_id = 0, timeout = null, stopTimeout = 5) => {
+export const stopContainer = async (container_id = 0, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const url = new URL(API_ROUTES.CONTAINERS_STOP, BACKEND_ORIGIN).toString();
@@ -498,13 +498,13 @@ export const stopContainer = async (container_id = 0, timeout = null, stopTimeou
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Stop container request timed out');
 		throw err;
 	}
 };
 
-export const restartContainer = async (container_id = 0, timeout = null, restartTimeout = 5) => {
+export const restartContainer = async (container_id = 0, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const url = new URL(API_ROUTES.CONTAINERS_RESTART, BACKEND_ORIGIN).toString();
@@ -523,7 +523,7 @@ export const restartContainer = async (container_id = 0, timeout = null, restart
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Restart container request timed out');
 		throw err;
 	}
@@ -548,7 +548,7 @@ export const refreshLastSshLoginTime = async (container_id = 0, timeout = null) 
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Refresh last ssh login time request timed out');
 		throw err;
 	}
@@ -573,7 +573,7 @@ export const setLongTermContainer = async ({ container_id = 0, is_long_term = fa
 		return result;
 	} catch (err) {
 		clearTimeout(timer);
-		try { unregisterController(controller); } catch (e) {}
+		unregisterController(controller);
 		if (err.name === 'AbortError') throw new Error('Set long-term container request timed out');
 		throw err;
 	}

@@ -60,7 +60,7 @@ const ManageUserInTable = ({
             </div>
 
             <div className="manage-user-edit-card">
-              <EditUserRow record={record} />
+              {React.createElement(EditUserRow, { record })}
             </div>
 
             <Card
@@ -74,13 +74,26 @@ const ManageUserInTable = ({
             >
               {(() => {
                 const id = String(record.key);
+                const entry = containerMap[id] || {};
                 const childData = getUserContainers(record.username);
-                const loading = !!(containerMap[id] && containerMap[id].loading);
+                const loading = !!(entry.loading);
+                const totalNumber = Number(entry.total_number);
+                const totalPage = Number(entry.total_page) || 1;
+                const childTotal = Number.isFinite(totalNumber) && totalNumber > 0
+                  ? totalNumber
+                  : totalPage * 4;
+                const childPagination = childTotal > 4 ? {
+                  current: Number(entry.page ?? 0) + 1,
+                  pageSize: 4,
+                  total: childTotal,
+                  showSizeChanger: false,
+                  onChange: (page) => fetchContainersForUser(record.key, page - 1),
+                } : false;
                 return (
                   <TableComponent
                     dataSource={childData}
                     rowKey="key"
-                    pagination={childData.length > 5 ? { pageSize: 5 } : false}
+                    pagination={childPagination}
                     bordered
                     size="middle"
                     loading={loading}
@@ -157,19 +170,31 @@ const ManageUserInTable = ({
               <Button
                 type="text"
                 icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
-                onClick={() => toggleExpand(record.key)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleExpand(record.key);
+                }}
                 className="manage-user-action-edit"
               >
                 {isExpanded ? '收起编辑' : '编辑用户'}
               </Button>
-              <Button onClick={() => handleDeleteUser(record)}>
+              <Button onClick={(event) => {
+                event.stopPropagation();
+                handleDeleteUser(record);
+              }}>
                 <a className="manage-user-action-delete">删除</a>
               </Button>
-              <Button onClick={() => handleResetPassword(record)}>
+              <Button onClick={(event) => {
+                event.stopPropagation();
+                handleResetPassword(record);
+              }}>
                 <a className="manage-user-action-reset">重置密码</a>
               </Button>
               {showUserGroupsAction && (
-                <Button onClick={() => handleOpenUserGroups(record)}>
+                <Button onClick={(event) => {
+                  event.stopPropagation();
+                  handleOpenUserGroups(record);
+                }}>
                   <a className="manage-user-action-groups">权限组</a>
                 </Button>
               )}

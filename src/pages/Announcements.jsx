@@ -122,7 +122,7 @@ export default function Announcements() {
     try {
       const res = await resolveTargets(targets.map(t => ({ type: t.type, id: t.id })));
       setRecipientCount(res?.recipient_count ?? 0);
-    } catch (e) {
+    } catch {
       setRecipientCount(0);
     } finally {
       setResolvingTargets(false);
@@ -292,7 +292,7 @@ export default function Announcements() {
 
   const handleCopyAsDraft = async (annId) => {
     try {
-      const res = await copyAnnouncementAsDraft(annId);
+      await copyAnnouncementAsDraft(annId);
       message.success('已复用为草稿');
       loadDrafts();
     } catch (err) {

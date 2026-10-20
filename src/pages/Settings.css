@@ -130,6 +130,14 @@
   line-height: 1.55;
 }
 
+/* 字段级校验：跨越两列，紧贴对应设置项，避免只在页顶给一条看不清归属的错误。 */
+.settings-item-error {
+  grid-column: 1 / -1;
+  color: #ff4d4f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .settings-denied {
   min-height: 280px;
   display: flex;

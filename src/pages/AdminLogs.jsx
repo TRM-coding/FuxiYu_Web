@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Typography, Row, Col, Select, DatePicker, Checkbox, Button, Tag, Space, Table, message, Segmented, Modal, Descriptions } from 'antd';
 import {
@@ -189,6 +189,13 @@ const STATUS_TEXT = {
   maintenance: '维护中',
 };
 
+// 横向柱状图只保留这三个操作；模块级稳定常量，避免每次渲染生成新数组。
+const KEEP_BARS = [
+  { op: 'send_cleanup_reminder', label: '发送清理提醒' },
+  { op: 'add_machine_permission', label: '授予机器权限' },
+  { op: 'register_user', label: '注册用户' },
+];
+
 /** 用户详情弹窗（日志页专用，只读） */
 const UserInfoModal = ({ visible, info, onClose }) => (
   <Modal
@@ -365,6 +372,9 @@ export default function AdminLogs() {
   const [users, setUsers] = useState([]);
   const [permitted, setPermitted] = useState(false);
 
+  // 周次/筛选/页码共用同一个查询序号：只有最新一次查询的响应可以写列表与分页。
+  const requestSeqRef = useRef(0);
+
   const userMap = useMemo(() => {
     const m = {};
     users.forEach(u => { m[String(u.id)] = u.username || u.name || String(u.id); });
@@ -393,7 +403,7 @@ export default function AdminLogs() {
         const ures = await listAllUserBrefInformation({ page_number: 1, page_size: 500 });
         const items = (ures && (ures.users || ures.users_info || ures.data || ures.users_list)) || [];
         setUsers(items.map(u => ({ id: u.user_id || u.id || u.uid, username: u.username || u.name || String(u.id) })));
-      } catch (e) {
+      } catch {
         // 用户列表拉取失败不阻塞页面
       }
     };
@@ -401,6 +411,8 @@ export default function AdminLogs() {
   }, [navigate, permLoaded, hasPermission]);
 
   const load = useCallback(async (p, ps, rangeOverride) => {
+    const requestId = requestSeqRef.current + 1;
+    requestSeqRef.current = requestId;
     setLoading(true);
     const range = rangeOverride || timeRange;
     try {
@@ -416,12 +428,14 @@ export default function AdminLogs() {
         params.tz_offset_minutes = BJ_OFFSET_MINUTES;
       }
       const res = await listOperationLogs(params);
+      if (requestId !== requestSeqRef.current) return; // 旧上下文响应只释放自身
       setLogs(res.logs || []);
       setTotalPages(res.total_pages || 0);
     } catch (err) {
+      if (requestId !== requestSeqRef.current) return;
       await showErrorModal({ message: err?.body || err || '获取操作日志失败', status: err?.status, route: err?.route });
     } finally {
-      setLoading(false);
+      if (requestId === requestSeqRef.current) setLoading(false);
     }
   }, [operation, targetType, operatorUserId, onlyFailed, timeRange]);
 
@@ -440,7 +454,7 @@ export default function AdminLogs() {
       };
       const res = await getOperationLogStats(params);
       setStats(res || null);
-    } catch (err) {
+    } catch {
       setStats(null);
     }
   }, [statsDays]);
@@ -623,12 +637,7 @@ export default function AdminLogs() {
     return { background: `linear-gradient(135deg, ${r} 0%, ${r} 49%, ${g} 51%, ${g} 100%)` };
   };
 
-  // 横向柱状图只保留这三个操作
-  const KEEP_BARS = [
-    { op: 'send_cleanup_reminder', label: '发送清理提醒' },
-    { op: 'add_machine_permission', label: '授予机器权限' },
-    { op: 'register_user', label: '注册用户' },
-  ];
+  // 横向柱状图只保留这三个操作（KEEP_BARS 为模块级稳定常量）
   const keepBarMax = useMemo(() => {
     const byOp = stats?.by_operation || {};
     return Math.max(1, ...KEEP_BARS.map(({ op }) => byOp[op] || 0));

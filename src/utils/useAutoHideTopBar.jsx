@@ -78,7 +78,7 @@ export default function useAutoHideTopBar(options = {}) {
 
     ro.observe(node);
     return () => ro.disconnect();
-  }, []);
+  }, [extraHideOffset]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

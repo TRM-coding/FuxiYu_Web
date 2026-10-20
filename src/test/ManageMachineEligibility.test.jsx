@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { resolveContainerActions } from '../utils/containerActions';
 
 const permissionState = vi.hoisted(() => ({
   entities: ['container:operation', 'container:manage', 'bypass_auth_entity', 'bypass_resource'],
@@ -10,9 +14,6 @@ const permissionState = vi.hoisted(() => ({
   userName: 'root_user',
 }));
 
-// ManageMachine 当前的 ContainerDetailModal 没有生产可达入口；这里只暴露父页面传入的
-// onDelete 回调，作为删除失败恢复的组件接缝，不新增任何生产按钮或用户入口。
-const detailModalSeam = vi.hoisted(() => ({ onDelete: null }));
 // 渲染侧 ing 看护回调：验证外部状态变化也会同步提交前快照。
 const ingWatcherSeam = vi.hoisted(() => ({ onProgress: null, onTerminal: null }));
 
@@ -41,12 +42,6 @@ vi.mock('../contexts/PermissionContext', () => ({
 
 vi.mock('../utils/showErrorModal', () => ({ default: vi.fn() }));
 vi.mock('../utils/authHelpers', () => ({ handleAuthError: vi.fn() }));
-vi.mock('../components/ContainerDetailModal', () => ({
-  default: (props) => {
-    detailModalSeam.onDelete = props.onDelete;
-    return null;
-  },
-}));
 vi.mock('../utils/heartbeat', () => ({
   startContainerStatusHeartbeat: vi.fn(() => () => {}),
   watchIngContainerUntilTerminal: vi.fn(({ onProgress, onTerminal }) => {
@@ -90,7 +85,6 @@ vi.mock('../api/user_api', () => ({
 
 import { message } from 'antd';
 import {
-  deleteContainer,
   listAllContainerBrefInformation,
   setLongTermContainer,
   stopContainer,
@@ -125,7 +119,6 @@ const renderPage = () => render(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  detailModalSeam.onDelete = null;
   ingWatcherSeam.onProgress = null;
   ingWatcherSeam.onTerminal = null;
   permissionState.entities = ['container:operation', 'container:manage', 'bypass_auth_entity', 'bypass_resource'];
@@ -147,7 +140,6 @@ beforeEach(() => {
     total_number: 1,
     total_page: 1,
   });
-  deleteContainer.mockResolvedValue({ success: 1 });
   stopContainer.mockResolvedValue({ success: 1 });
   unpauseContainer.mockResolvedValue({ success: 1 });
   setLongTermContainer.mockResolvedValue({ success: 1, is_long_term: true });
@@ -463,46 +455,118 @@ describe('ManageMachine 共享动作与提交前重解析', () => {
     await waitFor(() => expect(within(card).getByText('解冻中')).toBeInTheDocument());
   });
 
-  it('删除失败通过父回调接缝保留行与计数、清除 loading 并可重试', async () => {
-    const user = userEvent.setup();
-    deleteContainer.mockRejectedValueOnce({
-      status: 409,
-      body: { message: 'delete failed', error_reason: 'container_busy' },
-    });
+  const resolveFor = (containerOverrides = {}, contextOverrides = {}) => resolveContainerActions({
+    container: {
+      effective_status: 'online',
+      is_long_term: false,
+      long_term_container_can_enable: true,
+      disk_usage_percent: 20,
+      ...containerOverrides,
+    },
+    context: {
+      permissions: ['container:operation'],
+      containerRole: 'ROOT',
+      readOnly: false,
+      ...contextOverrides,
+    },
+  });
 
+  it('test_q35_manage_machine_shared_action_contract', async () => {
+    const expected = resolveFor();
     renderPage();
     const card = await waitForCard();
-    await waitFor(() => expect(detailModalSeam.onDelete).toBeTypeOf('function'));
-    await act(async () => {
-      detailModalSeam.onDelete({
-        key: '12',
-        container_id: 12,
-        machine_id: '3',
-        container_name: 'train-a',
-      });
+
+    expect(expected.actions.stop).toMatchObject({ visible: true, enabled: true });
+    expect(expected.actions.start).toMatchObject({ visible: true, enabled: false });
+    expect(expected.actions.delete).toMatchObject({ visible: true, enabled: true });
+    expect(within(card).getByRole('button', { name: /^停\s*止$/ })).toBeEnabled();
+    expect(within(card).getByRole('button', { name: /^启\s*动$/ })).toBeDisabled();
+    expect(within(card).getByRole('button', { name: /^重\s*启$/ })).toBeEnabled();
+    expect(within(card).getByRole('checkbox')).not.toBeChecked();
+    expect(within(card).queryByRole('button', { name: /删\s*除/ })).toBeNull();
+  });
+
+  it('test_q35_manage_machine_failed_delete_eligibility', async () => {
+    const result = resolveFor({ effective_status: 'failed' }, { containerRole: 'ADMIN' });
+    expect(result.actions.delete).toMatchObject({ visible: true, enabled: true });
+    expect(result.longTerm.enabled).toBe(false);
+
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'failed' })],
+      total_number: 1,
+      total_page: 1,
+    });
+    renderPage();
+    const card = await waitForCard();
+    expect(within(card).queryByRole('button', { name: /删\s*除/ })).toBeNull();
+
+    const detailPage = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/ContainerDetailPage.jsx'), 'utf8');
+    expect(detailPage).toContain('actions?.delete.visible');
+    expect(detailPage).toContain("preflightDetailAction('delete')");
+    expect(detailPage).toContain('deleteContainer(');
+  });
+
+  it('test_q35_manage_machine_transition_delete_denied', async () => {
+    for (const status of ['building', 'creating', 'starting', 'stopping', 'restarting']) {
+      const result = resolveFor({ effective_status: status });
+      expect(result.actions.delete, status).toMatchObject({ visible: true, enabled: false });
+      expect(result.actions.delete.reason, status).toBe('container_busy');
+    }
+    for (const status of ['host_offline', 'host_maintenance', 'status_unknown']) {
+      const result = resolveFor({ effective_status: status });
+      expect(result.actions.delete, status).toMatchObject({ visible: true, enabled: false });
+      expect(result.actions.delete.disabled, status).toBe(true);
+    }
+
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/ManageMachine.jsx'), 'utf8');
+    expect(source).not.toMatch(/deleteContainer\(/);
+  });
+
+  it('test_q35_manage_machine_no_sysadmin_delete_bypass', () => {
+    const denied = resolveFor({ effective_status: 'online' }, { permissions: [], containerRole: null });
+    const fakeAdmin = resolveContainerActions({
+      container: {
+        effective_status: 'online',
+        is_long_term: false,
+        long_term_container_can_enable: true,
+      },
+      context: {
+        permissions: [],
+        containerRole: null,
+        readOnly: false,
+        forceSystemAdmin: true,
+        isRoot: true,
+      },
     });
 
-    const findDeleteDialog = async () => {
-      const dialogs = await screen.findAllByRole('dialog');
-      return dialogs.find(node => within(node).queryByText('确认删除容器'));
-    };
-    let dialog = await findDeleteDialog();
-    expect(dialog).toBeTruthy();
-    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    expect(denied.actions.delete).toMatchObject({ visible: false, enabled: false });
+    expect(fakeAdmin.actions.delete).toEqual(denied.actions.delete);
+    expect(fakeAdmin.longTerm.enabled).toBe(false);
+  });
 
-    await waitFor(() => expect(deleteContainer).toHaveBeenCalledWith('12'));
-    await waitFor(() => expect(showErrorModal).toHaveBeenCalled());
-    await waitFor(() => expect(listAllContainerBrefInformation.mock.calls.length).toBeGreaterThanOrEqual(2));
-    dialog = await findDeleteDialog();
-    await waitFor(() => expect(within(dialog).getByRole('button', { name: /删\s*除/ })).toBeEnabled());
-    expect(within(card).getByText('train-a')).toBeInTheDocument();
-    expect(screen.getByText('1 个容器')).toBeInTheDocument();
-    expect(message.success).not.toHaveBeenCalledWith('容器已删除');
+  it('test_q35_manage_machine_long_term_unpause_fields', () => {
+    const paused = resolveFor({ effective_status: 'paused' }, { permissions: ['container:manage'] });
+    expect(paused.actions.unpause).toMatchObject({ visible: true, enabled: true });
+    expect(paused.actions.delete).toMatchObject({ visible: true, enabled: true });
 
-    deleteContainer.mockResolvedValueOnce({ success: 1 });
-    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
-    await waitFor(() => expect(deleteContainer).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(card).not.toBeInTheDocument());
-    expect(message.success).toHaveBeenCalledWith('容器已删除');
+    const quotaFull = resolveFor({ effective_status: 'online', long_term_container_can_enable: false });
+    expect(quotaFull.longTerm).toMatchObject({ visible: true, enabled: false, reason: 'long_term_limit_reached' });
+
+    const diskFull = resolveFor({ effective_status: 'online', disk_usage_percent: 100 });
+    expect(diskFull.longTerm).toMatchObject({ visible: true, enabled: false, reason: 'disk_usage_over_limit' });
+
+    const residualFreeze = resolveFor({
+      effective_status: 'online',
+      is_long_term: true,
+      freeze_state: { is_frozen: true, days_frozen: 2 },
+      long_term_container_can_enable: false,
+      disk_usage_percent: 100,
+    });
+    expect(residualFreeze.longTerm).toMatchObject({ visible: true, enabled: true, checked: true });
+
+    const failed = resolveFor({ effective_status: 'failed' });
+    expect(failed.actions.delete.enabled).toBe(true);
+    expect(failed.actions.unpause.enabled).toBe(false);
+    expect(failed.longTerm.enabled).toBe(false);
   });
 });

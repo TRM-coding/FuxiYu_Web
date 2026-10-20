@@ -32,10 +32,14 @@ export default function AdminLayout() {
   const location = useLocation();
   const { hasPermission, loaded } = usePermission();
   const sidebarCollapsed = useResponsiveCollapse();
+  const touchStartXRef = useRef(0);
+  const touchStartYRef = useRef(0);
+  const touchStartTargetRef = useRef(null);
+  const swipePaths = useMemo(() => ['/admin/users', '/admin/machines'], []);
   // 按权限过滤菜单（无对应 manage 的项不显示）
   const visibleMenuItems = adminMenuItems
     .filter(item => hasPermission(item.requiredPermission))
-    .map(({ requiredPermission, ...item }) => item);
+    .map(({ label, key, icon }) => ({ label, key, icon }));
   // 路由守卫：权限加载完成后仍无任何 manage → 403（后端已兜底，这里是显示层提前拦）
   if (loaded && visibleMenuItems.length === 0) {
     return (
@@ -44,10 +48,6 @@ export default function AdminLayout() {
       </div>
     );
   }
-  const touchStartXRef = useRef(0);
-  const touchStartYRef = useRef(0);
-  const touchStartTargetRef = useRef(null);
-  const swipePaths = useMemo(() => ['/admin/users', '/admin/machines'], []);
 
   const normalizePath = (pathname) => {
     if (pathname.startsWith('/admin/users')) return '/admin/users';

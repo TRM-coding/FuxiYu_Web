@@ -52,7 +52,7 @@ export function startContainerStatusHeartbeat({ machine_id, container_name, cont
           return;
         }
       }
-    } catch (e) {
+    } catch {
       // ignore errors and continue polling until timeout
     }
     if (!stopped) timerId = setTimeout(doCheck, interval);
@@ -100,7 +100,7 @@ export function startMachineStatusHeartbeat({ machine_id, onTerminal, terminalSt
           return;
         }
       }
-    } catch (e) {
+    } catch {
       // ignore and retry until timeout
     }
     if (!stopped) timerId = setTimeout(doCheck, interval);
@@ -161,7 +161,7 @@ export function watchIngContainerUntilTerminal({ machine_id, container_id, conta
           return;
         }
       }
-    } catch (e) {
+    } catch {
       // ignore errors and continue polling until timeout
     }
     if (!stopped) timerId = setTimeout(doCheck, interval);

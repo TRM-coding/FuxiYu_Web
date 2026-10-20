@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, Button, Checkbox, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, TeamOutlined, UnlockOutlined } from '@ant-design/icons';
@@ -142,13 +142,17 @@ const ContainerDetailPage = () => {
     userName: currentUserName,
   } = usePermission();
   const pendingContainerTransitionRef = useRef(new Map());
+  const operationLogsRequestSeqRef = useRef(0);
+  const operationLogsMountedRef = useRef(true);
+  const containerIdRef = useRef(containerId);
+  containerIdRef.current = containerId;
   const {
     remember: rememberContainerSnapshot,
     markUnavailable: markContainerUnavailable,
     get: getContainerSnapshot,
   } = useContainerSnapshots();
 
-  const applyContainerEffectiveStatus = (detail) => {
+  const applyContainerEffectiveStatus = useCallback((detail) => {
     if (!detail) return detail;
     const key = containerId === undefined || containerId === null ? '' : String(containerId);
     const result = deriveContainerEffectiveStatus(
@@ -162,7 +166,7 @@ const ContainerDetailPage = () => {
       pendingContainerTransitionRef.current.delete(key);
     }
     return { ...detail, effective_status: result.status };
-  };
+  }, [containerId]);
 
   const markContainerTransition = (detail, transitionStatus, targetStatus) => {
     if (!containerId) return;
@@ -203,7 +207,7 @@ const ContainerDetailPage = () => {
     });
   };
 
-  const loadDetail = async ({ silent = false } = {}) => {
+  const loadDetail = useCallback(async ({ silent = false } = {}) => {
     if (!containerId) return;
     if (!silent) setLoading(true);
     try {
@@ -223,9 +227,29 @@ const ContainerDetailPage = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  };
+  }, [applyContainerEffectiveStatus, containerId, markContainerUnavailable, rememberContainerSnapshot]);
 
-  const loadUsers = async () => {
+  const loadOperationLogs = useCallback(async () => {
+    if (!containerId) return;
+    const requestedContainerId = String(containerId);
+    // 旧容器的异步动作/刷新不再抢占当前容器的请求序号。
+    if (String(containerIdRef.current) !== requestedContainerId) return;
+    const requestSeq = operationLogsRequestSeqRef.current + 1;
+    operationLogsRequestSeqRef.current = requestSeq;
+    try {
+      const res = await getContainerOperationLogs(Number(containerId));
+      // 旧容器/旧刷新的响应晚到时不得覆盖当前容器的历史；卸载后也不再写状态。
+      if (!operationLogsMountedRef.current) return;
+      if (operationLogsRequestSeqRef.current !== requestSeq) return;
+      if (String(containerIdRef.current) !== requestedContainerId) return;
+      if (Array.isArray(res?.logs)) setOperationLogs(res.logs);
+    } catch (err) {
+      if (!operationLogsMountedRef.current) return;
+      console.warn('load container operation logs failed', err?.message);
+    }
+  }, [containerId]);
+
+  const loadUsers = useCallback(async () => {
     setUsersLoading(true);
     try {
       const res = await listAllUserBrefInformation({ page_number: 1, page_size: 100 });
@@ -236,9 +260,9 @@ const ContainerDetailPage = () => {
     } finally {
       setUsersLoading(false);
     }
-  };
+  }, []);
 
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     if (!containerId) return;
     try {
       // 轮询用短超时（POLL_TIMEOUT）：这个 5s 的 setInterval 没有 in-flight 守卫，
@@ -261,14 +285,14 @@ const ContainerDetailPage = () => {
     } catch (err) {
       console.warn('container status polling failed', err);
     }
-  };
+  }, [applyContainerEffectiveStatus, containerId, rememberContainerSnapshot]);
 
   useEffect(() => {
     loadDetail();
     loadUsers();
     const timer = setInterval(loadStatus, 5000);
     return () => clearInterval(timer);
-  }, [containerId]);
+  }, [containerId, loadDetail, loadStatus, loadUsers]);
 
   // 容器级掉卡审查（与机器页同款 N 帧语义）：分配锁定的卡（device_ids，静态）
   // 持续缺席于每轮 live 切片（devices）→ 该容器实际已无此卡可用
@@ -291,23 +315,23 @@ const ContainerDetailPage = () => {
       for (const idx of ids) next[idx] = liveIdx.has(idx) ? 0 : (prev[idx] ?? 0) + 1;
       return next;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [container?.runtime_metrics?.gpu]);
 
-  // 操作历史（op-log）：能看容器的即可看其事件；进入时拉一次
+  // 操作历史（op-log）：能看容器的即可看其事件；进入时与刷新/动作后共用同一请求序号。
   useEffect(() => {
-    if (!containerId) return;
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await getContainerOperationLogs(Number(containerId));
-        if (mounted && Array.isArray(res?.logs)) setOperationLogs(res.logs);
-      } catch (err) {
-        console.warn('load container operation logs failed', err?.message);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [containerId]);
+    operationLogsMountedRef.current = true;
+    return () => {
+      operationLogsMountedRef.current = false;
+      operationLogsRequestSeqRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    loadOperationLogs();
+    return () => {
+      operationLogsRequestSeqRef.current += 1;
+    };
+  }, [loadOperationLogs]);
 
   // 容器操作（详情页直连 API；状态由 5s 轮询 loadStatus 兜底刷新）
   const [longTermSaving, setLongTermSaving] = useState(false);
@@ -359,6 +383,7 @@ const ContainerDetailPage = () => {
       rememberContainerSnapshot(patched, 'local-status');
       setContainer(prev => (prev ? applyContainerEffectiveStatus({ ...prev, effective_status: transitionStatus }) : prev));
       await loadDetail({ silent: true });
+      await loadOperationLogs();
       return true;
     } catch (err) {
       if (containerId) pendingContainerTransitionRef.current.delete(String(containerId));
@@ -385,6 +410,7 @@ const ContainerDetailPage = () => {
       await setLongTermContainer({ container_id: Number(containerId), is_long_term: checked });
       message.success(checked ? '已设为长期容器' : '已取消长期容器');
       await loadDetail({ silent: true });
+      await loadOperationLogs();
     } catch (err) {
       await showErrorModal({ message: err?.body || err || '设置长期容器失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
       await loadDetail({ silent: true });
@@ -444,7 +470,7 @@ const ContainerDetailPage = () => {
 
   const status = String(container?.effective_status || 'unknown').toLowerCase();
   const statusDisplay = getContainerStatusDisplay(status);
-  const metrics = container?.runtime_metrics || {};
+  const metrics = useMemo(() => container?.runtime_metrics || {}, [container?.runtime_metrics]);
   const diskUsage = container?.disk_usage || {};
   const resolvedActions = container ? resolveActionsFor(container) : null;
   const actions = resolvedActions?.actions;
@@ -452,7 +478,7 @@ const ContainerDetailPage = () => {
   const reasonTitle = action => getContainerActionReasonText(action?.reason) || undefined;
   const latestHistoryPoint = history.length ? history[history.length - 1] : null;
   const collectedAt = latestHistoryPoint?.collectedAt || metrics?.collected_at || metrics?.cache_updated_at;
-  const gpuDevices = metrics?.gpu?.device_ids || [];
+  const gpuDevices = useMemo(() => metrics?.gpu?.device_ids || [], [metrics]);
   const gpuRuntimeDevices = Array.isArray(metrics?.gpu?.devices) ? metrics.gpu.devices : [];
   // 容器级掉卡：分配的物理卡（device_ids）连续缺席 live 切片 → 提示
   const gpuMissing = gpuDevices
@@ -534,7 +560,7 @@ const ContainerDetailPage = () => {
     { label: '共享内存', value: formatNumber(container?.shared_gb, ' GB'), extra: '共享配额' },
     { label: '网络', value: formatNumber(networkTotal, ' MB'), extra: `入 ${formatNumber(metrics.network_rx_mb, ' MB')} / 出 ${formatNumber(metrics.network_tx_mb, ' MB')}` },
     { label: '磁盘', value: formatNumber(diskUsage.total_gb, ' GB'), extra: `上限 ${formatNumber(diskUsage.limit_gb, ' GB')} · IO ${formatNumber(diskIoTotal, ' MB')}` },
-  ]), [container, metrics, networkTotal, diskIoTotal, memoryLimitText, allocCpu, allocMem, allocGpu, gpuAllocationText, gpuDevices]);
+  ]), [container, metrics, networkTotal, diskIoTotal, memoryLimitText, allocCpu, allocMem, gpuAllocationText, gpuDevices, diskUsage.limit_gb, diskUsage.total_gb]);
 
   const resourceSeries = [
     { key: 'cpu', label: 'CPU', color: '#1677ff', fill: 'rgba(22, 119, 255, 0.12)', value: point => point.cpu },
@@ -556,7 +582,7 @@ const ContainerDetailPage = () => {
       <div className="detail-shell">
         <div className="detail-topbar">
           <Button icon={<ArrowLeftOutlined />} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/index'))}>返回</Button>
-          <Button icon={<ReloadOutlined />} onClick={() => loadDetail()}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => { loadDetail(); loadOperationLogs(); }}>刷新</Button>
         </div>
 
         {loading && !container ? <Spin /> : (

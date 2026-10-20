@@ -1,10 +1,14 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { PermissionProvider } from '../contexts/PermissionContext';
 
-vi.mock('../utils/showErrorModal', () => ({ default: vi.fn() }));
+// 默认导出保持替身，便于断言页面调用口径；保留真实 routeErrorMap 供 Q37 表遍历。
+vi.mock('../utils/showErrorModal', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, default: vi.fn() };
+});
 
 vi.mock('../api/user_api', () => ({
   getUserPermissions: vi.fn(),
@@ -24,12 +28,14 @@ vi.mock('../api/image_api', () => ({
 
 import { getUserPermissions, listAllUserBrefInformation } from '../api/user_api';
 import {
+  createImage,
   getImageDetailInformation,
   listImageBrefInformation,
   setImageValidRange,
   setImageVisibleUsers,
   updateImage,
 } from '../api/image_api';
+import showErrorModal, { routeErrorMap } from '../utils/showErrorModal';
 import CreateImage from '../pages/CreateImage';
 
 describe('CreateImage image resource scope', () => {
@@ -466,5 +472,347 @@ describe('CreateImage 资源通配与两层 RBAC', () => {
 
     await screen.findByDisplayValue('jenkins');
     expect(screen.getByRole('button', { name: /删除/ })).toBeTruthy();
+  });
+});
+
+// ── Q22 / Q63 / Q64 / Q37：镜像页请求生命周期、状态与错误表 ────────────────
+//
+// 这些用例统一用 deferred promise 控制返回顺序：竞态断言只看“最终界面是什么”，
+// 不能用“AbortController 存在”代替。列表请求的旧响应必须被丢弃，新建/更新后的
+// 重取也必须走真实列表接口，而不是只刷新右侧详情。
+
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+};
+
+const imageDetail = (id, name) => ({
+  image: {
+    image_id: id,
+    name,
+    status: 'ready',
+    base_image: 'ubuntu:22.04',
+    dockerfile_body: '',
+    entrypoint: '',
+    valid_range: 'custom',
+    created_by_user_id: 3,
+  },
+});
+
+const renderCreateImage = () =>
+  render(
+    <MemoryRouter>
+      <PermissionProvider>
+        <CreateImage />
+      </PermissionProvider>
+    </MemoryRouter>,
+  );
+
+const resetCreateImageMocks = () => {
+  localStorage.setItem('currentUserName', 'editor');
+  localStorage.setItem('currentUserId', '3');
+  getUserPermissions.mockReset();
+  getUserPermissions.mockResolvedValue({
+    entities: ['image:view', 'image:edit'],
+    userId: 3,
+    userName: 'editor',
+  });
+  listImageBrefInformation.mockReset();
+  getImageDetailInformation.mockReset();
+  createImage.mockReset();
+  updateImage.mockReset();
+  setImageValidRange.mockReset();
+  setImageVisibleUsers.mockReset();
+  listAllUserBrefInformation.mockReset();
+  listAllUserBrefInformation.mockResolvedValue({ users: [] });
+  showErrorModal.mockReset();
+};
+
+const searchInput = () => screen.getByPlaceholderText('搜索模板、ID、描述');
+
+const submitSearch = (value) => {
+  fireEvent.change(searchInput(), { target: { value } });
+  // Input.Search 的搜索按钮比模拟 Enter 更稳定，也覆盖真实点击入口。
+  fireEvent.click(document.querySelector('.ci-search-row .ant-input-search-button'));
+};
+
+const nameInput = () => screen.getByText('模板名称').closest('label').querySelector('input');
+
+describe('CreateImage Q22 列表请求只应用当前关键词', () => {
+  beforeEach(resetCreateImageMocks);
+
+  it('test_q22_create_image_current_keyword', async () => {
+    const pending = deferred();
+    listImageBrefInformation
+      .mockResolvedValueOnce({ images: [] })
+      .mockReturnValueOnce(pending.promise);
+    getImageDetailInformation.mockResolvedValue(imageDetail(21, '当前关键词结果'));
+
+    renderCreateImage();
+    await waitFor(() => expect(listImageBrefInformation).toHaveBeenCalledTimes(1));
+
+    submitSearch('current');
+    await waitFor(() => expect(listImageBrefInformation).toHaveBeenCalledTimes(2));
+    expect(listImageBrefInformation.mock.calls[1][0]).toMatchObject({
+      image_search: 'current',
+      mine_only: true,
+    });
+
+    await act(async () => {
+      pending.resolve({ images: [{ image_id: 21, name: '当前关键词结果', status: 'ready' }] });
+    });
+
+    await waitFor(() => {
+      const selected = document.querySelector('.ci-image-card.is-selected');
+      expect(selected?.textContent).toContain('当前关键词结果');
+    });
+    expect(listImageBrefInformation.mock.calls[1][0].image_search).toBe('current');
+  });
+
+  it('test_q22_create_image_stale_keyword', async () => {
+    const stale = deferred();
+    const current = deferred();
+    listImageBrefInformation
+      .mockResolvedValueOnce({ images: [] })
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(current.promise);
+    getImageDetailInformation.mockImplementation(async (id) => imageDetail(id, id === 2 ? '新关键词结果' : '旧关键词结果'));
+
+    renderCreateImage();
+    await waitFor(() => expect(listImageBrefInformation).toHaveBeenCalledTimes(1));
+
+    submitSearch('alpha');
+    await waitFor(() => expect(listImageBrefInformation).toHaveBeenCalledTimes(2));
+    submitSearch('beta');
+    await waitFor(() => expect(listImageBrefInformation).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      current.resolve({ images: [{ image_id: 2, name: '新关键词结果', status: 'ready' }] });
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.ci-image-card.is-selected')?.textContent).toContain('新关键词结果');
+    });
+
+    await act(async () => {
+      stale.resolve({ images: [{ image_id: 1, name: '旧关键词结果', status: 'ready' }] });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('旧关键词结果')).toBeNull();
+      const selected = document.querySelector('.ci-image-card.is-selected');
+      expect(selected?.textContent).toContain('新关键词结果');
+    });
+    expect(getImageDetailInformation).not.toHaveBeenCalledWith(1);
+  });
+});
+
+describe('CreateImage Q63 新建成功后的列表与表单状态', () => {
+  beforeEach(resetCreateImageMocks);
+
+  it('test_q63_create_image_clear_keyword_select_new', async () => {
+    listImageBrefInformation
+      .mockResolvedValueOnce({ images: [] })
+      .mockResolvedValueOnce({ images: [{ image_id: 1, name: '旧模板', status: 'ready' }] })
+      .mockResolvedValueOnce({
+        images: [
+          { image_id: 1, name: '旧模板', status: 'ready' },
+          { image_id: 42, name: '新模板', status: 'draft' },
+        ],
+      });
+    getImageDetailInformation.mockImplementation(async (id) => (
+      imageDetail(id, id === 42 ? '服务端名称' : '旧模板')
+    ));
+    createImage.mockResolvedValue({ image_id: 42 });
+
+    renderCreateImage();
+    await waitFor(() => expect(listImageBrefInformation).toHaveBeenCalledTimes(1));
+
+    submitSearch('不匹配关键词');
+    await waitFor(() => expect(screen.getByDisplayValue('旧模板')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /新建/ }));
+
+    fireEvent.change(nameInput(), { target: { value: '新模板' } });
+    fireEvent.click(await screen.findByRole('button', { name: /保存/ }));
+
+    await waitFor(() => expect(createImage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(listImageBrefInformation).toHaveBeenCalledTimes(3));
+    expect(listImageBrefInformation.mock.calls[2][0]).toMatchObject({ image_search: '' });
+
+    await waitFor(() => {
+      expect(searchInput().value).toBe('');
+      expect(screen.getByDisplayValue('新模板')).toBeTruthy();
+      expect(document.querySelector('.ci-image-card.is-selected')?.textContent).toContain('新模板');
+    });
+    expect(screen.queryByDisplayValue('服务端名称')).toBeNull();
+  });
+
+  it('test_q63_create_image_reload_failure_preserves_form', async () => {
+    const reloadError = Object.assign(new Error('list failed'), {
+      status: 500,
+      route: 'https://ctrl/api/images/list_all_image_bref_information',
+    });
+    listImageBrefInformation
+      .mockResolvedValueOnce({ images: [] })
+      .mockResolvedValueOnce({ images: [{ image_id: 1, name: '旧模板', status: 'ready' }] })
+      .mockRejectedValueOnce(reloadError);
+    getImageDetailInformation.mockImplementation(async (id) => (
+      imageDetail(id, id === 42 ? '服务端名称' : '旧模板')
+    ));
+    createImage.mockResolvedValue({ image_id: 42 });
+
+    renderCreateImage();
+    await waitFor(() => expect(listImageBrefInformation).toHaveBeenCalledTimes(1));
+
+    submitSearch('不匹配关键词');
+    await waitFor(() => expect(screen.getByDisplayValue('旧模板')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /新建/ }));
+    fireEvent.change(nameInput(), { target: { value: '失败仍保留' } });
+    fireEvent.click(await screen.findByRole('button', { name: /保存/ }));
+
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalledTimes(1));
+    expect(listImageBrefInformation.mock.calls[2][0]).toMatchObject({ image_search: '' });
+    await waitFor(() => {
+      expect(searchInput().value).toBe('');
+      expect(screen.getByDisplayValue('失败仍保留')).toBeTruthy();
+      expect(document.querySelector('.ci-image-card.is-selected')).toBeNull();
+    });
+    expect(getImageDetailInformation).not.toHaveBeenCalledWith(42);
+  });
+});
+
+describe('CreateImage Q64 更新成功后重取当前关键词列表', () => {
+  beforeEach(resetCreateImageMocks);
+
+  it('test_q64_create_image_update_refetches_list', async () => {
+    listImageBrefInformation
+      .mockResolvedValueOnce({ images: [{ image_id: 9, name: '旧名称', status: 'ready' }] })
+      .mockResolvedValueOnce({ images: [{ image_id: 9, name: '新名称', status: 'ready' }] });
+    getImageDetailInformation.mockResolvedValue(imageDetail(9, '旧名称'));
+    updateImage.mockResolvedValue({ success: 1 });
+
+    renderCreateImage();
+    await screen.findByDisplayValue('旧名称');
+    await waitFor(() => expect(listImageBrefInformation).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByDisplayValue('旧名称'), { target: { value: '新名称' } });
+    fireEvent.click(await screen.findByRole('button', { name: /保存/ }));
+
+    await waitFor(() => expect(updateImage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(listImageBrefInformation).toHaveBeenCalledTimes(2));
+    expect(listImageBrefInformation.mock.calls[1][0]).toMatchObject({ image_search: '' });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('新名称')).toBeTruthy();
+      expect(document.querySelector('.ci-image-card.is-selected')?.textContent).toContain('新名称');
+    });
+  });
+
+  it('test_q64_create_image_update_failure_keeps_list', async () => {
+    const updateError = Object.assign(new Error('Update image failed: 422'), {
+      status: 422,
+      route: 'https://ctrl/api/images/update_image',
+      body: { success: 0, message: '镜像名称重复', error_reason: 'duplicate_entry' },
+    });
+    listImageBrefInformation.mockResolvedValue({
+      images: [{ image_id: 9, name: '旧名称', status: 'ready' }],
+    });
+    getImageDetailInformation.mockResolvedValue(imageDetail(9, '旧名称'));
+    updateImage.mockRejectedValue(updateError);
+
+    renderCreateImage();
+    await screen.findByDisplayValue('旧名称');
+    fireEvent.change(screen.getByDisplayValue('旧名称'), { target: { value: '提交失败' } });
+    fireEvent.click(await screen.findByRole('button', { name: /保存/ }));
+
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalledTimes(1));
+    expect(listImageBrefInformation).toHaveBeenCalledTimes(1);
+    expect(showErrorModal.mock.calls[0][0]).toMatchObject({
+      message: updateError.body,
+      status: 422,
+      route: updateError.route,
+    });
+    await waitFor(() => {
+      expect(screen.getByText('旧名称')).toBeTruthy();
+      expect(screen.queryByText('模板已保存')).toBeNull();
+    });
+  });
+});
+
+// 与 specs/frontend--page-create-image/spec.md 的 route/error_reason 表逐行对齐。
+const CREATE_IMAGE_ERROR_TABLE = [
+  { route: '/images/create_image', reason: 'duplicate_entry', text: '镜像名称已存在' },
+  { route: '/images/create_image', reason: 'invalid_status', text: '镜像状态不合法' },
+  { route: '/images/create_image', reason: 'create_failed', text: '创建镜像失败' },
+  { route: '/images/update_image', reason: 'duplicate_entry', text: '镜像名称已存在' },
+  { route: '/images/update_image', reason: 'invalid_status', text: '镜像状态不合法' },
+  { route: '/images/update_image', reason: 'image_not_found', text: '镜像不存在' },
+  { route: '/images/update_image', reason: 'update_failed', text: '更新镜像失败' },
+  { route: '/images/delete_image', reason: 'image_not_found', text: '镜像不存在' },
+  { route: '/images/set_image_valid_range', reason: 'invalid_valid_range', text: '镜像可见范围不合法' },
+  { route: '/images/set_image_valid_range', reason: 'image_not_found', text: '镜像不存在' },
+  { route: '/images/set_image_valid_range', reason: 'set_valid_range_failed', text: '设置镜像可见范围失败' },
+  { route: '/images/set_image_visible_users', reason: 'not_custom_range', text: '只有自定义可见范围才能设置用户名单' },
+  { route: '/images/set_image_visible_users', reason: 'unknown_user', text: '用户名单中存在不存在的用户' },
+  { route: '/images/set_image_visible_users', reason: 'image_not_found', text: '镜像不存在' },
+  { route: '/images/set_image_visible_users', reason: 'set_visible_users_failed', text: '保存镜像可见用户失败' },
+];
+
+describe('CreateImage Q37 镜像错误表', () => {
+  const originalGetComputedStyle = window.getComputedStyle;
+
+  const visibleDialogs = () => Array.from(document.querySelectorAll('.ant-modal'))
+    .filter(el => el.style.display !== 'none');
+
+  const dialogText = () => {
+    const dialogs = visibleDialogs();
+    if (!dialogs.length) throw new Error('当前没有可见的错误弹窗');
+    return dialogs[dialogs.length - 1].textContent || '';
+  };
+
+  const closeActualDialogs = async () => {
+    for (let i = 0; i < 5; i += 1) {
+      const buttons = Array.from(document.querySelectorAll('.ant-modal button'))
+        .filter(btn => (btn.textContent || '').replace(/\s/g, '') === '好的');
+      if (!buttons.length) break;
+      await act(async () => {
+        buttons[buttons.length - 1].click();
+      });
+    }
+    await waitFor(() => expect(visibleDialogs()).toHaveLength(0));
+  };
+
+  beforeAll(() => {
+    window.getComputedStyle = (el) => originalGetComputedStyle.call(window, el);
+  });
+
+  afterAll(() => {
+    window.getComputedStyle = originalGetComputedStyle;
+  });
+
+  afterEach(closeActualDialogs);
+
+  it('test_q37_create_image_known_reasons', () => {
+    const missing = CREATE_IMAGE_ERROR_TABLE.filter(
+      row => routeErrorMap[row.route]?.[row.reason] !== row.text,
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it('test_q37_create_image_unknown_reason', async () => {
+    const actual = await vi.importActual('../utils/showErrorModal');
+    const before = visibleDialogs().length;
+    await act(async () => {
+      actual.default({
+        message: { success: 0, error_reason: 'unexpected_image_reason' },
+        status: 400,
+        route: 'https://ctrl/api/images/create_image',
+      });
+    });
+    await waitFor(() => expect(visibleDialogs().length).toBeGreaterThan(before));
+    const text = dialogText();
+    expect(text).toContain('未收录的错误原因：unexpected_image_reason');
+    expect(text).not.toContain('镜像名称已存在');
   });
 });

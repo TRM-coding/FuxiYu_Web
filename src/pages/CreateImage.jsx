@@ -140,6 +140,15 @@ export default function CreateImage() {
   // 用户名单（自定义可见范围的选择器数据源）：按需加载，进页面不白拉一份
   const [usersList, setUsersList] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  // 镜像列表请求序号：旧关键词/筛选/重取响应晚到时只让最新一次生效。
+  // image_api 未暴露 signal，页面内序号是当前可用机制；不能借用全局 abortAll，
+  // 否则会把其他页面甚至认证请求一起取消。
+  const listRequestSeqRef = useRef(0);
+  // 刚刚新建的 image_id：列表暂时没返回它时，也不能触发“选中项不在列表即清空表单”。
+  const createdImageIdRef = useRef(null);
+  // 权限/筛选变化时重新加载列表，但关键词只取当前值、不作为触发条件。
+  const keywordRef = useRef(keyword);
+  const loadImagesRef = useRef(null);
 
   // 方法能力与资源范围分别判断；完整规则见镜像页面和认证规格。
   const canManageMethods = canManageImages(permissions);
@@ -162,28 +171,41 @@ export default function CreateImage() {
 
   const visibleImages = images;
 
-  const loadImages = async (search = keyword) => {
+  // 返回：数组 = 本次列表已应用；null = 当前请求失败；undefined = 已被更新请求取代。
+  const loadImages = async (search = keyword, {
+    autoSelect = true,
+    mineOnly: mineOnlyFilter = mineOnly,
+    hasResourceWildcard: wildcardScope = hasResourceWildcard,
+  } = {}) => {
+    const seq = listRequestSeqRef.current + 1;
+    listRequestSeqRef.current = seq;
     setLoadingList(true);
     try {
       const result = await listImageBrefInformation({
         page_number: 1,
         page_size: 100,
         image_search: search,
-        mine_only: mineOnly || !hasResourceWildcard,
+        mine_only: mineOnlyFilter || !wildcardScope,
       });
+      // 旧响应直接丢弃：不覆盖当前列表，也不能借它选中旧列表项。
+      if (seq !== listRequestSeqRef.current) return undefined;
       const items = Array.isArray(result?.images) ? result.images.map(normalizeImage) : [];
       setImages(items);
-      if (!selectedId && items.length > 0) {
+      if (autoSelect && !selectedId && items.length > 0) {
         await selectImage(items[0].image_id);
       }
+      return items;
     } catch (err) {
+      if (seq !== listRequestSeqRef.current) return undefined;
       await showErrorModal({
         message: err?.body || err || '加载环境模板失败',
         status: err?.status || err?.response?.status,
         route: err?.route || err?.response?.url,
       });
+      return null;
     } finally {
-      setLoadingList(false);
+      // 只有最新请求能结束 loading；旧请求晚到不得把加载态提前打掉。
+      if (seq === listRequestSeqRef.current) setLoadingList(false);
     }
   };
 
@@ -208,14 +230,28 @@ export default function CreateImage() {
   };
 
   useEffect(() => {
+    keywordRef.current = keyword;
+  }, [keyword]);
+
+  loadImagesRef.current = loadImages;
+
+  useEffect(() => {
     if (!permissionsLoaded || !currentUserId) return;
-    loadImages(keyword);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadImagesRef.current(keywordRef.current, { mineOnly, hasResourceWildcard });
   }, [permissionsLoaded, currentUserId, mineOnly, hasResourceWildcard]);
 
   useEffect(() => {
     if (!selectedId) return;
-    if (visibleImages.some(item => String(item.image_id) === String(selectedId))) return;
+    if (visibleImages.some(item => String(item.image_id) === String(selectedId))) {
+      // 新项最终出现在列表后，保护期结束；之后再被筛掉应恢复“清空选中”的常态。
+      if (String(createdImageIdRef.current) === String(selectedId)) {
+        createdImageIdRef.current = null;
+      }
+      return;
+    }
+    // 新建成功后的列表可能尚未包含新项；此时 selectedId 是有意保留的，
+    // 不能把用户刚提交的表单当成“选中项被删”清空。
+    if (String(createdImageIdRef.current) === String(selectedId)) return;
     setSelectedId(null);
     setForm(EMPTY_FORM);
     setOriginalForm(EMPTY_FORM);
@@ -256,6 +292,7 @@ export default function CreateImage() {
   }, [canEdit, form.image_id, form.valid_range]);
 
   const startCreate = () => {
+    createdImageIdRef.current = null;
     setSelectedId(null);
     setForm(EMPTY_FORM);
     setOriginalForm(EMPTY_FORM);
@@ -303,7 +340,17 @@ export default function CreateImage() {
           });
         }
         message.success('模板已保存');
-        await selectImage(form.image_id);
+        const savedForm = {
+          ...form,
+          name,
+          base_image: baseImage,
+          dockerfile_body: dockerfileBody,
+          entrypoint,
+        };
+        setForm(savedForm);
+        setOriginalForm(savedForm);
+        // 更新成功后按当前关键词重取左侧列表，展示最新摘要；不能只刷新右侧详情。
+        await loadImages(keyword, { autoSelect: false });
       } else {
         const result = await createImage({
           name,
@@ -314,8 +361,39 @@ export default function CreateImage() {
           entrypoint,
         });
         message.success('模板已创建');
-        await loadImages(keyword);
-        if (result?.image_id) await selectImage(result.image_id);
+        // 唯一选择 A：关键词清空 → 空词重取 → 选中新 ID → 保留提交表单。
+        // 先不选中，避免旧列表的“选中项不在列表” effect 在重取前清空表单。
+        setKeyword('');
+        const submittedForm = {
+          ...form,
+          name,
+          base_image: baseImage,
+          dockerfile_body: dockerfileBody,
+          entrypoint,
+        };
+        const items = await loadImages('', { autoSelect: false });
+        // 更新的搜索已经接管列表：不要用本次新建流程回写旧状态。
+        if (items === undefined) return;
+        // 重取失败：保留提交表单并展示错误，不伪造选中。
+        if (items === null) {
+          setForm(submittedForm);
+          setOriginalForm(submittedForm);
+          return;
+        }
+        const savedForm = result?.image_id != null
+          ? {
+            ...submittedForm,
+            image_id: result.image_id,
+            // 新建者就是当前用户；补上归属，避免刚创建就被“他人模板”只读提示锁住。
+            created_by_user_id: submittedForm.created_by_user_id ?? currentUserId,
+          }
+          : submittedForm;
+        setForm(savedForm);
+        setOriginalForm(savedForm);
+        if (result?.image_id != null) {
+          createdImageIdRef.current = result.image_id;
+          setSelectedId(result.image_id);
+        }
       }
     } catch (err) {
       await showErrorModal({
@@ -334,6 +412,7 @@ export default function CreateImage() {
     try {
       await deleteImage(form.image_id);
       message.success('模板已删除');
+      createdImageIdRef.current = null;
       setSelectedId(null);
       setForm(EMPTY_FORM);
       setOriginalForm(EMPTY_FORM);
