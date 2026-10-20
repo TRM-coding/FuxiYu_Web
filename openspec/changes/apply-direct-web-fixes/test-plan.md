@@ -13,12 +13,12 @@
 | specs/frontend--authentication/spec.md → 权限查询必须在 finally 注销控制器 | 连续查询不积累控制器 | src/test/permissionControllerRelease.test.js | test_q27_repeated_queries_no_accumulation | 🔴 red |
 | specs/frontend--build/spec.md → 全仓 ESLint 必须零错误零警告 | 全仓 lint 通过 | 非可执行规格：直接机械验证 | `npm run lint` 的退出码、错误/警告数 | 待执行 |
 | specs/frontend--build/spec.md → 全仓 ESLint 必须零错误零警告 | 禁用规则或忽略目录被拒 | 非可执行规格：直接机械验证 | `git diff -- eslint.config.js package.json` 与 `rg` 策略扫描（`eslint-disable`、`globalIgnores`、`--ignore-pattern`、规则 `off`） | 待执行 |
-| specs/frontend--build/spec.md → 所有测试入口自动兼容 Node 26 实验 Web Storage | Node 26 测试入口注入 flag | scripts/tests/test-entry-node26.integration.mjs | test_q29_node26_entry_injects_flag | 🔴 red |
-| specs/frontend--build/spec.md → 所有测试入口自动兼容 Node 26 实验 Web Storage | 不支持 flag 的 Node 不注入 | scripts/tests/test-entry-node26.integration.mjs | test_q29_unsupported_node_no_injection | 🔴 red |
-| specs/frontend--build/spec.md → 所有测试入口自动兼容 Node 26 实验 Web Storage | 直接运行 test:web 同样注入 | scripts/tests/test-entry-node26.integration.mjs | test_q29_test_web_wrapper_injects_flag | 🔴 red |
+| specs/frontend--build/spec.md → 所有测试入口自动兼容 Node 26 实验 Web Storage | Node 26 测试入口注入 flag | scripts/tests/test-entry-node26.integration.mjs | test_q29_node26_entry_injects_flag | 🟢 已通过 |
+| specs/frontend--build/spec.md → 所有测试入口自动兼容 Node 26 实验 Web Storage | 不支持 flag 的 Node 不注入 | scripts/tests/test-entry-node26.integration.mjs | test_q29_unsupported_node_no_injection | 🟢 已通过 |
+| specs/frontend--build/spec.md → 所有测试入口自动兼容 Node 26 实验 Web Storage | 直接运行 test:web 同样注入 | scripts/tests/test-entry-node26.integration.mjs | test_q29_test_web_wrapper_injects_flag | 🟢 已通过 |
 | specs/frontend--build/spec.md → 所有测试入口自动兼容 Node 26 实验 Web Storage | Node 26 完整前端套件通过 | 非可执行规格：直接套件验收 | `node --version`、`npm test` 的真实汇总（`test_q29_node26_full_suite`），不新增递归套件测试 | 待执行 |
-| specs/frontend--build/spec.md → Node 支持范围明确且覆盖新版本 | 支持范围与 CI 覆盖 | scripts/tests/test-entry-node26.integration.mjs | test_q29_supported_range_and_ci_matrix | 🔴 red |
-| specs/frontend--build/spec.md → Node 支持范围明确且覆盖新版本 | 单一旧版本或缺失范围被拒 | scripts/tests/test-entry-node26.integration.mjs | test_q29_single_old_node_rejected | 🔴 red |
+| specs/frontend--build/spec.md → Node 支持范围明确且覆盖新版本 | 支持范围与 CI 覆盖 | 非可执行规格：配置机械核对 | Node 命令核对 package/lock 的 engines 与 Vite 一致、CI 包含 20.19.0/22/26 | 🟢 机械检查通过，未执行远端矩阵 |
+| specs/frontend--build/spec.md → Node 支持范围明确且覆盖新版本 | 单一旧版本或缺失范围被拒 | 非可执行规格：同一配置机械核对 | 配置断言对缺失 engines、缺失版本矩阵或限制旧版返回失败，不额外制造配置测试文件 | 🟢 机械检查通过 |
 | specs/frontend--page-admin-logs/spec.md → AdminLogs 查询结果必须匹配当前周次、筛选与分页 | 当前上下文响应应用 | src/test/AdminLogs.test.jsx | test_q22_admin_logs_current_response | 🔴 red |
 | specs/frontend--page-admin-logs/spec.md → AdminLogs 查询结果必须匹配当前周次、筛选与分页 | 旧周次响应晚到 | src/test/AdminLogs.test.jsx | test_q22_admin_logs_stale_week | 🔴 red |
 | specs/frontend--page-admin-logs/spec.md → AdminLogs 查询结果必须匹配当前周次、筛选与分页 | 旧筛选或旧页响应晚到 | src/test/AdminLogs.test.jsx | test_q22_admin_logs_stale_filter_page | 🔴 red |
@@ -98,7 +98,16 @@
 - 命名约定：测试名以 `test_q<Q号>_` 前缀标识问题来源，便于从 Q 反查测试；同一测试文件内的中文 `it(...)` 描述可另写，但测试函数名必须与上表一致或可一一对应。
 - 竞态测试：Q22、Q27、Q63、Q69 使用 deferred promise 或受控 mock 让旧请求晚于新请求返回；只断言 AbortController 存在不算覆盖。
 - Q28：直接执行 `npm run lint` 验证退出码和错误/警告数，配置策略用真实差异与新增抑制审查验收；不额外加入会在 `npm test` 内重复运行 lint 的镜像测试。
-- Q29：`test-entry-node26.integration.mjs` 通过共享 helper 的模拟 flags 和静态读取 `package.json`/工作流验证注入与范围；`npm test` 行在 Node 26 真实运行，记录文件数、用例数和退出码。两者不能互相替代。
+- Q29：`test-entry-node26.integration.mjs` 以模拟 flags 验证支持/不支持/保留调用方配置，并实际启动直接前端入口运行 jsdom storage 回归；package/lock 与 CI 范围另作直接配置检查。最终完整 `npm test` 尚待页面实施结束后记录，不以局部结果替代。
+
+## Q29 实施证据（父任务，2026-10-21）
+
+- Node v26.8.1，不预设 `NODE_OPTIONS` 运行旧直接入口 `npm run test:web -- src/test/authHelpers.test.js`：5 失败，原因是 `localStorage.clear()` 读取 undefined；原始输出 `.git/q29-direct-red.log`。
+- 同一命令经统一入口修复后：5 通过，无需手工环境选项。
+- `node --test scripts/tests/test-entry-node26.integration.mjs`：3 通过，实际直接入口在第三例中执行。
+- `npm run test:server`：37 通过、0 失败、0 跳过，输出 `.git/q29-server-green.log`。
+- Node 配置断言验证 package/lock 的 engines 与 Vite 一致、CI 三版本和动态 matrix 引用存在，并对删除 engines/退回仅 22 的负例断言失败；检查通过。没有新增专门验证配置字符串的持久化测试。
+- 受影响脚本 `npx eslint` 通过。CI 仅配置了矩阵，未宣称已在本地或远端执行 20/22；完整前端套件在其他页面修正稳定后执行。
 - Q37：页面组件测试与 `src/test/showErrorModalMap.test.js` 可共用 route/error_reason 表；组件测试至少断言一次真实弹窗文案，不能只断言映射对象存在。`test_q37_*_known_reasons` / `test_q37_register_code_mapping` 等测试应遍历对应页面规格表中的全部组合，场景名只代表其中一个可见入口；`code_creation_failed` 归入 `test_q37_register_code_mapping` 的遍历集合，不新增测试文件。
 - Q35/Q36：ADDED 详情、死代码与资源删除使用组件或 Node 测试；MODIFIED 契约用 eligibility 组件测试消费共享纯函数，不断言弹窗；删除资格只做纯计算断言，实际删除只断言详情页入口；删除后仍保留 `npm run build` 证据。
 - Q59：组件测试 mock `listAllContainerBrefInformation`，第一页返回 4 条、`total_number=6`，第二页返回 2 条；断言第二次调用参数为 `page_number:1, page_size:4`，不出现一次拉 6 条。

@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "predev": "node scripts/gen-cert.mjs",
     "dev": "vite",
@@ -12,9 +15,9 @@
     "prestart": "node scripts/gen-cert.mjs",
     "start": "node scripts/start.mjs",
     "test": "node scripts/tests/run-tests.mjs",
-    "test:web": "vitest run --maxWorkers=2",
+    "test:web": "node scripts/tests/run-vitest.mjs run --maxWorkers=2",
     "test:server": "node scripts/tests/run-integration.mjs",
-    "test:watch": "vitest",
+    "test:watch": "node scripts/tests/run-vitest.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

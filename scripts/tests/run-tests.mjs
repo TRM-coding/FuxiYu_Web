@@ -6,20 +6,9 @@
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { testEnvironment } from './node-options.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
-const WEBSTORAGE_FLAG = '--no-experimental-webstorage'
-
-function nodeOptionsForVitest() {
-  const env = { ...process.env }
-  const supported = typeof process.allowedNodeEnvironmentFlags?.has === 'function' && process.allowedNodeEnvironmentFlags.has(WEBSTORAGE_FLAG)
-  const current = env.NODE_OPTIONS || ''
-  if (supported && !current.includes(WEBSTORAGE_FLAG)) {
-    env.NODE_OPTIONS = `${current} ${WEBSTORAGE_FLAG}`.trim()
-    process.stdout.write(`[test] 已为 Vitest 追加 NODE_OPTIONS=${WEBSTORAGE_FLAG}\n`)
-  }
-  return env
-}
 
 function runNpmScript(script, env) {
   const npmCli = process.env.npm_execpath
@@ -34,7 +23,7 @@ function runNpmScript(script, env) {
   return result.status === null ? 1 : result.status
 }
 
-const webCode = runNpmScript('test:web', nodeOptionsForVitest())
-const serverCode = runNpmScript('test:server', process.env)
+const webCode = runNpmScript('test:web', testEnvironment())
+const serverCode = runNpmScript('test:server', testEnvironment())
 
 process.exit(webCode !== 0 ? webCode : serverCode)

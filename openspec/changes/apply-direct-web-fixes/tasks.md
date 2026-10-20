@@ -108,9 +108,9 @@
 
 ## 8. 全仓 lint 与 Node 测试运行时（Q28、Q29）
 
-- [ ] 8.1 直接运行并记录 `npm run lint` 当前退出码 1、329 errors/20 warnings 的失败基线，记录 `git diff -- eslint.config.js package.json` 与 `rg` 策略扫描（`eslint-disable`、`globalIgnores`、`--ignore-pattern`、规则 `off`）的配置基线，不为 lint 命令额外制造测试包装；另写 `scripts/tests/test-entry-node26.integration.mjs` 的 `test_q29_node26_entry_injects_flag`、`test_q29_unsupported_node_no_injection`、`test_q29_test_web_wrapper_injects_flag`、`test_q29_supported_range_and_ci_matrix`、`test_q29_single_old_node_rejected`，确认测试入口兼容性用例的失败基线。
+- [ ] 8.1 直接运行并记录 `npm run lint` 当前退出码 1、329 errors/20 warnings 的失败基线，记录 `git diff -- eslint.config.js package.json` 与 `rg` 策略扫描（`eslint-disable`、`globalIgnores`、`--ignore-pattern`、规则 `off`）的配置基线，不为 lint 命令额外制造测试包装；另写 `scripts/tests/test-entry-node26.integration.mjs` 的 `test_q29_node26_entry_injects_flag`、`test_q29_unsupported_node_no_injection`、`test_q29_test_web_wrapper_injects_flag`，以及支持范围与矩阵的直接机械检查，确认测试入口兼容性用例的失败基线。
   - 证据位：`scripts/tests/test-entry-node26.integration.mjs` 的失败输出；lint 策略命中的现有抑制/忽略。
-- [ ] 8.2 绿：新增共享 node-options helper，`test`/`test:web`/`test:watch`/`test:server` 与 CI 统一使用；`test:web`/`test:watch` 通过包装脚本启动；`package.json` 加 `engines.node: "^20.19.0 || >=22.12.0"`；CI 矩阵改 Node 20.19.0/22/26。
+- [x] 8.2 新增共享 node-options helper，四个测试入口统一使用；前端入口通过薄包装脚本启动；package/lock 的 engines 与已安装 Vite 一致，CI 矩阵为 20.19.0/22/26。父任务记录：直接入口修复前 5 失败，修复后 5 通过；环境兼容回归 3 通过；入口集成 37 通过。
   - 证据位：8.1 中 Q29 测试转绿；记录 helper 检测逻辑与 CI 矩阵。
 - [ ] 8.3 绿：lint 第一批按 `no-unused-vars`、`no-empty`、`no-undef` 批量修复；不改变业务行为，逐批跑相关测试。
   - 证据位：`npx eslint . --format json` 的规则计数下降；相关测试退出码。

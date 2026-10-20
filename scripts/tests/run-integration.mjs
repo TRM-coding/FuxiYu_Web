@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { testEnvironment } from './node-options.mjs'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const files = fs
@@ -21,5 +22,5 @@ if (files.length === 0) {
 }
 
 process.stdout.write(`[test:server] node --test ${files.map((file) => path.relative(dir, file)).join(' ')}\n`)
-const result = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit' })
+const result = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit', env: testEnvironment() })
 process.exit(result.status === null ? 1 : result.status)
