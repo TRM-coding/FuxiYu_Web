@@ -33,6 +33,28 @@
 - **WHEN** 对本基线执行 `npm run build`
 - **THEN** Vite 完成构建并输出页面级与 `ModelViewer` 的异步 chunk；`src/utils/requestManager.jsx` 与 `src/utils/validateCmdArg.jsx` 统一为静态导入后，预期不再出现「同一模块既被静态又被动态导入」的 Rollup 警告；具体 chunk 体积与警告清单属构建验收观测，记入本轮验收报告，不作为本规格固化的历史指标
 
+### Requirement: AdminLogs 查询结果必须匹配当前周次、筛选与分页
+
+页面 SHALL 为周次、筛选和分页请求使用请求序号或 AbortController；响应应用前 MUST 确认该请求仍属于当前查询上下文。旧响应 SHALL 只释放自身资源，MUST NOT 覆盖当前日志列表、总数或分页状态。
+
+#### Scenario: 当前上下文响应应用
+
+- **GIVEN** 用户停留在当前周次与筛选
+- **WHEN** 当前查询返回
+- **THEN** 日志列表、总数和分页状态按该响应更新
+
+#### Scenario: 旧周次响应晚到
+
+- **GIVEN** 用户从本周切到上一周
+- **WHEN** 本周请求晚于上一周请求返回
+- **THEN** 本周响应被丢弃，列表仍显示上一周结果，旧请求的控制器或序号资源被释放
+
+#### Scenario: 旧筛选或旧页响应晚到
+
+- **GIVEN** 用户快速切换筛选或翻页
+- **WHEN** 旧筛选或旧页请求晚于新请求返回
+- **THEN** 旧响应不得改写当前列表、当前页或总数，分页入口仍对应当前查询
+
 ## Source references
 
 - [src/pages/AdminLogs.jsx](../../../src/pages/AdminLogs.jsx)；[src/routes/index.jsx](../../../src/routes/index.jsx)。

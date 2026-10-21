@@ -33,6 +33,22 @@
 - **WHEN** 对本基线执行 `npm run build`
 - **THEN** Vite 完成构建并输出页面级与 `ModelViewer` 的异步 chunk；`src/utils/requestManager.jsx` 与 `src/utils/validateCmdArg.jsx` 统一为静态导入后，预期不再出现「同一模块既被静态又被动态导入」的 Rollup 警告；具体 chunk 体积与警告清单属构建验收观测，记入本轮验收报告，不作为本规格固化的历史指标
 
+### Requirement: NotFound 页面使用完整视口高度
+
+独立 404 路由是顶层路由的兄弟，没有 `MainLayout`/导航栏祖先；`.notfound-page` SHALL 使用 `min-height: 100vh`，并可用 `100dvh` 覆盖移动端动态视口。MUST NOT 再使用 `calc(100vh - 64px)` 或 `calc(100vh - 56px)`，MUST NOT 为不存在的导航栏预留固定底部空间。
+
+#### Scenario: 顶层未知路由无底部空隙
+
+- **GIVEN** 用户访问不存在的顶层路由
+- **WHEN** 404 页面渲染
+- **THEN** 页面高度占满视口，底部没有 64px 的额外空隙
+
+#### Scenario: 移动端视口无 56px 空隙
+
+- **GIVEN** 移动端视口命中既有响应式断点
+- **WHEN** 404 页面渲染
+- **THEN** 页面使用 `100vh` 或 `100dvh`，底部没有 56px 的额外空隙
+
 ## Source references
 
 - [src/pages/NotFound.jsx](../../../src/pages/NotFound.jsx)；[src/routes/index.jsx](../../../src/routes/index.jsx)。
