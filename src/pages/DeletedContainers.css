@@ -53,9 +53,13 @@
   overflow-wrap: anywhere;
 }
 
-.deleted-mount-cell .deleted-mount-chip {
+.deleted-mount-chip {
   max-width: 100%;
   vertical-align: middle;
+}
+
+.app-table-mobile-item .deleted-mount-chip {
+  width: 100%;
 }
 
 .deleted-usage-loading {

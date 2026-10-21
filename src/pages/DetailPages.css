@@ -83,9 +83,12 @@
 }
 
 .detail-title h1 {
+  min-width: 0;
   margin: 0;
   font-size: 24px;
   line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .detail-subtitle {
@@ -112,7 +115,7 @@
 .machine-detail-layout,
 .container-detail-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr));
   gap: 16px;
   margin-top: 18px;
 }
@@ -288,6 +291,7 @@
 }
 
 .detail-card {
+  min-width: 0;
   background: #fff;
   border: 1px solid #dbe5f1;
   border-radius: 8px;
@@ -327,6 +331,7 @@
 }
 
 .detail-metric {
+  min-width: 0;
   min-height: 96px;
   border: 1px solid #dbe5f1;
   border-radius: 8px;
@@ -349,12 +354,16 @@
   font-size: 22px;
   font-weight: 700;
   color: #12263f;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .detail-metric-extra {
   margin-top: 4px;
   color: #60728a;
   font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .detail-field-grid {
@@ -518,6 +527,7 @@
 }
 
 .detail-runtime-item {
+  min-width: 0;
   border: 1px solid #e1e9f3;
   border-radius: 8px;
   background: #fbfdff;
@@ -533,6 +543,8 @@
 .detail-runtime-item span {
   color: #60728a;
   font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .detail-chart {

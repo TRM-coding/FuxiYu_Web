@@ -4,12 +4,12 @@
 
 ## 台账状态
 
-- 主 spec SHA256：`1ce0b3834c2f228a929e06c1b4f4c8cd3bff1a11c3b6fc42bcf19ef16dbaa54b`
-- 本轮映射：已覆盖 3；部分覆盖 0；待复核 3。
-- 测试基线：固定版 Web 代码 `a98e51d`；验收文档 HEAD `372fb80`。本轮只同步文档，未重跑业务套件。
-- 运行证据：A 组 9 files/78；`AdminLogs.test.jsx` 的 Q22 用例通过；固定版 `npm test` 64/605+40。
-- 定向证据：A 组 9 files/78（`.git/q28-handoff-a9-78-tests.log`）。
-- 限制：jsdom 组件测试；真实浏览器/E2E/视觉验收未运行；CI Node 20.19.0/22 未实际远程运行；本轮未重跑业务套件。
+- 主 spec SHA256：`4a8dc705b6a9b95fe5fdbe9b4ae0ba4411d680745645cedfcaa521f6afc382f0`
+- 本轮映射：已覆盖 5；部分覆盖 2；待复核 3。
+- 测试基线：当前工作区最终实现；保留 a98e51d 的 A 组历史记录。
+- 运行证据：父代理最终 `npm test` 68 files/652 tests + server 40 tests，0 failed；`AdminLogsMobile.test.jsx` 当前 4/4，`AdminLogs.test.jsx` 11/11。
+- 真实浏览器：父代理 26 cases / 315 checks 全部通过，`verified-complete/results.json` 的 sourceHashes 与当前实现一致；旧 353px 无详情入口为历史基线。
+- 限制：jsdom/CSS 契约测试不计算真实 `scrollWidth`/日期范围高度；真实 320/390/768/1440 由外部浏览器补足；CI Node 20.19.0/22 未在本轮实际远程运行。
 
 ## 当前场景映射
 
@@ -22,11 +22,24 @@
 | AdminLogs 查询结果必须匹配当前周次、筛选与分页 | 旧周次响应晚到 | 已覆盖 | ../../../src/test/AdminLogs.test.jsx::test_q22_admin_logs_stale_week | 断言「旧周次响应晚到」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
 | AdminLogs 查询结果必须匹配当前周次、筛选与分页 | 旧筛选或旧页响应晚到 | 已覆盖 | ../../../src/test/AdminLogs.test.jsx::test_q22_admin_logs_stale_filter_page | 断言「旧筛选或旧页响应晚到」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
 
+| AdminLogs 移动端日志详情与 320px 收缩 | 390px 与 768px 展开日志详情 | 已覆盖 | ../../../src/test/AdminLogsMobile.test.jsx::tc_logs_01_mobile_390_768_expand_collapse | 断言内部状态展开/收起、`aria-expanded`、详情内容与无额外请求；当前文件 4/4 通过。 |
+| AdminLogs 移动端日志详情与 320px 收缩 | 320px 统计区收缩且详情不溢出 | 部分覆盖 | ../../../src/test/AdminLogsMobile.test.jsx::tc_logs_02_320_side_contract | 断言 `.als-side` 的 `min(300px, 100%)` CSS 契约与移动卡片；真实 320px `scrollWidth`、日期高度由外部 26/315 补足。 |
+| AdminLogs 移动端日志详情与 320px 收缩 | 1440px 桌面保持 antd 展开与分页 | 已覆盖 | ../../../src/test/AdminLogs.test.jsx::展开行显示前→后对比（状态值翻译） | 断言桌面 antd 表格展开与详情；当前 `AdminLogs.test.jsx` 11/11 通过。 |
+| AdminLogs 移动端日志详情与 320px 收缩 | 长日志详情在 320px 内可读 | 部分覆盖 | ../../../src/test/AdminLogsMobile.test.jsx::tc_logs_03_long_detail_320 | 断言长详情结构、换行类与收起按钮；真实 320px 宽度/高度由外部 26/315 补足；额外 `tc_logs_04` 锁定周次/工具条 wrap 契约。 |
+
 ## 最近验证
 
-- 时间：2026-10-21 04:01:26 +08:00（固定提交npm test起始时间；本轮归档未重跑）。
-- 版本：Web 代码 `a98e51d`；验收文档 `372fb80`。
-- 主 spec SHA256：`1ce0b3834c2f228a929e06c1b4f4c8cd3bff1a11c3b6fc42bcf19ef16dbaa54b`。
-- 命令与环境：固定版 `npm test`（Node v26.8.1）→ 64 files/605 + 40 tests，0 failed/0 skipped/0 todo；本 capability 定向证据：A 组 9 files/78（`.git/q28-handoff-a9-78-tests.log`）。
-- 结果：新增/修改场景按上表具名测试或机械检查映射；未把 skip/excluded 或未运行项写成通过。
-- 限制或尚未运行项：jsdom 组件测试；真实浏览器/E2E/视觉验收未运行；CI Node 20.19.0/22 未实际远程运行；本轮未重跑业务套件。
+- 时间：2026-10-21 15:38 +08:00（父代理最终全量）；历史记录保留 2026-10-21 04:01:26 的 a98e51d 基线。
+- 版本：当前工作区最终实现；历史基线 `a98e51d`。
+- 主 spec SHA256：`4a8dc705b6a9b95fe5fdbe9b4ae0ba4411d680745645cedfcaa521f6afc382f0`。
+- 命令与环境：父代理 `npm test` → 前端 68 files/652 tests、server 40 tests，0 failed；`AdminLogsMobile.test.jsx` 4/4、`AdminLogs.test.jsx` 11/11；历史 A 组 9 files/78 记录保留。
+- 结果：新增/修改场景按上表具名测试或机械检查映射；CSS 契约场景标“部分覆盖”，不写成真实像素通过。
+- 稳定性：本会话第 15/16 次全量遇到既有 `HomeEligibility`/`DeletedContainersMountUsage` 5 秒超时，单 worker 28 项通过，父代理最终全量通过；原因未充分证明，保留 warning。
+- 限制或尚未运行项：jsdom 组件测试；真实浏览器补充见下；CI Node 20.19.0/22 未实际远程运行。
+
+## 真实浏览器审计（历史与当前）
+
+- 历史基线：320px 下 `.als-side` 固定 300px 最小宽度导致整页 353px；320/390/768px 无可用移动日志详情按钮。旧结果已不再代表当前实现。
+- 当前补验：父代理 26 cases / 315 checks 全部通过，覆盖 320/390/768/1440px；`.als-side` 收缩、周次日期范围高度、移动详情展开、桌面 antd 展开与分页均通过；`verified-complete/results.json` 的 sourceHashes 与当前实现一致。
+- 当前 `npm test` 68 files/652 tests + server 40 tests 通过；本会话 15/16 次全量的既有 5 秒超时已在上一段记录，单 worker 28 项通过，父代理最终全量通过。
+- 未覆盖：真实后端、真实设备、其他浏览器、全部历史场景；本台账不把 CSS 契约测试当作真实宽度/高度证据。

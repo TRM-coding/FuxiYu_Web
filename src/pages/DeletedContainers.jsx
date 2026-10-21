@@ -1,6 +1,6 @@
 import { formatContainerImage, parseServerTime } from '../utils/detailFormat';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Empty, Modal, Popconfirm, Radio, Spin, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Empty, Modal, Popconfirm, Radio, Spin, Tag, Typography, message } from 'antd';
 import { DeleteOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -9,6 +9,7 @@ import {
   resurrectDeletedContainer,
 } from '../api/container_api';
 import CopyChip from '../components/CopyChip';
+import TableComponent from '../components/TableComponent';
 import '../components/NestedEntityGrid.css';
 import { usePermission } from '../contexts/PermissionContext';
 import { handleAuthError } from '../utils/authHelpers';
@@ -64,6 +65,7 @@ export default function DeletedContainers() {
   const navigate = useNavigate();
   const { hasPermission, loaded } = usePermission();
   const [records, setRecords] = useState([]);
+  const [expandedRowKeys, setExpandedRowKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cleaningId, setCleaningId] = useState(null);
   const [resurrectingId, setResurrectingId] = useState(null);
@@ -477,12 +479,16 @@ export default function DeletedContainers() {
       <Spin spinning={loading}>
         {/* 空页也保留 Table 与分页入口：total>0 时当前页可能暂时为空（刚清理/恢复最后一条），
             用户仍能翻回有效页，而不是被 Empty 顶掉。 */}
-        <Table
+        <TableComponent
           rowKey="deleted_id"
           columns={columns}
           dataSource={records}
           locale={{ emptyText: <Empty description="暂无已删除容器" /> }}
-          expandable={{ expandedRowRender }}
+          expandable={{
+            expandedRowKeys,
+            onExpandedRowsChange: setExpandedRowKeys,
+            expandedRowRender,
+          }}
           pagination={{
             current: page,
             pageSize,
