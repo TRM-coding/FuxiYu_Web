@@ -2,7 +2,7 @@
 
 规格：[spec.md](spec.md)
 
-- 主 spec SHA256：`806cd31e12fd7126787ebc366e966e8c8e33c6c72be18e9680f5c9e4d706b4a3`（2026-10-24 ROOT 交接统一后）。
+- 主 spec SHA256：`0db95b5100caef865091cb6595603439c5804941be6668b0e5844c6d58212dd1`（2026-10-24 成员守卫错误映射后）。
 
 ## 当前场景映射
 
@@ -47,3 +47,20 @@
 - 全量：`npm test` 通过 Web 78 files/708 tests + server 40 tests（0 failed/0 skipped）；`npm run build` 15.17s 通过；`npm run lint` 通过；`openspec validate --specs --strict` 28/28 通过。
 - 限制：jsdom 测试；未验证真实 Ctrl 后台部分完成/失败时序；未操作真实 DB。
 - 日志：`E:/AI/Fuxi_audit_artifacts/root-handover-2026-10-24/`。
+
+## 2026-10-24 成员守卫错误映射增量
+
+主 spec SHA256：`0db95b5100caef865091cb6595603439c5804941be6668b0e5844c6d58212dd1`
+
+| Requirement | Scenario | 覆盖状态 | 测试位置与 nodeid/参数 | 验证范围或缺口 |
+| --- | --- | --- | --- | --- |
+| 人员弹窗成员操作失败保留守卫原因 | 新增或移除时容器离线 | 已覆盖 | ../../../src/test/EditUserModalPasswords.test.jsx::test_home_member_guard_failures_keep_error_reason；../../../src/test/ContainerMemberGuardErrors.test.jsx::离线新增成员/离线移除成员 | 组件层断言 showErrorModal 入参保留 offline reason；真实包装器+真实弹窗覆盖 add/remove 的中文文案、无英文守卫与无通用 400 提示。 |
+| 人员弹窗成员操作失败保留守卫原因 | 改角色时容器冻结或处理中 | 已覆盖 | ../../../src/test/EditUserModalPasswords.test.jsx::test_home_member_guard_failures_keep_error_reason；../../../src/test/ContainerMemberGuardErrors.test.jsx::冻结容器更新角色/update failed 矩阵行 | 组件层断言 paused reason 不被 `err.message` 吞掉；真实包装器+真实弹窗覆盖 paused/failed 中文原因与无 409 通用提示。 |
+
+### 2026-10-24 成员守卫错误验证
+
+- 时间：2026-10-24 23:07 +08:00。
+- 版本：基线 `69017ee` + 当前工作区未提交改动（公告 2 files 为父级在改，未触碰）。
+- 命令与环境：`npm run test:web -- src/test/EditUserModalPasswords.test.jsx src/test/ContainerMemberGuardErrors.test.jsx ...` → 最终相关 6 files / 94 tests 全通过；其中 Home 人员弹窗 7/7、成员链路 12/12；真实 Chromium 离线移除脚本 pass。
+- 结果：新增/移除/改角色失败均保留 safety message、status、route、error_reason；中文守卫原因为主文案，401/403 专门提示保持。
+- 限制：jsdom 组件测试 + 真实浏览器 mock API；未操作真实 Ctrl/Node/DB，未跑全量套件与公告 build。

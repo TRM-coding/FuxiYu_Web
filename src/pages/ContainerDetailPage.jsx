@@ -21,6 +21,7 @@ import CopyChip from '../components/CopyChip';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import RuntimeTrendChart from '../components/RuntimeTrendChart';
 import showErrorModal from '../utils/showErrorModal';
+import { toErrorModalInput } from '../utils/errorModalInput';
 import CredentialModal from '../components/CredentialModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { formatNumber, formatSnapshotTime, formatContainerImage } from '../utils/detailFormat';
@@ -638,7 +639,7 @@ const ContainerDetailPage = () => {
       await refreshAfterPeopleChange();
     } catch (err) {
       if (!isCurrentContainerRequest(requestContainerId, requestNavigationEpoch)) return;
-      await showErrorModal({ message: err?.message || '添加用户失败', status: err?.status, route: err?.route });
+      await showErrorModal(toErrorModalInput(err, '添加用户失败'));
     } finally {
       setPeopleSaving(false);
     }
@@ -651,7 +652,7 @@ const ContainerDetailPage = () => {
       await refreshAfterPeopleChange();
       message.success('用户已移除');
     } catch (err) {
-      await showErrorModal({ message: err?.body || err || '移除用户失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await showErrorModal(toErrorModalInput(err, '移除用户失败'));
     } finally {
       setPeopleSaving(false);
     }
@@ -681,7 +682,7 @@ const ContainerDetailPage = () => {
       await refreshAfterPeopleChange();
     } catch (err) {
       if (!isCurrentContainerRequest(requestContainerId, requestNavigationEpoch)) return;
-      await showErrorModal({ message: err?.message || '更新角色失败', status: err?.status, route: err?.route });
+      await showErrorModal(toErrorModalInput(err, '更新角色失败'));
     } finally {
       setPeopleSaving(false);
     }
@@ -712,7 +713,7 @@ const ContainerDetailPage = () => {
       message.success('重置密码请求已受理');
     } catch (err) {
       if (!isCurrentContainerRequest(requestContainerId, requestNavigationEpoch)) return;
-      await showErrorModal({ message: err?.message || '重置密码失败', status: err?.status, route: err?.route });
+      await showErrorModal(toErrorModalInput(err, '重置密码失败'));
     } finally {
       setResetSaving(false);
     }

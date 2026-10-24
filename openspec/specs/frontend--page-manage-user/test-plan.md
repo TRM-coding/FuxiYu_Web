@@ -4,8 +4,8 @@
 
 ## 台账状态
 
-- 主 spec SHA256：`cc606a3143a8daf7dd28efa3096471fa68f754ee17a8a309b40c58acd7b33d1b`
-- 本轮映射：已覆盖 8；部分覆盖 0；待复核 4。
+- 主 spec SHA256：`87455287faf175dc9e82c6f8eb92983c82dc5f3ef7bbca2841c5a2632aaf881c`
+- 本轮映射：已覆盖 9；部分覆盖 0；待复核 4（2026-10-24 成员守卫错误增量 +1）。
 - 测试基线：固定版 Web 代码 `a98e51d`；验收文档 HEAD `372fb80`。本轮只同步文档，未重跑业务套件。
 - 运行证据：C 组 19/189；`ManageUserDetailLink.test.jsx` 与 `ManageUserEligibility.test.jsx` 的 Q35/Q36 用例通过；固定版 `npm test` 64/605+40。
 - 定向证据：C 组 19 files/189（`.git/apply-worker-final3-web.log`）。
@@ -36,3 +36,18 @@
 - 命令与环境：固定版 `npm test`（Node v26.8.1）→ 64 files/605 + 40 tests，0 failed/0 skipped/0 todo；本 capability 定向证据：C 组 19 files/189（`.git/apply-worker-final3-web.log`）。
 - 结果：新增/修改场景按上表具名测试或机械检查映射；未把 skip/excluded 或未运行项写成通过。
 - 限制或尚未运行项：jsdom 组件测试；真实浏览器/E2E/视觉验收未运行；CI Node 20.19.0/22 未实际远程运行；本轮未重跑业务套件。
+
+## 2026-10-24 成员守卫错误映射增量
+
+主 spec SHA256：`87455287faf175dc9e82c6f8eb92983c82dc5f3ef7bbca2841c5a2632aaf881c`
+
+| Requirement | Scenario | 覆盖状态 | 测试位置与 nodeid/参数 | 验证范围或缺口 |
+| --- | --- | --- | --- | --- |
+| 移除容器关联失败保留守卫原因 | 离线移除关联 | 已覆盖 | ../../../src/test/ManageUserEligibility.test.jsx::test_manage_user_remove_association_failure_keeps_error_reason；../../../src/test/ContainerMemberGuardErrors.test.jsx::离线移除成员 | 组件层断言 showErrorModal 入参保留 offline reason/status/route，不再被本地拼接 message 吞掉；真实包装器+真实弹窗覆盖同一中文原因与无英文/通用 400 提示。 |
+
+### 2026-10-24 成员守卫错误验证
+
+- 时间：2026-10-24 23:07 +08:00。
+- 版本：基线 `69017ee` + 当前工作区未提交改动（公告 2 files 为父级在改，未触碰）。
+- 命令与环境：`npm run test:web -- src/test/ManageUserEligibility.test.jsx src/test/ContainerMemberGuardErrors.test.jsx ...` → 最终相关 6 files / 94 tests 全通过；ManageUser 全文件通过，含新增离线移除用例。
+- 限制：jsdom 组件测试 + 真实浏览器 mock API；未操作真实 Ctrl/Node/DB，未跑全量套件与公告 build。

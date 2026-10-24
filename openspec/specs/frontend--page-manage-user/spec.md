@@ -24,6 +24,16 @@
 - **WHEN** 为用户替换权限组
 - **THEN** 提交去重的 group_ids，由后端校验组存在与自锁保护；有效权限由服务端重新计算
 
+### Requirement: 移除容器关联失败保留守卫原因
+
+ManageUser 解除用户与容器关联失败 SHALL 保留 Ctrl 返回的 `status`、`route`、`error_reason` 与安全 `message`，按容器成员路由显示中文守卫原因。离线、冻结、异常、处理中、状态未知及宿主机不可用 MUST NOT 被本地拼接 message 吞掉，也不得只剩通用 400/409/503 提示；页面 MUST NOT 放宽成员权限或绕过 Ctrl 状态守卫。
+
+#### Scenario: 离线移除关联
+
+- **GIVEN** `remove_collaborator` 返回 HTTP 400、`error_reason=container_offline` 与英文守卫 message
+- **WHEN** 用户确认解除关联
+- **THEN** 弹窗显示“容器未在线，无法移除协作者”；不显示英文守卫原文、`未收录的错误原因`，也不只剩“请求无效”的 400 提示
+
 ### Requirement: ManageUser 构建归属
 
 页面 SHALL 通过路由表的按需加载组织参加 Vite 构建：`src/routes/index.jsx` 对页面组件与共同布局（`MainLayout`、`AdminLayout`）使用 `React.lazy` 动态导入，并在 route element 层以既有 `Suspense` 提供页面级加载反馈（仅描述当前实现，不新增加载 UI）；`LoginLayout`、路由骨架与 React 运行时随入口静态加载。`LoginLayout` 内的 `ModelViewer` 亦按需加载，three 相关代码经 `vite.config.js` 的 `manualChunks` 按依赖方向 addons → WebGL → core 分为 `vendor-three-core`、`vendor-three-webgl`、`vendor-three-addons`，均不进入入口 chunk。上述页面与 `ModelViewer` 不再与同路由树代码共同进入主 JS chunk。构建警告与运行交互缺陷分别登记。

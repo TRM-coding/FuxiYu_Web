@@ -23,6 +23,7 @@ const BACKEND_ERROR_REASONS = [
   'machine_permission_denied', 'node_endpoint_not_found',
   // 容器
   'container_exists', 'container_not_found', 'container_offline',
+  'container_paused', 'container_failed', 'container_busy', 'container_status_unknown',
   'container_permission_denied', 'long_term_limit_reached',
   'delete_failed', 'start_failed', 'stop_failed', 'restart_failed',
   'add_collaborator_failed', 'remove_collaborator_failed', 'update_role_failed',
@@ -204,6 +205,27 @@ describe('机器作用域族按路由映射', () => {
     const mapped = collectMappedReasons();
     expect(mapped.has('container_host_maintenance')).toBe(true);
     expect(mapped.has('container_host_offline')).toBe(true);
+  });
+
+  it('协作者三路由自带离线/冻结/异常/处理中/状态未知文案', () => {
+    const missing = [];
+    for (const route of [
+      '/containers/add_collaborator',
+      '/containers/remove_collaborator',
+      '/containers/update_role',
+    ]) {
+      const map = routeErrorMap[route] || {};
+      for (const reason of [
+        'container_offline',
+        'container_paused',
+        'container_failed',
+        'container_busy',
+        'container_status_unknown',
+      ]) {
+        if (!map[reason]) missing.push(`${route} → ${reason}`);
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });
 

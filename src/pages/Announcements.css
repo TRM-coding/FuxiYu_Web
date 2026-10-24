@@ -28,6 +28,35 @@
   border-color: #1890ff;
 }
 
+.ann-draft-card .ant-card-body,
+.ann-sent-card .ant-card-body {
+  min-width: 0;
+}
+
+.ann-card-selection {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.ann-card-selection > .ant-checkbox {
+  flex: 0 0 auto;
+}
+
+.ann-card-selection > .ant-checkbox-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ann-card-title {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .ann-draft-checked {
   border-color: #1890ff;
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
@@ -38,6 +67,10 @@
   min-height: 40px;
   color: #8c8c8c;
   font-size: 13px;
+}
+
+.ann-card-preview > .ant-typography {
+  max-width: 100%;
 }
 
 .ann-sent-card {

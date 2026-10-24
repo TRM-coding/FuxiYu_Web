@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CheckOutlined, ReloadOutlined, UnlockOutlined, TeamOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Form, Tag, message, InputNumber, Segmented, Checkbox, Modal } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
+import { toErrorModalInput } from '../utils/errorModalInput';
 import ConfirmModal from '../components/ConfirmModal';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import { handleAuthError } from '../utils/authHelpers';
@@ -479,7 +480,6 @@ const ManageUser = () => {
     } catch (err) {
       console.error('modal action failed', err);
       // Prefer structured error body.message provided by backend (e.g. wild container notice)
-      const status = err?.status || err?.response?.status;
       let messageText = (err && err.message) ? err.message : '操作失败，请重试';
       try {
         if (err && err.body && typeof err.body === 'object') {
@@ -493,7 +493,14 @@ const ManageUser = () => {
       } catch {
         // fall back to err.message
       }
-      await showErrorModal({ message:  messageText, status, route: err?.route || err?.response?.url });
+      const errorInput = toErrorModalInput(err, messageText);
+      // 保留本页既有的 wild_containers 追加文案，同时带上包装器给出的 error_reason。
+      if (typeof errorInput.message === 'object') {
+        errorInput.message = { ...errorInput.message, message: messageText };
+      } else {
+        errorInput.message = messageText;
+      }
+      await showErrorModal(errorInput);
     } finally {
       setModal({ visible: false, type: '', loading: false, data: null });
     }

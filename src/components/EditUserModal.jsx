@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Form, Button, Space, Typography, Row, Col, Select, Tag, Avatar, List, message } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
+import { toErrorModalInput } from '../utils/errorModalInput';
 import { EditOutlined, PlusOutlined, TeamOutlined, DeleteOutlined } from '@ant-design/icons';
 import { addCollaborator, removeCollaborator, updateRole } from '../api/container_api';
 import { usePermission } from '../contexts/PermissionContext';
@@ -99,7 +100,7 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       message.success('新增协作者请求已受理');
     } catch (err) {
       if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
-      await showErrorModal({ message: err?.message || '添加用户失败', status: err?.status, route: err?.route });
+      await showErrorModal(toErrorModalInput(err, '添加用户失败'));
     } finally {
       setAdding(false);
     }
@@ -122,10 +123,8 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       setAccounts(prev => prev.filter(acc => String(acc.user_id) !== String(userId)));
       message.success('用户已移除');
     } catch (err) {
-      console.error('removeCollaborator failed', err);
-      const bodyMsg = err?.body?.message || err?.body || null;
-      const messageText = bodyMsg ? `移除用户失败: ${bodyMsg}` : '移除用户失败';
-      await showErrorModal({ message: err?.body || err || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
+      console.error('removeCollaborator failed', err?.status, err?.body?.error_reason);
+      await showErrorModal(toErrorModalInput(err, '移除用户失败'));
     }
   };
 
@@ -174,7 +173,7 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       message.success('角色已更新');
     } catch (err) {
       if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
-      await showErrorModal({ message: err?.message || '更新角色失败', status: err?.status, route: err?.route });
+      await showErrorModal(toErrorModalInput(err, '更新角色失败'));
     } finally {
       roleSavingRef.current = false;
       setRoleSaving(false);

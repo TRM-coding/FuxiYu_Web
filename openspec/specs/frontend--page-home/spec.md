@@ -43,6 +43,22 @@ Home 通过既有人员管理弹窗新增 ADMIN 或 COLLABORATOR 协作者时，
 - **WHEN** Home 处理结果
 - **THEN** 不展示任何密码，不插入本地账号，不提示成功；只显示脱敏错误，后续以 oplog 为准
 
+### Requirement: 人员弹窗成员操作失败保留守卫原因
+
+Home 人员弹窗的新增、移除与角色变更失败 SHALL 保留 Ctrl 返回的 `status`、`route`、`error_reason` 与安全 `message`，按对应成员路由显示中文守卫原因。离线、冻结、异常、处理中、状态未知及宿主机不可用 MUST NOT 退化为英文原文、`未收录的错误原因` 或只剩通用状态提示；映射仅影响展示，MUST NOT 放宽成员权限或绕过 Ctrl 守卫。
+
+#### Scenario: 新增或移除时容器离线
+
+- **GIVEN** 人员弹窗提交新增或移除，Ctrl 返回 HTTP 400、`error_reason=container_offline`
+- **WHEN** Home 展示失败
+- **THEN** 分别显示“容器未在线，无法添加协作者”或“容器未在线，无法移除协作者”；不显示英文守卫原文、`未收录的错误原因` 或仅 400 提示
+
+#### Scenario: 改角色时容器冻结或处理中
+
+- **GIVEN** 人员弹窗提交角色变更，Ctrl 返回 `container_paused` 或 `container_busy`
+- **WHEN** Home 展示失败
+- **THEN** 按“容器已冻结，无法更新角色”或“容器正在处理中，暂时无法更新角色”展示；不退回 409 通用冲突提示
+
 ### Requirement: Home ROOT 交接统一提交一次
 
 Home 通过既有人员管理弹窗修改容器角色时，ROOT 交接 SHALL 与详情页使用同一语义，只提交一次 `POST /api/containers/update_role`，参数精确为 `{ container_id, user_id, updated_role: 'ROOT' }`，MUST NOT 发送 `transfer_root`。Web MUST NOT 自行先降旧 ROOT、自行创建旧 owner 独立账号、自行发起第二次 `update_role`，也 MUST NOT 提交任何密码、登录名或默认口令。Ctrl SHALL 在后台按既有顺序执行“旧 ROOT→ADMIN、目标→唯一 ROOT”，并生成永久 `root` 新密码与原 owner 独立用户名新密码；Node 每次只处理指定目标；角色结果沿用既有语义，以刷新后的权威列表/详情为准。

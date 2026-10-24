@@ -4,8 +4,8 @@
 
 ## 台账状态
 
-- 主 spec SHA256：`5a44ca43e9997c71b810a1e93204f5b2462c815c1c0f59bdb7d5b363eeecb3b7`
-- 历史映射：已覆盖 10；部分覆盖 4；待复核 9；2026-10-24 凭据增量 25 行、详情/历史刷新增量 15 行、ROOT 交接统一增量见文末。
+- 主 spec SHA256：`571cd1db9ee03c6d1ff27d4fc088ae6858531b8539e694451deaee1a30a84c5a`
+- 历史映射：已覆盖 10；部分覆盖 4；待复核 9；2026-10-24 凭据增量 25 行、详情/历史刷新增量 15 行、ROOT 交接统一与成员守卫错误增量见文末。
 - 测试基线：当前工作区最终实现（未提交）；保留 a98e51d 与 2026-10-24 凭据增量的历史记录，本轮新增详情权威事实/操作历史后台刷新、ROOT 统一交接与“不乐观更新/关闭清密”证据。
 - 运行证据：详情/历史刷新定向 7 files / 74 tests（`ContainerDetailRefresh` 18/18）已绿；ROOT 交接焦点 6 files / 30 tests 已绿；最终全量结果见文末“2026-10-24 ROOT 交接统一验证”。
 - 真实浏览器：历史 26 cases / 315 checks 的 sourceHashes 对应旧实现；本次详情/历史刷新另有独立 RED 浏览器证据 `RED-history-live.json`，当前源码仍待主代理复验，不能把历史结果当作当前源码的浏览器通过证据。
@@ -147,3 +147,20 @@
 - 真实浏览器（复用外部 Playwright 脚本，mock Ctrl API，不操作真实 DB）：`ROOT-after-web-fix` 4/4 检查通过；请求序列仅一次 `update_role` 且无 `transfer_root`，弹窗同时显示 `root` 与 `former_owner` 两项，关闭后两项密码消失，后台权威详情收敛为旧 owner ADMIN + 恰好一个新 ROOT。
 - 限制：jsdom 焦点测试；Ctrl 后台 true/false/省略兼容与真实 Node 时序不在本仓验证；未操作真实 DB。
 - 日志：`E:/AI/Fuxi_audit_artifacts/root-handover-2026-10-24/`（`web-RED-focused.log`、`web-GREEN-focused.log`、`web-GREEN-detail-refresh-18.log`、`web-GREEN-npm-test.log`、`web-GREEN-build.log`、`web-GREEN-lint.log`、`web-GREEN-openspec-strict.log`）。
+
+## 2026-10-24 成员守卫错误映射增量
+
+主 spec SHA256：`571cd1db9ee03c6d1ff27d4fc088ae6858531b8539e694451deaee1a30a84c5a`
+
+| Requirement | Scenario | 覆盖状态 | 测试位置与 nodeid/参数 | 验证范围或缺口 |
+| --- | --- | --- | --- | --- |
+| 成员增删改失败按既有守卫原因显示中文 | 离线移除成员 | 已覆盖 | ../../../src/test/ContainerMemberGuardErrors.test.jsx::成员增删改失败：下游真实弹窗显示守卫原因 > 离线移除成员：显示中文原因，不残留英文守卫原文或通用 400 提示 | 真实 Ctrl 400 响应经真实 `container_api`、详情页 catch 与真实 `showErrorModal`；断言“容器未在线，无法移除协作者”，且无英文守卫、通用 400、未收录原因。 |
+| 成员增删改失败按既有守卫原因显示中文 | 冻结、异常或处理中拒绝成员动作 | 已覆盖 | ../../../src/test/ContainerMemberGuardErrors.test.jsx::成员增删改失败：下游真实弹窗显示守卫原因 > 冻结容器更新角色/冻结容器移除成员/矩阵行；401/403 用例 | 覆盖 paused/failed/busy/status_unknown/host_offline/host_maintenance 与 add/update/remove 文案；另断言 401/403 专门提示保留。 |
+
+### 2026-10-24 成员守卫错误验证
+
+- 时间：2026-10-24 23:07 +08:00。
+- 版本：基线 `69017ee` + 当前工作区未提交改动（公告 2 files 为父级在改，未触碰）。
+- 命令与环境：`npm run test:web -- src/test/ContainerMemberGuardErrors.test.jsx ...` → 最终相关 6 files / 94 tests 全通过；单文件 12/12 passed；真实 Chromium 脚本 `verify-role-error-green.mjs` → pass。
+- 真实浏览器弹窗：`容器未在线，无法移除协作者`（中文原因出现，英文守卫与通用 400 提示均消失）。
+- 限制：jsdom/真实浏览器均 mock Ctrl 响应，不操作真实 Ctrl/Node/DB；未跑全量套件与公告 build。

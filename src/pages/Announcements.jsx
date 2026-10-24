@@ -460,8 +460,8 @@ export default function Announcements() {
                     className={`ann-draft-card ${checked ? 'ann-draft-checked' : ''}`}
                     onClick={() => handleToggleDraft(draft.id)}
                   >
-                    <Checkbox checked={checked} style={{ pointerEvents: 'none' }}>
-                      <Text strong ellipsis>{draft.title || '(无标题)'}</Text>
+                    <Checkbox className="ann-card-selection" checked={checked} style={{ pointerEvents: 'none' }}>
+                      <Text className="ann-card-title" strong ellipsis title={draft.title}>{draft.title || '(无标题)'}</Text>
                     </Checkbox>
                     <div className="ann-card-preview">
                       <Text type="secondary" ellipsis={{ rows: 2 }}>{preview || '(空正文)'}</Text>
@@ -550,8 +550,8 @@ export default function Announcements() {
                   className={`ann-sent-card ${checkedAnnouncementIds.includes(ann.id) ? 'ann-draft-checked' : ''}`}
                   onClick={() => handleToggleAnnouncement(ann.id)}
                 >
-                  <Checkbox checked={checkedAnnouncementIds.includes(ann.id)} style={{ pointerEvents: 'none' }}>
-                    <Text strong ellipsis>{ann.title}</Text>
+                  <Checkbox className="ann-card-selection" checked={checkedAnnouncementIds.includes(ann.id)} style={{ pointerEvents: 'none' }}>
+                    <Text className="ann-card-title" strong ellipsis title={ann.title}>{ann.title}</Text>
                   </Checkbox>
                   <div className="ann-card-meta">
                     <Text type="secondary">

@@ -106,6 +106,22 @@
 - **WHEN** 用户展开候选下拉、手动刷新或完成成员变更
 - **THEN** 页面按需重取候选用户并显示新用户；5 秒周期不轮询平台用户列表
 
+### Requirement: 成员增删改失败按既有守卫原因显示中文
+
+ContainerDetailPage 的新增、移除与角色变更失败 SHALL 保留 Ctrl 返回的 `status`、`route`、`error_reason` 与安全 `message`，经 `showErrorModal` 按 `/containers/add_collaborator`、`/containers/remove_collaborator`、`/containers/update_role` 映射为中文原因。离线、冻结、异常、处理中、状态未知及宿主机离线/维护等既有有效状态机原因 MUST NOT 退化为后端英文原文、`未收录的错误原因` 或只剩通用 400/409/503 提示。映射仅影响展示，MUST NOT 改变权限、成员写入或绕过 Ctrl 状态守卫；401/403 仍保留既有认证/权限专门提示。
+
+#### Scenario: 离线移除成员
+
+- **GIVEN** Ctrl 返回 HTTP 400、`error_reason=container_offline`，message 为英文守卫原文
+- **WHEN** 用户在详情页移除成员
+- **THEN** 错误弹窗显示“容器未在线，无法移除协作者”；不显示 `Container operation ...` 英文原文、`未收录的错误原因`，也不只剩“请求无效”的 400 提示
+
+#### Scenario: 冻结、异常或处理中拒绝成员动作
+
+- **GIVEN** Ctrl 以 `container_paused`、`container_failed`、`container_busy`、`container_status_unknown`、`container_host_offline` 或 `container_host_maintenance` 拒绝新增、移除或改角色
+- **WHEN** 页面展示失败
+- **THEN** 按对应中文守卫原因展示；页面不新增或放松成员权限，不发送绕过或自动重试请求
+
 ### Requirement: 新增协作者凭据与不乐观加入
 
 ContainerDetailPage 的现有新增协作者入口对 ADMIN 与 COLLABORATOR 均 SHALL 使用既有 `add_collaborator` 请求，由 Ctrl 生成随机密码、Node 设置；响应 `accepted: true` 且恰好一项凭据时，页面 SHALL 立即展示受控密码弹窗。Web MUST NOT 发送密码或登录名，MUST NOT 在受理后乐观插入本地账号或宣称已加入；后续成功/失败以既有 `ADD_COLLABORATOR` oplog 与刷新后的权威详情为准，不新增密码日志或重复添加日志。普通非 ROOT 的 ADMIN/COLLABORATOR 互换不生成密码。

@@ -19,7 +19,7 @@ vi.mock('../api/container_api', () => ({
   updateRole: vi.fn(),
 }));
 
-import { addCollaborator, updateRole } from '../api/container_api';
+import { addCollaborator, removeCollaborator, updateRole } from '../api/container_api';
 import showErrorModal from '../utils/showErrorModal';
 import { message } from 'antd';
 import EditUserModal from '../components/EditUserModal';
@@ -225,5 +225,58 @@ describe('Home/EditUserModal credential flows', () => {
     await userEvent.click(screen.getByRole('button', { name: /添加用户/ }));
     await waitFor(() => expect(showErrorModal).toHaveBeenCalled());
     expect(onCredentialAccepted).not.toHaveBeenCalled();
+  });
+
+  it('test_home_member_guard_failures_keep_error_reason', async () => {
+    addCollaborator.mockRejectedValueOnce(Object.assign(new Error('Failed to add collaborator'), {
+      status: 400,
+      error_reason: 'container_offline',
+      route: '/api/containers/add_collaborator',
+    }));
+    const first = renderModal();
+    await selectAddUser();
+    await userEvent.click(screen.getByRole('button', { name: /添加用户/ }));
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.objectContaining({ error_reason: 'container_offline' }),
+      status: 400,
+      route: '/api/containers/add_collaborator',
+    })));
+    first.unmount();
+
+    updateRole.mockRejectedValueOnce(Object.assign(new Error('Failed to update role'), {
+      status: 409,
+      error_reason: 'container_paused',
+      route: '/api/containers/update_role',
+    }));
+    const second = renderModal();
+    await screen.findByRole('dialog');
+    const combos = [...document.querySelectorAll('.eum-modal [role="combobox"]')].filter(el => !el.disabled);
+    fireEvent.mouseDown(combos[combos.length - 1].closest('.ant-select')?.querySelector('.ant-select-selector') || combos[combos.length - 1]);
+    await clickOption('管理员');
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.objectContaining({ error_reason: 'container_paused' }),
+      status: 409,
+      route: '/api/containers/update_role',
+    })));
+    second.unmount();
+
+    removeCollaborator.mockRejectedValueOnce({
+      status: 400,
+      body: {
+        success: 0,
+        message: 'Container operation remove_collaborator is not allowed while effective_status is offline',
+        error_reason: 'container_offline',
+      },
+      route: '/api/containers/remove_collaborator',
+    });
+    renderModal();
+    await screen.findByRole('dialog');
+    const aliceRow = screen.getByText('@alice').closest('.eum-list-item');
+    await userEvent.click(aliceRow.querySelector('button.ant-btn-dangerous'));
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.objectContaining({ error_reason: 'container_offline' }),
+      status: 400,
+      route: '/api/containers/remove_collaborator',
+    })));
   });
 });

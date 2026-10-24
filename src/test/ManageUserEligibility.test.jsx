@@ -80,6 +80,7 @@ import { message } from 'antd';
 import { listAllUserBrefInformation } from '../api/user_api';
 import {
   listAllContainerBrefInformation,
+  removeCollaborator,
   setLongTermContainer,
   startContainer,
   stopContainer,
@@ -277,6 +278,30 @@ describe('ManageUser 共享动作资格且不新增删除入口', () => {
     expect(within(card).queryByText('解冻中')).toBeNull();
     await waitFor(() => expect(within(card).getByRole('button', { name: /解冻/ })).toBeEnabled());
     await waitFor(() => expect(listAllContainerBrefInformation.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
+  it('test_manage_user_remove_association_failure_keeps_error_reason', async () => {
+    const user = userEvent.setup();
+    removeCollaborator.mockRejectedValueOnce({
+      status: 400,
+      body: {
+        success: 0,
+        message: 'Container operation remove_collaborator is not allowed while effective_status is offline',
+        error_reason: 'container_offline',
+      },
+      route: '/api/containers/remove_collaborator',
+    });
+
+    renderPage();
+    const card = await waitForCard();
+    await user.click(within(card).getByRole('button', { name: /解\s*除/ }));
+    await user.click(await screen.findByRole('button', { name: /确认移除/ }));
+
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.objectContaining({ error_reason: 'container_offline' }),
+      status: 400,
+      route: '/api/containers/remove_collaborator',
+    })));
   });
 
   it('打开启动确认后状态变为 failed：确认时重解析，不调用 API', async () => {

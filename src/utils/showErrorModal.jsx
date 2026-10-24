@@ -42,6 +42,40 @@ const MACHINE_SCOPE_MESSAGES = {
   container_host_offline: '所在机器不在线，暂时无法操作其上的容器',
 };
 
+// 协作者动作共用 Ctrl 有效状态机守卫的既有 reason；只改展示文案，不改后端裁决。
+const collaboratorGuardMessages = (actionLabel) => ({
+  ...MACHINE_SCOPE_MESSAGES,
+  container_offline: `容器未在线，无法${actionLabel}`,
+  container_paused: `容器已冻结，无法${actionLabel}`,
+  container_failed: `容器状态异常，无法${actionLabel}`,
+  container_busy: `容器正在处理中，暂时无法${actionLabel}`,
+  container_status_unknown: `容器状态未知，暂时无法${actionLabel}`,
+});
+
+// 这些原因是 Ctrl 有效状态机对容器写操作的既有拒绝，不是可自行绕过的前端状态。
+// 命中时优先显示中文原因，不再把后端英文守卫原文或通用 400/409/503 提示混进弹窗。
+const CONTAINER_GUARD_REASONS = new Set([
+  'container_offline',
+  'container_paused',
+  'container_failed',
+  'container_busy',
+  'container_status_unknown',
+  'container_host_offline',
+  'container_host_maintenance',
+]);
+
+const CONTAINER_GUARD_MESSAGE_PATTERNS = [
+  /^container operation [a-z0-9_]+ is not allowed while effective_status is [a-z0-9_]+$/i,
+  /^container is not online: status=[a-z0-9_]+$/i,
+  /^failed to (add collaborator|remove collaborator|update role)$/i,
+];
+
+const isContainerGuardMessage = (text) => {
+  const value = String(text || '').trim();
+  if (!value) return false;
+  return CONTAINER_GUARD_MESSAGE_PATTERNS.some(pattern => pattern.test(value));
+};
+
 export const routeErrorMap = {
     // 用户相关
     '/register': {
@@ -86,19 +120,16 @@ export const routeErrorMap = {
       not_found: '容器不存在',
     },
     '/containers/add_collaborator': {
-      ...MACHINE_SCOPE_MESSAGES,
+      ...collaboratorGuardMessages('添加协作者'),
       add_collaborator_failed: '添加协作者失败',
-      container_offline: '容器未在线，无法添加协作者',
     },
     '/containers/remove_collaborator': {
-      ...MACHINE_SCOPE_MESSAGES,
+      ...collaboratorGuardMessages('移除协作者'),
       remove_collaborator_failed: '移除协作者失败',
-      container_offline: '容器未在线，无法移除协作者',
     },
     '/containers/update_role': {
-      ...MACHINE_SCOPE_MESSAGES,
+      ...collaboratorGuardMessages('更新角色'),
       update_role_failed: '更新角色失败',
-      container_offline: '容器未在线，无法更新角色',
     },
     '/containers/unpause_container': {
       ...MACHINE_SCOPE_MESSAGES,
@@ -219,6 +250,10 @@ export const routeErrorMap = {
       machine_permission_denied: '权限不足，无法操作该机器上的容器',
       container_permission_denied: '只有容器所有者可以执行此操作',
       container_offline: '容器未在线',
+      container_paused: '容器已冻结',
+      container_failed: '容器状态异常',
+      container_busy: '容器正在处理中',
+      container_status_unknown: '容器状态未知',
       container_not_found: '容器不存在',
       invalid_payload: '请求参数无效',
       not_found: '资源不存在',
@@ -272,7 +307,7 @@ const showErrorModal = (input = {}) => {
   // 历史调用存在只传字符串的写法；统一归一化，避免把字符串当对象解构后
   // 退化成“发生错误”，也不改变对象调用（含 err.body）的既有语义。
   const params = typeof input === 'string' ? { message: input } : (input || {});
-  const { title = '错误', status, route } = params;
+  const { title = '错误', status, route, error_reason: inputErrorReason } = params;
   // message 是可变绑定：下面会把字符串里的 JSON 对象解析出来替换它；用 const 会在
   // 解析分支运行时抛错，退化为原字符串展示。
   let message = params.message === undefined ? '发生错误' : params.message;
@@ -377,13 +412,21 @@ const showErrorModal = (input = {}) => {
   if (message && typeof message === 'object') {
     errorReason = message.error_reason || message.error || (message.body && message.body.error_reason) || (message.data && message.data.error_reason) || null;
   }
+  errorReason = errorReason || inputErrorReason || (params.body && params.body.error_reason) || null;
 
   // 后端具体 message（可能带申请值与上限等数字）与中文原因映射分开保存：
   // 具体 message 优先保留，中文映射只作为补充行，不再反过来覆盖数值。
   // 未收录的原因也不硬套某个已知错误（例如把任何失败都说成超限）。
   const rawMessage = String(displayMessage || '').trim();
   const mappedReasonMessage = resolveReasonMessage(errorReason, routePath);
-  const specificMessage = isSpecificMessage(rawMessage, errorReason) ? rawMessage : null;
+  const containerGuardReason = CONTAINER_GUARD_REASONS.has(errorReason);
+  // 有效状态机守卫返回的是固定英文句式或 "Failed to ..." 低信息量文案；
+  // 已映射时不再把它当“具体细节”展示，也不保留会被误读为输入错误的通用 HTTP 提示。
+  const suppressGuardNoise = Boolean(mappedReasonMessage)
+    && (containerGuardReason || isContainerGuardMessage(rawMessage));
+  const specificMessage = isSpecificMessage(rawMessage, errorReason) && !suppressGuardNoise
+    ? rawMessage
+    : null;
   const hasStatusCode = Number.isFinite(Number(code)) || Number.isFinite(Number(status));
   const networkFailure = !errorReason && !hasStatusCode && NETWORK_FAILURE_PATTERN.test(rawMessage);
 
@@ -439,6 +482,13 @@ const showErrorModal = (input = {}) => {
     default:
       hint = '';
   }
+  // 守卫原因已给出准确中文，不再叠加“请求无效/请求冲突/服务暂不可用”这类
+  // 会掩盖真实原因的通用状态提示；401/403 的专门提示不受影响。
+  if (containerGuardReason && mappedReasonMessage && ![401, 403].includes(Number(code))) hint = '';
+  // ConfirmModal 的 message 与 content 会各渲染一次主文案；守卫错误已经只剩
+  // 准确中文原因，不再在红框中重复同一句（其他错误保持既有呈现）。
+  const hideDuplicateGuardMessage = containerGuardReason && Boolean(mappedReasonMessage);
+  const showContent = !hideDuplicateGuardMessage || Boolean(secondaryMessage) || Boolean(hint);
 
     hideExistingModals();
 
@@ -467,15 +517,17 @@ const showErrorModal = (input = {}) => {
         visible={true}
         title={title}
         message={displayMessage}
-        content={(
+        content={showContent ? (
           <div style={{ background: '#fff2f0', padding: 12, borderRadius: 4, border: '1px solid #ffccc7' }}>
-            <div style={{ color: '#a8071a', marginBottom: 8 }}>{displayMessage}</div>
+            {hideDuplicateGuardMessage ? null : (
+              <div style={{ color: '#a8071a', marginBottom: 8 }}>{displayMessage}</div>
+            )}
             {secondaryMessage ? (
               <div style={{ color: '#a8071a', marginBottom: 8 }}>{secondaryMessage}</div>
             ) : null}
             {hint ? <div style={{ color: '#a8071a', opacity: 0.9 }}>{hint}</div> : null}
           </div>
-        )}
+        ) : null}
         danger
         iconColor="#ff4d4f"
         onConfirm={onConfirm}
