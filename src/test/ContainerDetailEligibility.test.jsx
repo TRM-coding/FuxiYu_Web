@@ -38,6 +38,7 @@ vi.mock('../api/container_api', () => ({
   addCollaborator: vi.fn(),
   deleteContainer: vi.fn(),
   getContainerDetailInformation: vi.fn(),
+  getContainerOperationLogs: vi.fn().mockResolvedValue({ logs: [] }),
   getContainerStatus: vi.fn(),
   listAllContainerBrefInformation: vi.fn(),
   removeCollaborator: vi.fn(),
@@ -57,7 +58,6 @@ import { message } from 'antd';
 import {
   deleteContainer,
   getContainerDetailInformation,
-  getContainerStatus,
   setLongTermContainer,
   startContainer,
   unpauseContainer,
@@ -99,7 +99,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   listAllUserBrefInformation.mockResolvedValue({ users: [] });
   getContainerDetailInformation.mockResolvedValue({ container_info: detail() });
-  getContainerStatus.mockResolvedValue({});
   deleteContainer.mockResolvedValue({ success: 1 });
   startContainer.mockResolvedValue({ success: 1 });
   unpauseContainer.mockResolvedValue({ success: 1 });
@@ -241,10 +240,10 @@ describe('ContainerDetailPage 共享资格矩阵', () => {
 
   it('解冻受理只提示指令已发送；权威 online 收敛 pending 为运行中', async () => {
     const user = userEvent.setup();
-    getContainerDetailInformation.mockResolvedValue({
-      container_info: detail({ effective_status: 'paused' }),
-    });
-    getContainerStatus.mockResolvedValue({ effective_status: 'online' });
+    getContainerDetailInformation
+      .mockResolvedValueOnce({ container_info: detail({ effective_status: 'paused' }) })
+      .mockResolvedValueOnce({ container_info: detail({ effective_status: 'paused' }) })
+      .mockResolvedValueOnce({ container_info: detail({ effective_status: 'online' }) });
     renderDetail();
     const card = await operationCard();
     await user.click(within(card).getByRole('button', { name: /解冻/ }));
@@ -254,7 +253,9 @@ describe('ContainerDetailPage 共享资格矩阵', () => {
     expect(message.success).toHaveBeenCalledWith('解冻指令已发送');
     expect(screen.queryByText('已解冻')).toBeNull();
     expect(await screen.findByText('解冻中')).toBeInTheDocument();
+    await waitFor(() => expect(getContainerDetailInformation).toHaveBeenCalledTimes(2));
 
+    // 5s 后台刷新走完整详情；权威 online 才能收敛 pending。
     await act(async () => {
       await pollingCallback();
     });
@@ -287,10 +288,9 @@ describe('ContainerDetailPage 共享资格矩阵', () => {
 
   it('打开启动确认后状态变为 failed：提交前重解析，不调用 API', async () => {
     const user = userEvent.setup();
-    getContainerDetailInformation.mockResolvedValue({
-      container_info: detail({ effective_status: 'offline' }),
-    });
-    getContainerStatus.mockResolvedValue({ effective_status: 'failed' });
+    getContainerDetailInformation
+      .mockResolvedValueOnce({ container_info: detail({ effective_status: 'offline' }) })
+      .mockResolvedValueOnce({ container_info: detail({ effective_status: 'failed' }) });
     renderDetail();
     const card = await operationCard();
     await user.click(within(card).getByRole('button', { name: /^启\s*动$/ }));
@@ -299,6 +299,7 @@ describe('ContainerDetailPage 共享资格矩阵', () => {
     await act(async () => {
       await pollingCallback();
     });
+    await waitFor(() => expect(screen.getByText('异常')).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /确认\s*启\s*动/ }));
 
     expect(startContainer).not.toHaveBeenCalled();
@@ -307,16 +308,19 @@ describe('ContainerDetailPage 共享资格矩阵', () => {
 
   it('启动受理后权威轮询为 failed 时保持异常，不被受理结果覆盖', async () => {
     const user = userEvent.setup();
-    getContainerDetailInformation.mockResolvedValue({
-      container_info: detail({ effective_status: 'offline' }),
-    });
-    getContainerStatus.mockResolvedValue({ effective_status: 'failed', failed_detail: 'start failed' });
+    getContainerDetailInformation
+      .mockResolvedValueOnce({ container_info: detail({ effective_status: 'offline' }) })
+      .mockResolvedValueOnce({ container_info: detail({ effective_status: 'offline' }) })
+      .mockResolvedValueOnce({
+        container_info: detail({ effective_status: 'failed', failed_detail: 'start failed' }),
+      });
     renderDetail();
     const card = await operationCard();
     await user.click(within(card).getByRole('button', { name: /^启\s*动$/ }));
     await user.click(await screen.findByRole('button', { name: /确认\s*启\s*动/ }));
 
     await waitFor(() => expect(startContainer).toHaveBeenCalledWith(12));
+    await waitFor(() => expect(getContainerDetailInformation).toHaveBeenCalledTimes(2));
     await act(async () => {
       await pollingCallback();
     });

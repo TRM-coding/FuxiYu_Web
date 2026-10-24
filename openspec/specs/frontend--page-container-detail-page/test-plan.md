@@ -99,3 +99,38 @@
 
 - 2026-10-24 增量验证：主 spec SHA256 `2f0fe32c4f66c24d316e3952cfbd8f15c6435676ed45fc911af80f526200feb2`；实现提交 `f14a16f`；全量证据 `npm test` Web 77/686 + server 40，0 failed/0 skipped；定向 `ContainerDetailPasswords.test.jsx` 6/6、`ContainerResourcePermission.test.jsx` 3/3。
 - 未覆盖/待复核保留：ADMIN 新增单独断言、缺 user_id/提交前状态变化、oplog 刷新、旧“启动已受理”。这些不写成已覆盖。
+
+## 2026-10-24 详情与历史刷新增量映射
+
+主 spec SHA256：`e446ad02cc4b690a6df1684c7e70d9081c061046c82c4786c5121437a65d6448`
+
+| Requirement | Scenario | 覆盖状态 | 测试位置与 nodeid/参数 | 验证范围或缺口 |
+| --- | --- | --- | --- | --- |
+| ContainerDetailPage 详情权威事实周期收敛 | 受理后异步成员自动出现 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_async_add_stale_immediate_refresh_then_background_detail_converges_without_manual_refresh | 断言受理后立即重取仍为旧成员、凭据先展示、不乐观插入；下一次周期完整详情包含新成员后无需手刷显示 `@bob · ID 3`。 |
+| ContainerDetailPage 详情权威事实周期收敛 | 角色变更与移除最终收敛 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_role_change_eventually_converges_from_authoritative_detail；../../../src/test/ContainerDetailRefresh.test.jsx::test_removal_eventually_converges_from_authoritative_detail | 断言立即重取返回旧角色/旧成员时不改 DOM；后续完整详情返回 ADMIN/移除后自动收敛，且不触发密码弹窗。 |
+| ContainerDetailPage 详情权威事实周期收敛 | 运行状态与外部详情事实周期更新 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_external_detail_facts_refresh_on_background_tick；../../../src/test/DetailPages.test.jsx::container detail initializes with detail API and polls full authoritative detail | 断言冻结状态、长期勾选、磁盘 `77 GB`、CPU `30%`、上次 SSH、运行指标随完整详情更新；周期请求使用 `POLL_TIMEOUT`，`getContainerStatus` 不再被调用。 |
+| ContainerDetailPage 详情权威事实周期收敛 | 隐藏页跳过与重新可见恢复 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_hidden_page_skips_background_refresh_and_visibility_restore_refreshes | `visibilityState=hidden` 时周期回调不请求详情/历史；恢复可见触发一次详情与历史刷新并显示新成员、新历史。 |
+| ContainerDetailPage 详情权威事实周期收敛 | 后台失败保留、防并发 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_background_refresh_failure_keeps_existing_detail_without_error_modal；../../../src/test/ContainerDetailRefresh.test.jsx::test_background_refresh_is_reentrancy_guarded_before_request_pileup | 断言后台 reject 保留既有详情、不调用 `showErrorModal`；未完成的后台请求在下一拍不叠加，只在完成后再次请求。 |
+| ContainerDetailPage 详情权威事实周期收敛 | 旧响应、换路由与卸载不回写 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_late_old_route_detail_response_does_not_overwrite_current_route；../../../src/test/ContainerDetailRefresh.test.jsx::test_unmount_during_detail_request_does_not_show_late_error | 旧容器 12 的晚到详情不覆盖路由 13 的 `train-b`；卸载后 reject 不弹晚到错误。 |
+| ContainerDetailPage 详情权威事实周期收敛 | 错误弹窗等待不占用后台刷新与 loading | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_foreground_error_modal_pending_does_not_hold_detail_inflight | `showErrorModal` 返回 pending Promise 时，网络失败后的下一次周期仍能发起并完成详情请求。 |
+| ContainerDetailPage 详情权威事实周期收敛 | 显式请求被 silent 请求淘汰后仍释放 loading | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_stale_non_silent_request_releases_loading_owned_by_its_lifecycle | 显式 A 在途、silent B 先返回空详情后，A 晚到被丢弃但仍清除 loading；Spin 消失并显示回退标题，不永久卡加载。 |
+| ContainerDetailPage 详情权威事实周期收敛 | 旧路由慢请求不阻塞新页后台 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_old_route_pending_request_does_not_block_new_route_background_refresh | 旧容器 12 的慢请求仍 pending 时，容器 13 的下一次后台详情刷新仍发起（`POLL_TIMEOUT`）并显示新成员；旧响应不覆盖。 |
+| ContainerDetailPage 详情权威事实周期收敛 | 候选平台用户按需刷新 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_candidate_users_reload_when_dropdown_opens_without_periodic_platform_user_polling | 下拉展开触发一次候选用户重取并出现 `charlie`；周期回调后用户请求次数仍为 2，未周期轮询平台用户。 |
+| ContainerDetailPage 操作历史随事实刷新 | 异步成员变更终态自动出现 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_async_add_operation_log_appears_after_background_history_refresh | 受理后立即历史重取仍为旧日志；下一次周期历史返回 `add_collaborator` 后自动显示“添加协作者”，历史不含密码。 |
+| ContainerDetailPage 操作历史随事实刷新 | 重置密码终态使用中文标签 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_reset_password_terminal_history_uses_chinese_label_without_password | 周期历史返回 `reset_container_password` 后显示“重置容器密码”；不显示原始操作码或 `pw-reset`。 |
+| ContainerDetailPage 操作历史随事实刷新 | 历史后台失败保留、防并发 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_operation_history_background_uses_short_timeout_guards_and_keeps_logs_on_failure | 周期历史使用 `POLL_TIMEOUT`；在途时下一拍不叠加；失败保留既有“启动容器”记录且不调用 `showErrorModal`。 |
+| ContainerDetailPage 操作历史随事实刷新 | 历史隐藏跳过与恢复 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_hidden_page_skips_background_refresh_and_visibility_restore_refreshes | 隐藏时历史请求次数保持 1；可见后增至 2 并显示新“启动容器”记录。 |
+| ContainerDetailPage 操作历史随事实刷新 | 旧路由与卸载后的历史不回写 | 已覆盖 | ../../../src/test/ContainerDetailRefresh.test.jsx::test_late_old_route_history_refresh_does_not_overwrite_current_route；../../../src/test/ContainerDetailRefresh.test.jsx::test_unmounted_history_background_failure_does_not_write_or_warn | 旧容器 12 的晚到后台历史不覆盖容器 13；卸载后 reject 不写状态且不产生历史告警。 |
+
+### 2026-10-24 详情刷新验证
+
+- 时间：2026-10-24 20:06 +08:00。
+- 版本：基线 `97fd6c5`，工作区未提交；实现与测试为本轮改动。
+- 主 spec SHA256：`e446ad02cc4b690a6df1684c7e70d9081c061046c82c4786c5121437a65d6448`。
+- RED 第一轮：未改源码时新增 `ContainerDetailRefresh.test.jsx` 10 项全部失败；主失败为“立即重取旧列表后触发下一拍周期刷新，仍找不到 `@bob · ID 3`”，另有 role/removal 仍停在 2 次详情请求、外部字段不更新、旧响应晚到覆盖、卸载后仍弹错误、后台未走完整详情、无可见性恢复、候选用户不重取。
+- RED 第二轮（独立审查缺口）：补 pending `showErrorModal`、loading 生命周期、跨路由旧请求、历史后台终态后，未改源码时新文件 18 项中 9 项失败：错误弹窗 pending 时后台仍被 in-flight 占用、silent B 先完成后 loading 卡 Spin、旧路由慢请求阻塞新页后台、add/reset 终态历史不出现、历史无短超时/防重入/失败保留、历史无可见性恢复、旧路由历史晚到与卸载防护未覆盖。
+- GREEN：`ContainerDetailRefresh` 18/18；相关详情 7 files/74 tests 全通过；`npm test` Web 78 files/704 tests + server 40 tests，0 failed/0 skipped；`npm run build` 通过；`openspec validate --specs --strict` 28/28 通过。
+- 日志：`E:/AI/Fuxi_audit_artifacts/detail-refresh-2026-10-24/`（`RED-*`、`RED2-*`、`full-npm-test-final3.log`、`build-final3.log`、`openspec-validate-final3.log`）。
+- 限制：测试为 jsdom + 拦截 5s interval 的确定性回调/延迟 Promise，不覆盖真实浏览器可见性事件和真实后端时序；主代理已有独立浏览器 RED（`RED-history-live.json`），当前源码仍待其复验；本 capability 历史真实浏览器结果不对应本轮实现。
+
+- 父代理真实 Chromium 复验：`GREEN-history.json` 四项检查通过，覆盖受理密码、延迟成员、其他详情字段及延迟操作历史；使用 mock Ctrl API，不代表真实后端时序。

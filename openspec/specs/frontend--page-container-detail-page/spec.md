@@ -17,7 +17,7 @@
 
 ### Requirement: ContainerDetailPage 主流程
 
-页面 SHALL 保持以下已实现的交互及数据职责：加载详情、日志并每 5 秒轮询状态；支持启停重启删除、长期标记、解冻、协作者增删改；受理动作等待运行状态收敛；镜像信息卡在该容器详情下发 image_dockerfile 时原样展示它（容器自身记录），页面不按当前模板另行渲染。新增协作者 SHALL 按凭据流程展示密码，普通 ADMIN/COLLABORATOR 互换 SHALL 保持现有实现与成功响应且不改变密码；ROOT 提升 SHALL 使用 `transfer_root:false` 默认单目标，受理后只展示一项 root 凭据，不等待 Node，不降旧 ROOT，不乐观改写本地角色。
+页面 SHALL 保持以下已实现的交互及数据职责：加载详情、日志，并在可见页每 5 秒静默刷新完整详情（运行状态及成员等可变详情事实均以该响应为准，不再以仅含状态的接口作为周期刷新来源）；支持启停重启删除、长期标记、解冻、协作者增删改；受理动作等待运行状态收敛；镜像信息卡在该容器详情下发 image_dockerfile 时原样展示它（容器自身记录），页面不按当前模板另行渲染。新增协作者 SHALL 按凭据流程展示密码，普通 ADMIN/COLLABORATOR 互换 SHALL 保持现有实现与成功响应且不改变密码；ROOT 提升 SHALL 使用 `transfer_root:false` 默认单目标，受理后只展示一项 root 凭据，不等待 Node，不降旧 ROOT，不乐观改写本地角色。
 
 #### Scenario: 启动已受理
 
@@ -28,7 +28,7 @@
 
 - **GIVEN** 用户新增 ADMIN 或 COLLABORATOR 协作者
 - **WHEN** 页面收到 `accepted: true` 与一项凭据
-- **THEN** 页面先展示密码，不乐观插入账号；刷新后按权威详情显示新增结果
+- **THEN** 页面先展示密码，不乐观插入账号；立即重取及后续周期刷新均按权威详情显示新增结果
 
 #### Scenario: 普通角色切换保持原响应
 
@@ -41,6 +41,70 @@
 - **GIVEN** 用户把非 ROOT 账号选为 ROOT，详情页使用默认 `transfer_root:false`
 - **WHEN** 页面收到 `accepted: true` 与一项 root 凭据
 - **THEN** 页面立即展示该项并等待用户关闭；不阻塞 Node，不降旧 ROOT，不把受理当作角色已完成
+
+### Requirement: ContainerDetailPage 详情权威事实周期收敛
+
+页面 SHALL 将完整容器详情响应作为运行状态与可变详情事实（`accounts`、`owners`、`is_long_term`、冻结、磁盘、`last_ssh_login_time`、`runtime_metrics`）的权威来源。页面在可见时 SHALL 以 5 秒周期静默刷新完整详情，使用短超时并防重入；隐藏时跳过、重新可见时立即恢复。旧路由、旧请求晚到或卸载后的响应 MUST NOT 回写；周期失败保留既有详情且不弹错误窗。新增协作者受理后的立即重取若仍旧，后续周期 SHALL 自动显示新成员。候选平台用户列表 MAY 在挂载、手动刷新、下拉展开或成员变更后按需重取，MUST NOT 参与每 5 秒全量轮询。本项不改变密码/凭据边界：密码只在受理响应中展示，页面不轮询密码，不乐观插入账号或改写角色。
+
+#### Scenario: 受理后异步成员自动出现
+
+- **GIVEN** 新增协作者已被受理并立即展示一项凭据，但受理后的立即重取仍返回旧 `accounts`
+- **WHEN** 后续周期刷新取到包含新成员的权威详情
+- **THEN** 用户管理列表无需手刷即显示新成员；页面不因 `accepted` 乐观插入账号，也不把受理当作已完成
+
+#### Scenario: 角色变更与移除最终收敛
+
+- **GIVEN** 角色变更或移除已受理，受理后的立即重取仍返回旧角色或旧成员列表
+- **WHEN** 后续周期刷新返回新的 `accounts`
+- **THEN** 角色标签或成员列表自动更新；不触发密码弹窗，不乐观改写本地角色
+
+#### Scenario: 运行状态与外部详情事实周期更新
+
+- **GIVEN** 容器已有详情，外部状态变化为冻结/长期标记，或磁盘、上次 SSH 登录等字段更新
+- **WHEN** 周期刷新返回新的完整详情
+- **THEN** 状态、长期勾选、磁盘、上次 SSH 与运行指标按新详情更新；页面不以仅含状态的响应覆盖完整详情
+
+#### Scenario: 隐藏页跳过与重新可见恢复
+
+- **GIVEN** 页面处于隐藏状态
+- **WHEN** 5 秒周期到点
+- **THEN** 页面不发起后台详情刷新；页面重新可见时立即刷新一次并展示最新权威事实
+
+#### Scenario: 后台失败保留、防并发
+
+- **GIVEN** 页面已有详情，且一次后台刷新仍在途或失败
+- **WHEN** 下一周期到点
+- **THEN** 不新增并发的后台详情请求；失败时保留既有详情，不弹出周期错误窗
+
+#### Scenario: 旧响应、换路由与卸载不回写
+
+- **GIVEN** 旧容器的详情请求晚到，或详情请求在组件卸载后才返回
+- **WHEN** 响应到达
+- **THEN** 不覆盖当前路由内容、不写入已卸载页面状态，也不弹出晚到错误
+
+#### Scenario: 错误弹窗等待不占用后台刷新与 loading
+
+- **GIVEN** 前台详情刷新网络阶段已失败，`showErrorModal` 正在等待用户关闭
+- **WHEN** 下一次 5 秒周期到点
+- **THEN** 后台完整详情刷新仍可发起并完成；loading 已在前台请求网络结束时释放；错误弹窗继续保留给用户处理
+
+#### Scenario: 显式请求被 silent 请求淘汰后仍释放 loading
+
+- **GIVEN** 显式刷新 A 在途，随后人员/长期动作的 silent 刷新 B 先返回并清空当前容器
+- **WHEN** A 晚到且因请求序号旧而不写详情
+- **THEN** A 的 network 生命周期结束即清除它拥有的 loading；页面不因 A 被淘汰而永久停在加载态
+
+#### Scenario: 旧路由慢请求不阻塞新页后台
+
+- **GIVEN** 容器 A 的显式详情请求仍在途，用户切换到容器 B，且 B 的初始详情已完成
+- **WHEN** B 的下一次 5 秒周期到点
+- **THEN** B 的后台详情刷新正常发起并显示新事实；A 的晚到响应不写回，也不占用 B 的后台防重入名额
+
+#### Scenario: 候选平台用户按需刷新
+
+- **GIVEN** 平台新增用户，页面初始候选列表未包含该用户
+- **WHEN** 用户展开候选下拉、手动刷新或完成成员变更
+- **THEN** 页面按需重取候选用户并显示新用户；5 秒周期不轮询平台用户列表
 
 ### Requirement: 新增协作者凭据与不乐观加入
 
@@ -136,7 +200,7 @@ ContainerDetailPage 的每个账号卡 SHALL 提供“重置密码”按钮。�
 
 - **GIVEN** 重置已受理并已展示密码
 - **WHEN** Node 后台执行成功或失败
-- **THEN** 页面不宣称密码已生效，不写入含密码的日志；用户刷新既有操作历史后看到 `reset_container_password` 成功或失败记录
+- **THEN** 页面不宣称密码已生效，不写入含密码的日志；后续 5 秒历史刷新无需手刷即显示“重置容器密码”成功或失败记录
 
 #### Scenario: 重置失败不泄露密码
 
@@ -283,7 +347,7 @@ ContainerDetailPage SHALL 将既有详情响应中的 GPU 分配和共享内存�
 
 ### Requirement: ContainerDetailPage 操作历史随事实刷新
 
-刷新按钮和容器动作完成后 SHALL 重新获取操作历史，不得只在首次挂载时读取。动作失败时 MUST NOT 追加成功历史；页面 SHALL 保留既有历史并展示失败原因，或在失败后按权威事实重取。
+刷新按钮、容器动作和人员变更受理后 SHALL 重新获取操作历史，不得只在首次挂载时读取。页面在可见时 SHALL 以同一 5 秒周期后台复读既有操作历史接口，使用短超时并进行 in-flight 防重入，页面隐藏时跳过、重新可见时恢复；旧路由、旧请求或卸载后的响应 MUST NOT 回写。后台历史刷新失败 SHALL 保留既有历史且不弹周期错误窗。异步 `add_collaborator`、`remove_collaborator`、`update_collaborator_role` 与 `reset_container_password` 的终态 SHALL 无需用户手刷即出现；`reset_container_password` 使用中文“重置容器密码”，页面 MUST NOT 轮询、展示或记录任何密码。动作失败时 MUST NOT 追加成功历史；页面 SHALL 保留既有历史并展示失败原因，或在失败后按权威事实重取。
 
 #### Scenario: 点击刷新按钮重取历史
 
@@ -302,6 +366,36 @@ ContainerDetailPage SHALL 将既有详情响应中的 GPU 分配和共享内存�
 - **GIVEN** 用户触发容器动作
 - **WHEN** 后端拒绝或请求失败
 - **THEN** 历史列表不出现本次动作的成功记录，页面展示失败原因，既有历史不被误标为成功
+
+#### Scenario: 异步成员变更终态自动出现
+
+- **GIVEN** 添加协作者已受理并立即重取历史，但返回的仍是旧日志
+- **WHEN** 后续 5 秒后台历史刷新取到 `add_collaborator` 成功或失败记录
+- **THEN** 历史列表无需手刷即出现“添加协作者”终态；页面不把受理当作已完成，也不显示密码
+
+#### Scenario: 重置密码终态使用中文标签
+
+- **GIVEN** 重置密码已受理并展示凭据，后台 Node 最终写入 `reset_container_password` 结果
+- **WHEN** 后续 5 秒后台历史刷新返回该记录
+- **THEN** 历史列表显示“重置容器密码”与成功/失败标签，不显示原始操作码或任何密码
+
+#### Scenario: 历史后台失败保留、防并发
+
+- **GIVEN** 页面已有操作历史，且一次后台历史刷新仍在途或失败
+- **WHEN** 下一周期到点
+- **THEN** 不新增并发的后台历史请求；失败时保留既有历史且不弹周期错误窗
+
+#### Scenario: 历史隐藏跳过与恢复
+
+- **GIVEN** 页面处于隐藏状态
+- **WHEN** 5 秒周期到点后页面重新可见
+- **THEN** 隐藏期间不请求历史；重新可见时立即复读并在列表显示最新终态
+
+#### Scenario: 旧路由与卸载后的历史不回写
+
+- **GIVEN** 旧容器的后台历史请求晚到，或历史请求在组件卸载后才返回
+- **WHEN** 响应到达
+- **THEN** 不覆盖当前路由历史、不写已卸载页面状态，也不产生晚到错误或告警
 
 ### Requirement: ContainerDetailPage 窄屏布局不横向溢出且长内容可读
 
@@ -343,5 +437,6 @@ ContainerDetailPage SHALL 在 320px、390px 和 768px 视口下把共享 `.conta
 - 页面直接依赖：`../utils/statusDisplay`。
 - 页面直接依赖：`../contexts/PermissionContext`。
 - 页面直接依赖：`../utils/containerActions`。
+- 页面直接依赖：`../utils/listRefresh`（`LIST_REFRESH_INTERVAL_MS`、`canRunListRefresh`）。
 - [src/test/](../../../src/test/)、[vite.config.js](../../../vite.config.js)：当前测试记录见 `openspec/changes/archive/2026-10-18-align-container-action-eligibility-and-recovery/` 与仓库验证日志；本规格不固化测试文件/用例数字；页面测试是否直接覆盖见 Global QUESTIONS。
 

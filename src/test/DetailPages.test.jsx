@@ -19,6 +19,7 @@ vi.mock('../api/container_api', () => ({
   addCollaborator: vi.fn(),
   deleteContainer: vi.fn(),
   getContainerDetailInformation: vi.fn(),
+  getContainerOperationLogs: vi.fn().mockResolvedValue({ logs: [] }),
   getContainerStatus: vi.fn(),
   listAllContainerBrefInformation: vi.fn(),
   removeCollaborator: vi.fn(),
@@ -96,30 +97,41 @@ describe('DetailPages snapshot polling', () => {
     vi.restoreAllMocks();
   });
 
-  it('container detail initializes with detail API and polls effective_status cache only', async () => {
-    getContainerDetailInformation.mockResolvedValue({
-      success: 1,
-      container_info: {
-        container_id: 12,
-        container_name: 'train-a',
-        effective_status: 'creating',
-        machine_ip: '10.0.0.8',
-        port: 1024,
-        cpu_number: 2,
-        memory_gb: 4,
-          port_mappings: [
-            { container_port: 22, host_port: 1024, protocol: 'tcp' },
-            { container_port: 8080, host_port: 31080, protocol: 'tcp' },
-          ],
-          shared_gb: 1,
-          accounts: [
-            { user_id: 1, username: 'root_user', role: 'ROOT' },
-            { user_id: 2, username: 'collab_user', role: 'COLLABORATOR' },
-          ],
+  it('container detail initializes with detail API and polls full authoritative detail', async () => {
+    const initialDetail = {
+      container_id: 12,
+      container_name: 'train-a',
+      effective_status: 'creating',
+      machine_ip: '10.0.0.8',
+      port: 1024,
+      cpu_number: 2,
+      memory_gb: 4,
+      port_mappings: [
+        { container_port: 22, host_port: 1024, protocol: 'tcp' },
+        { container_port: 8080, host_port: 31080, protocol: 'tcp' },
+      ],
+      shared_gb: 1,
+      accounts: [
+        { user_id: 1, username: 'root_user', role: 'ROOT' },
+        { user_id: 2, username: 'collab_user', role: 'COLLABORATOR' },
+      ],
+      runtime_metrics: {
+        collected_at: '2026-08-29T12:00:00',
+        cpu_usage_percent: 10,
+        memory_usage_percent: 20,
+      },
+    };
+    getContainerDetailInformation
+      .mockResolvedValueOnce({ success: 1, container_info: initialDetail })
+      .mockResolvedValueOnce({
+        success: 1,
+        container_info: {
+          ...initialDetail,
+          effective_status: 'online',
           runtime_metrics: {
-            collected_at: '2026-08-29T12:00:00',
-            cpu_usage_percent: 10,
-            memory_usage_percent: 20,
+            collected_at: '2026-08-29T12:00:05',
+            cpu_usage_percent: 30,
+            memory_usage_percent: 40,
           },
         },
       });
@@ -129,16 +141,6 @@ describe('DetailPages snapshot polling', () => {
         { id: 2, username: 'collab_user', name: 'collab_user' },
         { id: 3, username: 'new_user', name: 'new_user' },
       ],
-    });
-    getContainerStatus.mockResolvedValue({
-      effective_status: 'online',
-      failed_reason: null,
-      failed_detail: null,
-      runtime_metrics: {
-        collected_at: '2026-08-29T12:00:05',
-        cpu_usage_percent: 30,
-        memory_usage_percent: 40,
-      },
     });
 
     render(
@@ -159,10 +161,10 @@ describe('DetailPages snapshot polling', () => {
       await pollingCallback();
     });
 
-    // 轮询必须用**短超时**：这个 5s 的 setInterval 没有 in-flight 守卫，
-    // 跟着同步请求放宽到 45s 会长出一堆并发（2026-09 决策）
-    await waitFor(() => expect(getContainerStatus).toHaveBeenCalledWith(12, POLL_TIMEOUT));
-    expect(getContainerDetailInformation).toHaveBeenCalledTimes(1);
+    // 5s 刷新改为完整详情并携带**短超时**；状态接口不再是详情页轮询来源。
+    await waitFor(() => expect(getContainerDetailInformation).toHaveBeenCalledWith(12, POLL_TIMEOUT));
+    expect(getContainerDetailInformation).toHaveBeenCalledTimes(2);
+    expect(getContainerStatus).not.toHaveBeenCalled();
     // 轮询 setState 后的重渲染不得重新执行加载 effect（否则会重复拉详情并重设定时器）。
     expect(globalThis.setInterval.mock.calls.filter(([, delay]) => delay === 5000)).toHaveLength(1);
     await waitFor(() => expect(screen.getAllByText('运行中').length).toBeGreaterThan(0));

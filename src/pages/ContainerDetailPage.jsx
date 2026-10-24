@@ -7,7 +7,6 @@ import {
   deleteContainer,
   getContainerDetailInformation,
   getContainerOperationLogs,
-  getContainerStatus,
   removeCollaborator,
   resetContainerPassword,
   restartContainer,
@@ -48,11 +47,13 @@ const CONTAINER_OPERATION_LABELS = {
   add_collaborator: '添加协作者',
   remove_collaborator: '移除协作者',
   update_collaborator_role: '变更角色',
+  reset_container_password: '重置容器密码',
   set_long_term: '设置长期容器',
   send_cleanup_reminder: '发送清理提醒',
 };
 import { getContainerStatusDisplay } from '../utils/statusDisplay';
 import { POLL_TIMEOUT } from '../configs/backend_config';
+import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh } from '../utils/listRefresh';
 import { usePermission } from '../contexts/PermissionContext';
 import './DetailPages.css';
 
@@ -153,6 +154,12 @@ const ContainerDetailPage = () => {
   const pendingContainerTransitionRef = useRef(new Map());
   const operationLogsRequestSeqRef = useRef(0);
   const operationLogsMountedRef = useRef(true);
+  const operationLogsCurrentRequestRef = useRef({ seq: 0, containerId: null, inFlight: false });
+  const detailRequestSeqRef = useRef(0);
+  const detailCurrentRequestRef = useRef({ seq: 0, containerId: null, inFlight: false });
+  const loadingRequestSeqRef = useRef(0);
+  const detailMountedRef = useRef(true);
+  const usersRequestSeqRef = useRef(0);
   const containerIdRef = useRef(containerId);
   containerIdRef.current = containerId;
   const {
@@ -216,11 +223,35 @@ const ContainerDetailPage = () => {
     });
   };
 
-  const loadDetail = useCallback(async ({ silent = false } = {}) => {
+  const loadDetail = useCallback(async ({ silent = false, background = false, timeout = null } = {}) => {
     if (!containerId) return;
-    if (!silent) setLoading(true);
+    const requestedContainerId = String(containerId);
+    if (String(containerIdRef.current) !== requestedContainerId) return;
+    // 只约束当前容器的当前有效请求：旧路由/已淘汰请求仍在途也不算新页阻塞。
+    const activeRequest = detailCurrentRequestRef.current;
+    if (background && activeRequest.inFlight && activeRequest.containerId === requestedContainerId) return;
+    const requestSeq = detailRequestSeqRef.current + 1;
+    detailRequestSeqRef.current = requestSeq;
+    detailCurrentRequestRef.current = {
+      seq: requestSeq,
+      containerId: requestedContainerId,
+      inFlight: true,
+    };
+    if (!silent) {
+      // loading 属于发起它的那次显式请求生命周期，不依赖“它仍是最新 seq”。
+      loadingRequestSeqRef.current = requestSeq;
+      setLoading(true);
+    }
+    let errorPayload = null;
     try {
-      const res = await getContainerDetailInformation(Number(containerId));
+      const detailRequest = timeout == null
+        ? getContainerDetailInformation(Number(containerId))
+        : getContainerDetailInformation(Number(containerId), timeout);
+      const res = await detailRequest;
+      // 旧路由、旧请求或卸载后的响应一律不写状态。
+      if (!detailMountedRef.current) return;
+      if (detailRequestSeqRef.current !== requestSeq) return;
+      if (String(containerIdRef.current) !== requestedContainerId) return;
       const detail = res?.container_info || res?.container || res?.data || res;
       if (!detail || (typeof detail === 'object' && Object.keys(detail).length === 0)) {
         markContainerUnavailable(containerId);
@@ -232,21 +263,51 @@ const ContainerDetailPage = () => {
       setContainer(withPending);
       setHistory(prev => addHistoryPoint(prev, detail?.runtime_metrics));
     } catch (err) {
-      await showErrorModal({ message: err?.body || err || '获取容器详情失败', status: err?.status, route: err?.route });
+      if (!detailMountedRef.current) return;
+      if (detailRequestSeqRef.current !== requestSeq) return;
+      if (String(containerIdRef.current) !== requestedContainerId) return;
+      if (background) {
+        // 周期刷新失败保留既有详情；不每 5 秒弹错误窗，前台显式操作仍会提示。
+        console.warn('container detail background refresh failed', err?.message);
+        return;
+      }
+      errorPayload = { message: err?.body || err || '获取容器详情失败', status: err?.status, route: err?.route };
     } finally {
-      if (!silent) setLoading(false);
+      if (detailCurrentRequestRef.current.seq === requestSeq) {
+        detailCurrentRequestRef.current = { ...detailCurrentRequestRef.current, inFlight: false };
+      }
+      // 错误弹窗可能等用户很久；网络请求结束即释放 loading 和后台占用。
+      if (!silent && detailMountedRef.current
+        && String(containerIdRef.current) === requestedContainerId
+        && loadingRequestSeqRef.current === requestSeq) {
+        loadingRequestSeqRef.current = 0;
+        setLoading(false);
+      }
+    }
+    if (errorPayload) {
+      await showErrorModal(errorPayload);
     }
   }, [applyContainerEffectiveStatus, containerId, markContainerUnavailable, rememberContainerSnapshot]);
 
-  const loadOperationLogs = useCallback(async () => {
+  const loadOperationLogs = useCallback(async ({ background = false, timeout = null } = {}) => {
     if (!containerId) return;
     const requestedContainerId = String(containerId);
     // 旧容器的异步动作/刷新不再抢占当前容器的请求序号。
     if (String(containerIdRef.current) !== requestedContainerId) return;
+    const activeRequest = operationLogsCurrentRequestRef.current;
+    if (background && activeRequest.inFlight && activeRequest.containerId === requestedContainerId) return;
     const requestSeq = operationLogsRequestSeqRef.current + 1;
     operationLogsRequestSeqRef.current = requestSeq;
+    operationLogsCurrentRequestRef.current = {
+      seq: requestSeq,
+      containerId: requestedContainerId,
+      inFlight: true,
+    };
     try {
-      const res = await getContainerOperationLogs(Number(containerId));
+      const logsRequest = timeout == null
+        ? getContainerOperationLogs(Number(containerId))
+        : getContainerOperationLogs(Number(containerId), timeout);
+      const res = await logsRequest;
       // 旧容器/旧刷新的响应晚到时不得覆盖当前容器的历史；卸载后也不再写状态。
       if (!operationLogsMountedRef.current) return;
       if (operationLogsRequestSeqRef.current !== requestSeq) return;
@@ -254,54 +315,69 @@ const ContainerDetailPage = () => {
       if (Array.isArray(res?.logs)) setOperationLogs(res.logs);
     } catch (err) {
       if (!operationLogsMountedRef.current) return;
+      if (operationLogsRequestSeqRef.current !== requestSeq) return;
+      if (String(containerIdRef.current) !== requestedContainerId) return;
       console.warn('load container operation logs failed', err?.message);
+    } finally {
+      if (operationLogsCurrentRequestRef.current.seq === requestSeq) {
+        operationLogsCurrentRequestRef.current = { ...operationLogsCurrentRequestRef.current, inFlight: false };
+      }
     }
   }, [containerId]);
 
   const loadUsers = useCallback(async () => {
+    const requestSeq = usersRequestSeqRef.current + 1;
+    usersRequestSeqRef.current = requestSeq;
     setUsersLoading(true);
     try {
       const res = await listAllUserBrefInformation({ page_number: 1, page_size: 100 });
+      if (!detailMountedRef.current || usersRequestSeqRef.current !== requestSeq) return;
       const rawUsers = res?.users || res?.user_list || res?.data || [];
       setUsersList(Array.isArray(rawUsers) ? rawUsers.map(normalizeUser).filter(user => user.id !== undefined && user.id !== null) : []);
     } catch (err) {
+      if (!detailMountedRef.current || usersRequestSeqRef.current !== requestSeq) return;
       console.warn('list users for container detail failed', err);
     } finally {
-      setUsersLoading(false);
+      if (detailMountedRef.current && usersRequestSeqRef.current === requestSeq) setUsersLoading(false);
     }
   }, []);
 
-  const loadStatus = useCallback(async () => {
-    if (!containerId) return;
-    try {
-      // 轮询用短超时（POLL_TIMEOUT）：这个 5s 的 setInterval 没有 in-flight 守卫，
-      // 靠超时把并发压在 3 个以内；跟着同步请求放宽到 45s 会长出 9 个并发。
-      const data = await getContainerStatus(Number(containerId), POLL_TIMEOUT);
-      setContainer(prev => {
-        if (!prev) return prev;
-        const has = key => Object.prototype.hasOwnProperty.call(data || {}, key);
-        const merged = applyContainerEffectiveStatus({
-          ...prev,
-          effective_status: has('effective_status') ? data.effective_status : prev.effective_status,
-          failed_reason: has('failed_reason') ? data.failed_reason : prev.failed_reason,
-          failed_detail: has('failed_detail') ? data.failed_detail : prev.failed_detail,
-          runtime_metrics: has('runtime_metrics') ? data.runtime_metrics : prev.runtime_metrics,
-        });
-        rememberContainerSnapshot(merged, 'poll');
-        return merged;
-      });
-      setHistory(prev => addHistoryPoint(prev, data?.runtime_metrics));
-    } catch (err) {
-      console.warn('container status polling failed', err);
-    }
-  }, [applyContainerEffectiveStatus, containerId, rememberContainerSnapshot]);
+  useEffect(() => {
+    detailMountedRef.current = true;
+    return () => {
+      detailMountedRef.current = false;
+      detailRequestSeqRef.current += 1;
+      usersRequestSeqRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     loadDetail();
     loadUsers();
-    const timer = setInterval(loadStatus, 5000);
-    return () => clearInterval(timer);
-  }, [containerId, loadDetail, loadStatus, loadUsers]);
+    const refreshIfVisible = () => {
+      if (!canRunListRefresh()) return undefined;
+      // 完整详情是容器可变事实的权威来源：accounts/owners、长期、冻结、磁盘、SSH
+      // 等字段都随 5s 周期收敛，不再另开 status 轮询与详情互相覆盖。
+      // 操作历史也随同一拍复读，异步 add/remove/role/reset 的终态无需用户手刷。
+      return Promise.all([
+        loadDetail({ silent: true, background: true, timeout: POLL_TIMEOUT }),
+        loadOperationLogs({ background: true, timeout: POLL_TIMEOUT }),
+      ]);
+    };
+    const timer = setInterval(refreshIfVisible, LIST_REFRESH_INTERVAL_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', refreshIfVisible);
+    }
+    return () => {
+      clearInterval(timer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', refreshIfVisible);
+      }
+      // 同一页面切换容器时淘汰上一路由的详情/用户响应。
+      detailRequestSeqRef.current += 1;
+      usersRequestSeqRef.current += 1;
+    };
+  }, [containerId, loadDetail, loadOperationLogs, loadUsers]);
 
   // 容器级掉卡审查（与机器页同款 N 帧语义）：分配锁定的卡（device_ids，静态）
   // 持续缺席于每轮 live 切片（devices）→ 该容器实际已无此卡可用
@@ -342,7 +418,7 @@ const ContainerDetailPage = () => {
     };
   }, [loadOperationLogs]);
 
-  // 容器操作（详情页直连 API；状态由 5s 轮询 loadStatus 兜底刷新）
+  // 容器操作（详情页直连 API；状态与成员等详情事实由 5s 完整详情刷新兜底）
   const [longTermSaving, setLongTermSaving] = useState(false);
 
   const latestDetail = () => getContainerSnapshot(containerId) || container;
@@ -527,6 +603,10 @@ const ContainerDetailPage = () => {
   const availableUsers = usersList.filter(user => !accounts.some(account => String(account.user_id) === String(user.id)));
   const refreshAfterPeopleChange = async () => {
     await loadDetail({ silent: true });
+    // 受理后的立即重取通常仍是旧终态；后续 5s 后台复读负责收敛。
+    await loadOperationLogs();
+    // 成员变更后重取候选用户；平台用户列表不参与 5s 周期轮询。
+    await loadUsers();
   };
   const handleAddUser = async () => {
     if (!selectedUserId || !containerId) return;
@@ -641,7 +721,7 @@ const ContainerDetailPage = () => {
       <div className="detail-shell">
         <div className="detail-topbar">
           <Button icon={<ArrowLeftOutlined />} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/index'))}>返回</Button>
-          <Button icon={<ReloadOutlined />} onClick={() => { loadDetail(); loadOperationLogs(); }}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => { loadDetail(); loadUsers(); loadOperationLogs(); }}>刷新</Button>
         </div>
 
         {loading && !container ? <Spin /> : (
@@ -821,6 +901,7 @@ const ContainerDetailPage = () => {
                       disabled={peopleSaving}
                       optionFilterProp="label"
                       onChange={setSelectedUserId}
+                      onOpenChange={open => { if (open) loadUsers(); }}
                       options={availableUsers.map(user => ({
                         value: user.id,
                         label: `${user.name || user.username} @${user.username}`,
