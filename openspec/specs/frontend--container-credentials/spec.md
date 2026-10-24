@@ -42,7 +42,7 @@ Web SHALL 在响应包含 `accepted` 或 `credentials` 时严格解析：仅当 
 
 ### Requirement: ROOT 交接凭据的结构校验
 
-ROOT 上位/交接 SHALL 作为统一交接处理：Web MUST NOT 发送 `transfer_root`，每个入口只提交一次 `update_role`，由 Ctrl 后台完成旧 ROOT 降级与目标成为唯一 ROOT。受理响应 MUST 至少 2 项且每项 `login_name`/`password` 非空并互不相同；正常为原 owner 独立用户名 + 永久 `root` 两项，历史多个旧 owner 为所有涉及账号 + `root` 的 N+1 项。Web MUST 原样展示全部项，MUST NOT 截断为两项、丢弃涉及账号、去重、合成或改写角色。
+ROOT 上位/交接 SHALL 作为统一交接处理：Web MUST NOT 发送 `transfer_root`，每个入口只提交一次 `update_role`，由 Ctrl 后台完成旧 ROOT 降级与目标成为唯一 ROOT。受理响应 MUST 包含恰好一项登录名为 `root` 的永久账号凭据，MUST 至少 2 项且每项 `login_name`/`password` 非空并互不相同；正常为原 owner 独立用户名 + 永久 `root` 两项，历史多个旧 owner 为所有涉及账号 + `root` 的 N+1 项。Web MUST 原样展示全部项，MUST NOT 截断为两项、丢弃涉及账号、去重、合成或改写角色。
 
 #### Scenario: ROOT 交接常规两项
 

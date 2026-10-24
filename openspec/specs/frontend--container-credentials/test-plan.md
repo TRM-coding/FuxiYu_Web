@@ -79,3 +79,9 @@
 - 本次小补丁验证：对抗 15/15、详情 18/18 + ROOT 相关 48/48、改动文件 targeted ESLint 通过、生产改动后 `npm run build` 11.19s 通过、`openspec validate --specs --strict` 28/28。
 - 限制：jsdom 受控 Promise 测试；未覆盖真实 Ctrl/Node 后台时序；未操作真实 DB；父级将另做真实浏览器复核。
 - 日志：`E:/AI/Fuxi_audit_artifacts/root-handover-2026-10-24/adversarial-web/`（`ROOT-open-navigation-red.log`、`ROOT-open-navigation-green3.log`、`related-green-after-nav-fix.log`、`eslint-fix.log`、`full-npm-test-after-fix.log`、构建日志、`summary.md`）。
+
+## ROOT 登录名补验（2026-10-24）
+
+- ROOT 交接响应若只有两个普通账号而没有永久 root，拒绝展示。定位：src/test/credentialResponse.test.js 的 test_root_handover_rejects_short_duplicate_or_incomplete_credentials；补断言后 RED 为 1 failed/5 passed，修正后凭据与页面相关 5 files/41 tests 全部通过。
+- 日志位于外部 adversarial-web/missing-root-red.log 与 missing-root-green.log。
+- 当前主规格 SHA256：110D2949B1104851E72713AA9DAFCFD91B7F73567A36C57D0590CBECFE11DE52。

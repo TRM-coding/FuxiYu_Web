@@ -46,6 +46,9 @@ describe('credentialResponse', () => {
     const owner = { login_name: 'root_user', password: 'pw-owner' };
     const root = { login_name: 'root', password: 'pw-root' };
     expect(() => parseCredentialResponse(body({
+      credentials: [owner, { login_name: 'another_admin', password: 'pw-admin' }],
+    }), { rootHandover: true })).toThrow();
+    expect(() => parseCredentialResponse(body({
       credentials: [{ login_name: 'root', password: 'pw-root' }],
     }), { rootHandover: true })).toThrow();
     expect(() => parseCredentialResponse(body({ credentials: [] }), { rootHandover: true })).toThrow();

@@ -114,6 +114,7 @@ export const parseCredentialResponse = (body, options = {}) => {
       loginNames.add(loginKey);
       passwords.add(item.password);
     }
+    if (!normalized.some(item => item.login_name === 'root')) throw makeError(body);
   } else {
     const expected = expectedCount ?? 1;
     if (normalized.length !== expected) throw makeError(body);
