@@ -5,7 +5,7 @@ import ConfirmModal from '../components/ConfirmModal';
 const hideExistingModals = () => {
   const modals = Array.from(document.querySelectorAll('.ant-modal'));
   const masks = Array.from(document.querySelectorAll('.ant-modal-mask'));
-  modals.forEach((el, i) => {
+  modals.forEach((el) => {
     el.dataset._prevDisplay = el.style.display || '';
     el.style.display = 'none';
   });
@@ -33,10 +33,67 @@ const restoreModals = () => {
   });
 };
 
+// 机器作用域族的文案：容器动作与创建共用。措辞指向"所在机器"，不假定是哪个容器动作。
+const MACHINE_SCOPE_MESSAGES = {
+  machine_maintenance: '所在机器正在维护中，暂时无法操作其上的容器',
+  machine_offline: '所在机器不在线，暂时无法操作其上的容器',
+  machine_not_found: '容器所在的机器不存在',
+  container_host_maintenance: '所在机器正在维护中，暂时无法操作其上的容器',
+  container_host_offline: '所在机器不在线，暂时无法操作其上的容器',
+};
+
+// 协作者动作共用 Ctrl 有效状态机守卫的既有 reason；只改展示文案，不改后端裁决。
+const collaboratorGuardMessages = (actionLabel) => ({
+  ...MACHINE_SCOPE_MESSAGES,
+  container_offline: `容器未在线，无法${actionLabel}`,
+  container_paused: `容器已冻结，无法${actionLabel}`,
+  container_failed: `容器状态异常，无法${actionLabel}`,
+  container_busy: `容器正在处理中，暂时无法${actionLabel}`,
+  container_status_unknown: `容器状态未知，暂时无法${actionLabel}`,
+});
+
+// 这些原因是 Ctrl 有效状态机对容器写操作的既有拒绝，不是可自行绕过的前端状态。
+// 命中时优先显示中文原因，不再把后端英文守卫原文或通用 400/409/503 提示混进弹窗。
+const CONTAINER_GUARD_REASONS = new Set([
+  'container_offline',
+  'container_paused',
+  'container_failed',
+  'container_busy',
+  'container_status_unknown',
+  'container_host_offline',
+  'container_host_maintenance',
+]);
+
+const CONTAINER_GUARD_MESSAGE_PATTERNS = [
+  /^container operation [a-z0-9_]+ is not allowed while effective_status is [a-z0-9_]+$/i,
+  /^container is not online: status=[a-z0-9_]+$/i,
+  /^failed to (add collaborator|remove collaborator|update role)$/i,
+];
+
+const isContainerGuardMessage = (text) => {
+  const value = String(text || '').trim();
+  if (!value) return false;
+  return CONTAINER_GUARD_MESSAGE_PATTERNS.some(pattern => pattern.test(value));
+};
+
 export const routeErrorMap = {
     // 用户相关
-    '/register': { username_exists: '用户名已存在', email_exists: '邮箱已存在', no_none_ascii: '禁止非ASCII字符（请勿输入中文）', invalid_username: '用户名仅允许英文、数字和下划线' },
-    '/request_register_code': { missing_email: '请输入邮箱' },
+    '/register': {
+      username_exists: '用户名已存在',
+      email_exists: '邮箱已存在',
+      no_none_ascii: '禁止非ASCII字符（请勿输入中文）',
+      invalid_username: '用户名仅允许英文、数字和下划线',
+      registration_code_required: '请填写注册验证码',
+      registration_code_invalid: '注册验证码无效或已过期',
+      mail_send_failed: '验证邮件发送失败',
+      email_domain_not_allowed: '该邮箱域名不允许注册',
+    },
+    '/request_register_code': {
+      missing_email: '请输入邮箱',
+      email_domain_not_allowed: '该邮箱域名不允许注册',
+      mail_send_failed: '验证邮件发送失败',
+      code_creation_failed: '验证码生成失败，请稍后重试',
+    },
     '/login': { user_not_found: '用户不存在', password_incorrect: '密码错误' },
     '/users/change_password': { old_password_incorrect: '旧密码不正确', no_none_ascii: '禁止非ASCII字符（请勿输入中文）' },
     '/users/delete_user': { wild_container: '存在无主容器，无法删除用户', missing_user_id: '缺少 user_id' },
@@ -46,11 +103,38 @@ export const routeErrorMap = {
     '/users/reset_password': { user_not_found: '用户不存在', missing_user_id: '缺少 user_id' },
 
     // 容器相关
-    '/containers/create_container': { duplicate_entry: '创建容器失败：重复项', invalid_payload: '无效的容器数据', invalid_config: '容器配置无效或超出宿主机上限', create_failed: '创建容器失败' },
-    '/containers/delete_container': { delete_failed: '删除容器失败', not_found: '容器不存在' },
-    '/containers/add_collaborator': { add_collaborator_failed: '添加协作者失败', container_offline: '容器未在线，无法添加协作者' },
-    '/containers/remove_collaborator': { remove_collaborator_failed: '移除协作者失败', container_offline: '容器未在线，无法移除协作者' },
-    '/containers/update_role': { update_role_failed: '更新角色失败', container_offline: '容器未在线，无法更新角色' },
+    // 机器作用域族：容器动作与创建都可能撞上，措辞与具体容器动作无关，故抽成一块共用。
+    // 两个来源：动作类先撞**有效状态机**（container_host_*），创建没有容器、只撞
+    // **机器准入**（machine_*）。此前两族都没映射到容器路由，靠全局兜底去 /machines/*
+    // 借措辞——能用但脆：它按 Object.keys 的遍历顺序取第一个命中者。
+    '/containers/create_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      duplicate_entry: '创建容器失败：重复项',
+      invalid_payload: '无效的容器数据',
+      invalid_config: '容器配置无效或超出宿主机上限',
+      create_failed: '创建容器失败',
+    },
+    '/containers/delete_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      delete_failed: '删除容器失败',
+      not_found: '容器不存在',
+    },
+    '/containers/add_collaborator': {
+      ...collaboratorGuardMessages('添加协作者'),
+      add_collaborator_failed: '添加协作者失败',
+    },
+    '/containers/remove_collaborator': {
+      ...collaboratorGuardMessages('移除协作者'),
+      remove_collaborator_failed: '移除协作者失败',
+    },
+    '/containers/update_role': {
+      ...collaboratorGuardMessages('更新角色'),
+      update_role_failed: '更新角色失败',
+    },
+    '/containers/unpause_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      unpause_failed: '解冻容器失败',
+    },
     '/containers/get_container_detail_information': { get_detail_failed: '获取容器详情失败' },
     '/containers/list_all_container_bref_information': { list_failed: '获取容器列表失败' },
     '/containers/set_long_term_container': {
@@ -60,14 +144,91 @@ export const routeErrorMap = {
       long_term_limit_reached: '已达到长期容器上限',
       invalid_payload: '长期容器设置参数无效',
     },
-    '/containers/unpause_container': { unpause_failed: '解冻容器失败' },
+    // 恢复（复活软删容器）：长期配额、快照不可恢复、机器作用域三条链路都会从这里出去。
+    // 恢复先撞机器准入（machine_*），故复用容器动作那一族文案。
+    '/containers/resurrect_container': {
+      ...MACHINE_SCOPE_MESSAGES,
+      not_found: '已删除容器记录不存在',
+      data_not_recoverable: '该容器的挂载已清理，数据不可恢复',
+      invalid_payload: '恢复参数无效',
+      container_exists: '容器记录已存在，无法恢复',
+      long_term_limit_reached: '已达到长期容器上限，恢复后无法保留长期标记',
+    },
 
     // 机器相关
-    '/machines/add_machine': { duplicate_entry: '机器已存在', internal_error: '内部错误，添加失败', create_failed: '添加机器失败' },
+    // 登记（TOFU 接入）与「修复连接」共用若干 reason（machine_unreachable /
+    // enrollment_failed / issue_uid_failed），但**语义不同**：登记是首次建立信任，
+    // 没有「原有信任」可言；修复连接是在保住已有信任。所以两条路由各写各的文案，
+    // 不能靠全局兜底互相借用——否则登记失败会显示「原有信任未被改动」这种错话。
+    '/machines/register_machine': {
+      invalid_trust_anchor: '机器名与 IP 为必填项',
+      invalid_machine_ip: 'IP 地址须为纯地址（不含端口），端口请单独填写',
+      invalid_node_port: '端口须为 1-65535 之间的整数',
+      machine_unreachable: '连不上该机器，无法抓取证书',
+      peer_cert_unavailable: '该机器未提供证书，无法建立信任',
+      enrollment_failed: '该机器未返回接入资料',
+      issue_uid_failed: '该机器的身份牌下发失败',
+      issue_uid_rejected: '该机器拒绝了下发身份牌',
+      persist_failed: '建档写库失败，请重试',
+      internal_error: '建档过程中出现内部错误，请查看日志',
+    },
     '/machines/remove_machine': { remove_failed: '删除机器失败' },
-    '/machines/update_machine': { update_failed: '更新机器失败', machine_not_found: '机器不存在', machine_maintenance: '机器正在维护中', machine_offline: '机器离线' },
+    '/machines/update_machine': {
+      update_failed: '更新机器失败',
+      machine_not_found: '机器不存在',
+      machine_maintenance: '机器正在维护中',
+      machine_offline: '机器离线',
+      // 限额编辑被拒：与容器创建的超限文案分开，先看具体 message 里的字段与数值
+      invalid_config: '机器配置限额无效或超出硬件容量',
+      invalid_payload: '机器配置限额参数无效',
+      missing_field: '缺少必填字段',
+    },
     '/machines/get_detail_information': { machine_not_found: '机器不存在', machine_offline: '机器离线', machine_maintenance: '机器正在维护中' },
     '/machines/list_all_machine_bref_information': { list_failed: '获取机器列表失败', machine_offline: '机器离线' },
+    '/machines/renew_machine_trust': {
+      machine_not_found: '机器不存在',
+      invalid_machine_ip: '该机器没有可用的 IP，无法重新抓取证书',
+      machine_unreachable: '连不上该机器，无法抓取证书；原有信任未被改动',
+      enrollment_failed: '该机器未返回接入资料；原有信任未被改动',
+      issue_uid_failed: '该机器的身份牌下发失败；原有信任未被改动',
+      persist_failed: '信任已重建，但写库失败，请重试',
+    },
+
+    // 设置相关
+    '/settings': { invalid_setting: '设置项不合法', update_failed: '保存设置失败' },
+
+    // 公告模板（列表/保存/删除同路由；深链为同前缀的 /{id}）
+    '/announcements/templates': {
+      duplicate_entry: '模板名称已存在',
+      missing_field: '缺少模板必填字段',
+      not_found: '模板不存在',
+      cannot_delete_system_template: '系统模板不可删除',
+    },
+
+    // 镜像模板：五个入口各自只映射 Ctrl 已存在的 error_reason。
+    '/images/create_image': {
+      duplicate_entry: '镜像名称已存在',
+      invalid_status: '镜像状态不合法',
+      create_failed: '创建镜像失败',
+    },
+    '/images/update_image': {
+      duplicate_entry: '镜像名称已存在',
+      invalid_status: '镜像状态不合法',
+      image_not_found: '镜像不存在',
+      update_failed: '更新镜像失败',
+    },
+    '/images/delete_image': { image_not_found: '镜像不存在' },
+    '/images/set_image_valid_range': {
+      invalid_valid_range: '镜像可见范围不合法',
+      image_not_found: '镜像不存在',
+      set_valid_range_failed: '设置镜像可见范围失败',
+    },
+    '/images/set_image_visible_users': {
+      not_custom_range: '只有自定义可见范围才能设置用户名单',
+      unknown_user: '用户名单中存在不存在的用户',
+      image_not_found: '镜像不存在',
+      set_visible_users_failed: '保存镜像可见用户失败',
+    },
 
     // 通用/鉴权
     '': { invalid_token: '身份验证失败，请重新登录', insufficient_permission: '权限不足', unexpected_response: '远端返回意外响应', NODE_error: '节点错误' },
@@ -89,6 +250,10 @@ export const routeErrorMap = {
       machine_permission_denied: '权限不足，无法操作该机器上的容器',
       container_permission_denied: '只有容器所有者可以执行此操作',
       container_offline: '容器未在线',
+      container_paused: '容器已冻结',
+      container_failed: '容器状态异常',
+      container_busy: '容器正在处理中',
+      container_status_unknown: '容器状态未知',
       container_not_found: '容器不存在',
       invalid_payload: '请求参数无效',
       not_found: '资源不存在',
@@ -100,7 +265,52 @@ export const routeErrorMap = {
     }
   };
 
-const showErrorModal = ({ title = '错误', message = '发生错误', status, route } = {}) => {
+// 占位/无信息量文案：这些不算「具体信息」，不能让它们抵掉中文原因映射
+const PLACEHOLDER_MESSAGES = new Set([
+  '发生错误', '发生错误，请稍后重试或联系管理员。', '未知错误', '请求失败', '失败',
+  'error', 'Error', 'failed', 'Failed', 'undefined', 'null',
+]);
+
+// 网络类失败（fetch 抛错 / 超时）：没有 HTTP 状态也没有 error_reason 时给中文兜底，
+// 不把 "Failed to fetch" 这类英文原文直接抛给用户。
+const NETWORK_FAILURE_PATTERN = /(failed to fetch|networkerror|network request failed|fetch failed|load failed|err_connection|err_network|econnrefused|etimedout|network error|timed out|超时)/i;
+
+/** 后端 message 是否算「具体信息」（能带出申请值/上限等细节、不是占位或原因名本身） */
+const isSpecificMessage = (text, errorReason) => {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (PLACEHOLDER_MESSAGES.has(t)) return false;
+  if (errorReason && t.toLowerCase() === String(errorReason).toLowerCase()) return false;
+  if (/^\d{3}\s*错误$/.test(t)) return false;
+  return true;
+};
+
+/** 路由优先、其次全表，找到 error_reason 的中文映射；未收录返回 null */
+const resolveReasonMessage = (errorReason, routePath) => {
+  if (!errorReason) return null;
+  if (routePath) {
+    for (const key of Object.keys(routeErrorMap)) {
+      if (routePath.endsWith(key) || routePath.indexOf(key) !== -1) {
+        const map = routeErrorMap[key] || {};
+        if (map[errorReason]) return map[errorReason];
+      }
+    }
+  }
+  for (const key of Object.keys(routeErrorMap)) {
+    const map = routeErrorMap[key] || {};
+    if (map[errorReason]) return map[errorReason];
+  }
+  return null;
+};
+
+const showErrorModal = (input = {}) => {
+  // 历史调用存在只传字符串的写法；统一归一化，避免把字符串当对象解构后
+  // 退化成“发生错误”，也不改变对象调用（含 err.body）的既有语义。
+  const params = typeof input === 'string' ? { message: input } : (input || {});
+  const { title = '错误', status, route, error_reason: inputErrorReason } = params;
+  // message 是可变绑定：下面会把字符串里的 JSON 对象解析出来替换它；用 const 会在
+  // 解析分支运行时抛错，退化为原字符串展示。
+  let message = params.message === undefined ? '发生错误' : params.message;
   if (typeof document === 'undefined') return Promise.resolve({ confirmed: false, status });
   // Determine HTTP status: prefer explicit, otherwise try to parse from message text
   let code = Number(status);
@@ -121,7 +331,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
         const candidate = s.slice(first, i + 1);
         try {
           return JSON.parse(candidate);
-        } catch (e) {
+        } catch {
           return null;
         }
       }
@@ -165,7 +375,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
       if (cloned.status !== undefined) delete cloned.status;
       //if (Object.keys(cloned).length > 0) extraDetails = cloned;
     }
-  } catch (e) {
+  } catch {
     displayMessage = typeof message === 'string' ? message : '发生错误';
   }
 
@@ -178,7 +388,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
         code = Number(found[1]);
         displayMessage = `${found[1]} 错误`;
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -194,7 +404,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
     } else if (message && message.response && message.response.url) {
       routePath = (new URL(message.response.url, window.location.origin)).pathname;
     }
-  } catch (e) {
+  } catch {
     routePath = '';
   }
 
@@ -202,37 +412,41 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
   if (message && typeof message === 'object') {
     errorReason = message.error_reason || message.error || (message.body && message.body.error_reason) || (message.data && message.data.error_reason) || null;
   }
+  errorReason = errorReason || inputErrorReason || (params.body && params.body.error_reason) || null;
 
+  // 后端具体 message（可能带申请值与上限等数字）与中文原因映射分开保存：
+  // 具体 message 优先保留，中文映射只作为补充行，不再反过来覆盖数值。
+  // 未收录的原因也不硬套某个已知错误（例如把任何失败都说成超限）。
+  const rawMessage = String(displayMessage || '').trim();
+  const mappedReasonMessage = resolveReasonMessage(errorReason, routePath);
+  const containerGuardReason = CONTAINER_GUARD_REASONS.has(errorReason);
+  // 有效状态机守卫返回的是固定英文句式或 "Failed to ..." 低信息量文案；
+  // 已映射时不再把它当“具体细节”展示，也不保留会被误读为输入错误的通用 HTTP 提示。
+  const suppressGuardNoise = Boolean(mappedReasonMessage)
+    && (containerGuardReason || isContainerGuardMessage(rawMessage));
+  const specificMessage = isSpecificMessage(rawMessage, errorReason) && !suppressGuardNoise
+    ? rawMessage
+    : null;
+  const hasStatusCode = Number.isFinite(Number(code)) || Number.isFinite(Number(status));
+  const networkFailure = !errorReason && !hasStatusCode && NETWORK_FAILURE_PATTERN.test(rawMessage);
 
-  // If an explicit error_reason exists, prefer it for display
-  if (errorReason) {
-    let found = false;
-    // prefer route-specific mapping when routePath is available
-    if (routePath) {
-      for (const key of Object.keys(routeErrorMap)) {
-        if (routePath.endsWith(key) || routePath.indexOf(key) !== -1) {
-          const map = routeErrorMap[key] || {};
-          if (map[errorReason]) {
-            displayMessage = map[errorReason];
-            found = true;
-            break;
-          }
-        }
-      }
+  let secondaryMessage = '';
+  if (networkFailure) {
+    displayMessage = '网络异常或请求超时，无法连接到服务器，请检查网络后重试。';
+  } else if (specificMessage) {
+    displayMessage = specificMessage;
+    if (mappedReasonMessage && mappedReasonMessage !== specificMessage) {
+      secondaryMessage = `原因：${mappedReasonMessage}`;
     }
-    // fallback: search all mappings for the errorReason (global match)
-    if (!found) {
-      for (const key of Object.keys(routeErrorMap)) {
-        const map = routeErrorMap[key] || {};
-        if (map[errorReason]) {
-          displayMessage = map[errorReason];
-          found = true;
-          break;
-        }
-      }
-    }
-    if (!extraDetails) extraDetails = {};
+  } else if (mappedReasonMessage) {
+    displayMessage = mappedReasonMessage;
+  } else if (errorReason) {
+    displayMessage = '发生未知错误，请重试或联系管理员。';
+    secondaryMessage = `未收录的错误原因：${errorReason}`;
+  } else {
+    displayMessage = '发生错误，请稍后重试或联系管理员。';
   }
+  if (!extraDetails) extraDetails = {};
 
   // Provide a localized hint for common HTTP status codes to help users understand errors.
   let hint = '';
@@ -268,8 +482,15 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
     default:
       hint = '';
   }
+  // 守卫原因已给出准确中文，不再叠加“请求无效/请求冲突/服务暂不可用”这类
+  // 会掩盖真实原因的通用状态提示；401/403 的专门提示不受影响。
+  if (containerGuardReason && mappedReasonMessage && ![401, 403].includes(Number(code))) hint = '';
+  // ConfirmModal 的 message 与 content 会各渲染一次主文案；守卫错误已经只剩
+  // 准确中文原因，不再在红框中重复同一句（其他错误保持既有呈现）。
+  const hideDuplicateGuardMessage = containerGuardReason && Boolean(mappedReasonMessage);
+  const showContent = !hideDuplicateGuardMessage || Boolean(secondaryMessage) || Boolean(hint);
 
-    const { modals, masks } = hideExistingModals();
+    hideExistingModals();
 
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -278,7 +499,7 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
   const cleanup = () => {
     try {
       root.unmount();
-    } catch (e) {
+    } catch {
       // ignore
     }
     if (container.parentNode) container.parentNode.removeChild(container);
@@ -296,12 +517,17 @@ const showErrorModal = ({ title = '错误', message = '发生错误', status, ro
         visible={true}
         title={title}
         message={displayMessage}
-        content={(
+        content={showContent ? (
           <div style={{ background: '#fff2f0', padding: 12, borderRadius: 4, border: '1px solid #ffccc7' }}>
-            <div style={{ color: '#a8071a', marginBottom: 8 }}>{displayMessage}</div>
+            {hideDuplicateGuardMessage ? null : (
+              <div style={{ color: '#a8071a', marginBottom: 8 }}>{displayMessage}</div>
+            )}
+            {secondaryMessage ? (
+              <div style={{ color: '#a8071a', marginBottom: 8 }}>{secondaryMessage}</div>
+            ) : null}
             {hint ? <div style={{ color: '#a8071a', opacity: 0.9 }}>{hint}</div> : null}
           </div>
-        )}
+        ) : null}
         danger
         iconColor="#ff4d4f"
         onConfirm={onConfirm}

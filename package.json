@@ -3,13 +3,21 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "predev": "node scripts/gen-cert.mjs",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "gen-cert": "node scripts/gen-cert.mjs",
+    "prestart": "node scripts/gen-cert.mjs",
+    "start": "node scripts/start.mjs",
+    "test": "node scripts/tests/run-tests.mjs",
+    "test:web": "node scripts/tests/run-vitest.mjs run --maxWorkers=2",
+    "test:server": "node scripts/tests/run-integration.mjs",
+    "test:watch": "node scripts/tests/run-vitest.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -17,16 +25,22 @@
     "@types/three": "^0.181.0",
     "antd": "^5.28.1",
     "antd-style": "^3.7.1",
+    "http-proxy": "^1.18.1",
+    "http-server": "^14.1.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.9.5",
-    "three": "^0.181.2"
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "three": "^0.181.2",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.0",
-    "@eslint/js": "^9.39.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.1.0",

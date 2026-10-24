@@ -1,28 +1,29 @@
 // src/pages/User.jsx
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Form, Input, DatePicker, Button, Row, Col, Space, message, InputNumber, Typography, Statistic } from 'antd';
+import { Card, Form, Input, DatePicker, Button, Row, Col, Space, InputNumber, Typography, Statistic, Tooltip } from 'antd';
+import { LogoutOutlined } from '@ant-design/icons';
 import showErrorModal from '../utils/showErrorModal';
-import { handleAuthError } from '../utils/authHelpers';
-import { getUserDetailInformation, updateUser, changePasswordUser } from '../api/user_api';
+import { clearAuth } from '../utils/authHelpers';
+import { getUserDetailInformation, updateUser, changePasswordUser, logoutUser } from '../api/user_api';
+import { usePermission } from '../contexts/PermissionContext';
 import './User.css';
 
 const User = () => {
   const navigate = useNavigate();
+  // 身份来自服务端（见 PermissionContext）：页面不再读 localStorage 副本，也不自己做
+  // "未登录"门禁——未登录由全局 401 处理统一回登录页（2026-09 决策）。
+  const { hasAnyManage, userId: currentUserId, clear: clearPermission } = usePermission();
   const [form] = Form.useForm();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [graduation_year, setGraduationYear] = useState(null);
   const [originalInfo, setOriginalInfo] = useState({ username: '', email: '', graduation_year: null });
-  const [currentUserId, setCurrentUserId] = useState(null);
-  const [isOperator, setIsOperator] = useState(false);
   const [usernameMsg, setUsernameMsg] = useState(null);
-  const [emailMsg, setEmailMsg] = useState(null);
   const [yearMsg, setYearMsg] = useState(null);
   const [passwordMsg, setPasswordMsg] = useState(null);
   const [passwordMsgType, setPasswordMsgType] = useState(null);
   const [usernameInvalid, setUsernameInvalid] = useState(false);
-  const [emailInvalid, setEmailInvalid] = useState(false);
   const [currentPasswordInvalid, setCurrentPasswordInvalid] = useState(false);
   const [newPasswordInvalid, setNewPasswordInvalid] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -32,43 +33,6 @@ const User = () => {
     functional: 0,
     managed: 0,
   });
-
-  // 读取当前用户信息，如果缺失则清除 auth 并重定向到登录
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const name = localStorage.getItem('currentUserName');
-        const id = localStorage.getItem('currentUserId');
-        // 需要同时拥有 name 和 id；如果缺失，先展示401提示，然后清除 auth 并强制登录
-        if (!name || !id) {
-          if (!sessionStorage.getItem('auth_modal_shown')) {
-            try {
-              sessionStorage.setItem('auth_modal_shown', '1');
-              await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-            } finally {
-              sessionStorage.removeItem('auth_modal_shown');
-            }
-          }
-          // 401: clear auth and navigate to login
-          handleAuthError(401, navigate);
-          return;
-        }
-        setCurrentUserId(id);
-      } catch (e) {
-        if (!sessionStorage.getItem('auth_modal_shown')) {
-          try {
-            sessionStorage.setItem('auth_modal_shown', '1');
-            await showErrorModal({ title: '未登录', message: '登录已失效，请重新登录', status: 401 });
-          } finally {
-            sessionStorage.removeItem('auth_modal_shown');
-          }
-        }
-        // 401: clear auth and navigate to login
-        handleAuthError(401, navigate);
-      }
-    };
-    checkAuth();
-  }, [navigate]);
 
   // 加载用户详情
   useEffect(() => {
@@ -88,11 +52,8 @@ const User = () => {
           functional: Number(info.amount_of_functional_container || 0),
           managed: Number(info.amount_of_managed_container || 0),
         });
-        const isOp = info.is_operator === true || info.role === 'operator' || info.permission === 'operator' || (Array.isArray(info.permissions) && info.permissions.includes('operator')) || (typeof info.permissions === 'string' && info.permissions.includes('operator'));
-        setIsOperator(Boolean(isOp));
         // clear inline messages when data loads
         setUsernameMsg(null);
-        setEmailMsg(null);
         setYearMsg(null);
         setPasswordMsg(null);
         setPasswordMsgType(null);
@@ -104,7 +65,6 @@ const User = () => {
         setCurrentPassword('');
         setNewPassword('');
         setUsernameInvalid(false);
-        setEmailInvalid(false);
         setCurrentPasswordInvalid(false);
         setNewPasswordInvalid(false);
       } catch (err) {
@@ -139,7 +99,7 @@ const User = () => {
       setPasswordMsgType('success');
       setCurrentPassword('');
       setNewPassword('');
-      try { form.setFieldsValue({ current_password: '', new_password: '' }); } catch (e) {}
+      form.setFieldsValue({ current_password: '', new_password: '' });
       setTimeout(() => { setPasswordMsg(null); setPasswordMsgType(null); }, 3000);
     } catch (err) {
       console.error('change password failed', err);
@@ -156,15 +116,43 @@ const User = () => {
 
   const isAllAscii = (s) => {
     if (s === null || s === undefined) return true;
-    try {
-      return /^[\x00-\x7F]*$/.test(String(s));
-    } catch (e) { return false; }
+    return Array.from(String(s)).every(ch => ch.charCodeAt(0) <= 0x7F);
   };
 
   const isValidUsername = (s) => {
     if (s === null || s === undefined) return false;
-    try { return /^[A-Za-z0-9_]+$/.test(String(s)); } catch (e) { return false; }
+    return /^[A-Za-z0-9_]+$/.test(String(s));
   };
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser(5000);
+    } catch (err) {
+      console.warn('Logout request failed:', err);
+    } finally {
+      // 登出只有服务端能完成（auth_token 是 HttpOnly，/logout 里 delete_cookie）。
+      // 本地只需做一件事：清掉权限快照，否则换账号会看到上一个人的菜单。
+      // 不再整页重载——那本来是"重载顺带把内存里的快照洗掉"的权宜之计。
+      clearAuth();
+      clearPermission();
+      navigate('/', { replace: true });
+    }
+  };
+
+  const cardExtra = (
+    <Space size={8}>
+      {hasAnyManage() ? <Button type="primary" onClick={() => navigate('/admin/users')}>管理后台</Button> : null}
+      <Tooltip title="登出">
+        <Button
+          className="user-logout-button"
+          icon={<LogoutOutlined />}
+          onClick={handleLogout}
+          aria-label="登出"
+        />
+      </Tooltip>
+    </Space>
+  );
+
   return (
     <Row 
       justify="center" 
@@ -174,9 +162,9 @@ const User = () => {
       {/* 增加span数值，让列更宽 */}
       <Col xs={24} sm={22} md={18} lg={14} offset={0}>
         <Card
-          title="用户信息"
+          title="用户信息管理"
           bordered
-          extra={isOperator ? <Button type="primary" onClick={() => navigate('/admin')}>管理后台</Button> : null}
+          extra={cardExtra}
           className="user-card"
         >
           <Row gutter={[16, 12]} className="user-stats-row">
@@ -241,7 +229,7 @@ const User = () => {
             <Form.Item label="当前密码" name="current_password" className="user-form-item">
               <Space>
                 <Input.Password
-                  placeholder="留空以不修改"
+                  placeholder="此处修改的是伏羲平台网页登录密码哦~"
                   className="user-input-300"
                   value={currentPassword}
                   onChange={e => {
@@ -251,7 +239,7 @@ const User = () => {
                   }}
                   status={currentPasswordInvalid ? 'error' : undefined}
                 />
-                <Button type="text" onClick={handleChangePassword}>修改密码</Button>
+                <Button type="text" onClick={handleChangePassword}>修改</Button>
               </Space>
               {passwordMsg ? (
                 <div className="user-msg-wrapper">
@@ -259,7 +247,7 @@ const User = () => {
                 </div>
               ) : null}
             </Form.Item>
-            <Form.Item label="新密码" name="new_password" className="user-form-item">
+            <Form.Item label="新的密码" name="new_password" className="user-form-item">
                 <Input.Password
                   placeholder="输入新密码"
                   className="user-input-300"

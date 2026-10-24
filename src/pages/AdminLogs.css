@@ -171,7 +171,8 @@
 
 .als-side {
   flex: 1;
-  min-width: 300px;
+  min-width: min(300px, 100%);
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -327,4 +328,39 @@
 
 .als-lg-mix {
   background: linear-gradient(135deg, #ff4d4f 0%, #ff4d4f 49%, #52c41a 51%, #52c41a 100%);
+}
+
+/* 窄屏：周次导航与详情工具条允许换行，日期范围不逐字挤压，桌面规则不变。 */
+@media (max-width: 768px) {
+  .admin-logs-week .ant-space,
+  .admin-logs-detail-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .admin-logs-week .ant-space-item {
+    flex-shrink: 0;
+    max-width: 100%;
+  }
+
+  .admin-logs-week .ant-space-item > .ant-typography {
+    display: block;
+    max-width: 100%;
+    white-space: nowrap;
+  }
+
+  .admin-logs-detail-toolbar {
+    width: 100%;
+    padding-right: 2px;
+  }
+
+  .admin-logs-detail-toolbar .ant-space-item {
+    max-width: 100%;
+  }
+
+  .admin-logs-detail-toolbar .ant-btn {
+    flex-shrink: 0;
+  }
 }

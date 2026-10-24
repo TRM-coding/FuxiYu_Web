@@ -1,5 +1,6 @@
 .notfound-page {
-	min-height: calc(100vh - 64px);
+	min-height: 100vh;
+	min-height: 100dvh;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -41,7 +42,8 @@
 @media (max-width: 768px) {
 	.notfound-page {
 		padding: 12px;
-		min-height: calc(100vh - 56px);
+		min-height: 100vh;
+		min-height: 100dvh;
 	}
 
 	.notfound-card {

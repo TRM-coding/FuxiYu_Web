@@ -12,17 +12,6 @@ const layout = {
   wrapperCol: { span: 16 },
 };
 
-const validateMessages = {
-  required: '${label}是必填项!',
-  types: {
-    email: '${label}不是有效的邮箱地址!',
-    number: '${label}不是有效的数字!',
-  },
-  number: {
-    range: '${label}必须在${min}和${max}之间',
-  },
-};
-
 const ALLOWED_EMAIL_HINT = '仅支持 bjtu.edu.cn / tsinghua.edu.cn / bupt.edu.cn / mails.tsinghua.edu.cn / mail.tsinghua.edu.cn';
 
 const RegisterBlock = () => {
@@ -60,7 +49,13 @@ const RegisterBlock = () => {
       setConfirmVisible(true);
     } catch (err) {
       if (err?.errorFields) return;
-      await showErrorModal({ title: '发送验证码失败', message: err?.message || '发送失败' });
+      await showErrorModal({
+        title: '发送验证码失败',
+        // 保留后端 error_reason 所在的 body，路由映射才能命中；不把对象降成字符串。
+        message: err?.body || err || '发送失败',
+        status: err?.status || err?.response?.status,
+        route: err?.route || err?.response?.url,
+      });
     } finally {
       setRequestingCode(false);
     }
@@ -71,7 +66,7 @@ const RegisterBlock = () => {
     const email = values.email || '';
     const password = values.password || '';
     const registration_code = values.registration_code || '';
-    const isAscii = s => /^[\x00-\x7F]*$/.test(String(s || ''));
+    const isAscii = s => Array.from(String(s || '')).every(ch => ch.charCodeAt(0) <= 0x7F);
 
     if (!isValidName(username)) {
       await showErrorModal({ title: '注册出错', message: '用户名仅允许英文、数字和下划线' });
@@ -106,7 +101,12 @@ const RegisterBlock = () => {
       );
       setConfirmVisible(true);
     } catch (err) {
-      await showErrorModal({ title: '注册出错', message: err?.message || '注册失败', status: err?.status });
+      await showErrorModal({
+        title: '注册出错',
+        message: err?.body || err || '注册失败',
+        status: err?.status || err?.response?.status,
+        route: err?.route || err?.response?.url,
+      });
     } finally {
       setRegistering(false);
     }
@@ -125,7 +125,6 @@ const RegisterBlock = () => {
         name="register"
         onFinish={onFinish}
         className="register-form"
-        validateMessages={validateMessages}
       >
         <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
           <Input placeholder="请输入用户名（最多75字符）" maxLength={75} />
