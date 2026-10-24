@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Form, Button, Space, Typography, Row, Col, Select, Tag, Avatar, List, message } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import { EditOutlined, PlusOutlined, TeamOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -30,6 +30,34 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
   const [adding, setAdding] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedRole, setSelectedRole] = useState(ROLE.COLLABORATOR);
+  const [roleSaving, setRoleSaving] = useState(false);
+  const roleSavingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const visibleRef = useRef(visible);
+  const containerKey = container?.key ?? container?.container_id ?? null;
+  const containerKeyRef = useRef(containerKey);
+  const requestEpochRef = useRef(0);
+  visibleRef.current = visible;
+  containerKeyRef.current = containerKey;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    // 关闭、换容器或重新打开时淘汰旧会话的异步回调，避免迟到的密码弹到新页面。
+    requestEpochRef.current += 1;
+  }, [visible, containerKey]);
+
+  const isCurrentModalRequest = (requestContainerId, requestEpoch) => (
+    mountedRef.current
+    && visibleRef.current
+    && requestEpoch === requestEpochRef.current
+    && String(containerKeyRef.current) === String(requestContainerId)
+  );
 
   useEffect(() => {
     if (container) {
@@ -59,14 +87,18 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       await showErrorModal({ message: '未能识别容器ID，无法添加用户' });
       return;
     }
+    const requestContainerId = String(cid);
+    const requestEpoch = requestEpochRef.current;
     setAdding(true);
     try {
       const res = await addCollaborator({ user_id: selectedUser.id, container_id: cid, role: selectedRole });
+      if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
       onCredentialAccepted(res?.credentials || []);
       setSelectedUser(null);
       setSelectedRole(ROLE.COLLABORATOR);
       message.success('新增协作者请求已受理');
     } catch (err) {
+      if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
       await showErrorModal({ message: err?.message || '添加用户失败', status: err?.status, route: err?.route });
     } finally {
       setAdding(false);
@@ -110,14 +142,21 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       await showErrorModal({ message: '缺少后端ID信息，无法更新角色' });
       return;
     }
+    if (roleSavingRef.current) return;
+    const requestContainerId = String(cid);
+    const requestEpoch = requestEpochRef.current;
+    roleSavingRef.current = true;
+    setRoleSaving(true);
     try {
       if (newRole === ROLE.ROOT) {
+        // 所有 Web 入口统一 ROOT 交接：不发送旧布尔标记，也不在 Web 侧拆成
+        // “先降旧 ROOT、再升目标”的两次请求；Ctrl 后台编排并返回全部凭据。
         const res = await updateRole({
           container_id: cid,
           user_id: resolvedUserId,
           updated_role: ROLE.ROOT,
-          transfer_root: true,
         });
+        if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
         onCredentialAccepted(res?.credentials || []);
         message.success('ROOT 交接请求已受理');
         // Home 保留既有“目标非自己时关闭人员弹窗”的行为；凭据弹窗挂在 Home 页面级。
@@ -127,13 +166,18 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
         return;
       }
       await updateRole({ container_id: cid, user_id: resolvedUserId, updated_role: newRole });
+      if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
       setAccounts(prev => prev.map(acc => {
         if (String(acc.user_id) !== String(resolvedUserId)) return acc;
         return { ...acc, role: newRole };
       }));
       message.success('角色已更新');
     } catch (err) {
+      if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
       await showErrorModal({ message: err?.message || '更新角色失败', status: err?.status, route: err?.route });
+    } finally {
+      roleSavingRef.current = false;
+      setRoleSaving(false);
     }
   };
 
@@ -205,7 +249,7 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
             </Typography.Title>
             <List dataSource={accounts} renderItem={(account) => (
               <List.Item actions={[
-                <Select key="role" value={account.role} onChange={(value) => handleRoleChange(account.user_id, value)} className="eum-role-select" disabled={account.role === ROLE.ROOT}>
+                <Select key="role" value={account.role} onChange={(value) => handleRoleChange(account.user_id, value)} className="eum-role-select" disabled={account.role === ROLE.ROOT || roleSaving}>
                   <Option value={ROLE.COLLABORATOR}><Tag color="green">协作者</Tag></Option>
                   <Option value={ROLE.ADMIN}><Tag color="blue">管理员</Tag></Option>
                   <Option value={ROLE.ROOT}><Tag color="red">超级管理员</Tag></Option>

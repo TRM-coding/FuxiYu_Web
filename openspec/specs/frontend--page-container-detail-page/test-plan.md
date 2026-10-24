@@ -4,12 +4,12 @@
 
 ## 台账状态
 
-- 主 spec SHA256：`2f0fe32c4f66c24d316e3952cfbd8f15c6435676ed45fc911af80f526200feb2`
-- 历史映射：已覆盖 10；部分覆盖 4；待复核 9；2026-10-24 增量 25 行见文末。
-- 测试基线：当前工作区最终实现；本轮同步新增窄屏布局场景，并保留 a98e51d 的历史测试记录。
-- 运行证据：父代理最终 `npm test` 68 files / 652 tests + server 40 tests，0 failed；本 capability 既有定向证据 C 组 19 files/189、Q61 6 files/58、change1 6 files/57。
-- 真实浏览器：父代理 26 cases / 315 checks 全部通过，`verified-complete/results.json` 的 sourceHashes 与当前实现一致；旧 468px 失败保留为历史。
-- 限制：jsdom 组件测试和 CSS 契约测试不计算真实 `scrollWidth`；真实 320/390/768/1440 宽度由外部浏览器结果补足；CI Node 20.19.0/22 未在本轮实际远程运行。
+- 主 spec SHA256：`5a44ca43e9997c71b810a1e93204f5b2462c815c1c0f59bdb7d5b363eeecb3b7`
+- 历史映射：已覆盖 10；部分覆盖 4；待复核 9；2026-10-24 凭据增量 25 行、详情/历史刷新增量 15 行、ROOT 交接统一增量见文末。
+- 测试基线：当前工作区最终实现（未提交）；保留 a98e51d 与 2026-10-24 凭据增量的历史记录，本轮新增详情权威事实/操作历史后台刷新、ROOT 统一交接与“不乐观更新/关闭清密”证据。
+- 运行证据：详情/历史刷新定向 7 files / 74 tests（`ContainerDetailRefresh` 18/18）已绿；ROOT 交接焦点 6 files / 30 tests 已绿；最终全量结果见文末“2026-10-24 ROOT 交接统一验证”。
+- 真实浏览器：历史 26 cases / 315 checks 的 sourceHashes 对应旧实现；本次详情/历史刷新另有独立 RED 浏览器证据 `RED-history-live.json`，当前源码仍待主代理复验，不能把历史结果当作当前源码的浏览器通过证据。
+- 限制：jsdom 组件测试和 CSS 契约测试不计算真实 `scrollWidth`；真实 320/390/768/1440 宽度由历史外部浏览器结果补足；本次详情/历史刷新无真实后端/浏览器审计；CI Node 20.19.0/22 未在本轮实际远程运行。
 
 ## 当前场景映射
 
@@ -40,7 +40,7 @@
 | ContainerDetailPage 窄屏布局不横向溢出且长内容可读 | 768px 与桌面的共享布局 | 部分覆盖 | ../../../src/test/DetailPagesLayout.test.js::tc_container_css_03_768_desktop | 断言共享 `minmax(min(460px, 100%), 1fr)` 与换行边界；真实 768/1440 布局由外部 26/315 补足。 |
 | ContainerDetailPage 窄屏布局不横向溢出且长内容可读 | 缺少 bind 路径或存在无空格长串 | 部分覆盖 | ../../../src/test/ContainerDetailBindPath.test.jsx::it.each(%s 显示未记录且没有复制候选)；../../../src/test/DetailPagesLayout.test.js::tc_container_css_01_390_title_path | 缺失路径由组件测试覆盖；长串与 320px 无溢出由 CSS 契约和外部 26/315 补足。 |
 
-## 最近验证
+## 最近验证（2026-10-21 历史）
 
 - 时间：2026-10-21 15:38 +08:00（父代理最终全量）；历史记录保留 2026-10-21 04:01:26 的 a98e51d 基线。
 - 版本：当前工作区最终实现；历史基线 `a98e51d`。
@@ -86,16 +86,19 @@
 | 账号卡密码重置请求与受理 | 受理后立即展示 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_reset_request_and_result | 断言响应后立即出现一项凭据弹窗，不等待轮询。 |
 | 账号卡密码重置请求与受理 | 后续结果只看 oplog | 待复核 | — | 未在 UI 用例中断言刷新 oplog 的 reset_container_password 记录；保留缺口。 |
 | 账号卡密码重置请求与受理 | 重置失败不泄露密码 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_reset_request_and_result | 失败响应夹带 secret，断言错误参数不含 secret。 |
-| 账号卡密码重置请求与受理 | 受理凭据数量或字段非法 | 已覆盖 | ../../../src/test/credentialResponse.test.js::test_credential_shape_and_counts | 断言 reset/ROOT 非预期项数与空字段被拒。 |
-| 详情页 ROOT 提升默认单目标 | 只提升目标 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_transfer_single_target | 断言只发一次 updateRole，transfer_root=false，且无旧 ROOT 降级调用。 |
-| 详情页 ROOT 提升默认单目标 | 普通 ADMIN/COLLABORATOR 互换不生成密码 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_main_flow_password_integration | 断言普通角色切换无凭据弹窗、沿用“角色已更新”。 |
-| 详情页 ROOT 提升只展示 root 单凭据 | 只展示 root 一项 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_transfer_one_credential | 断言只显示 root 一项，不要求第二项。 |
-| 详情页 ROOT 提升只展示 root 单凭据 | 凭据不是恰好一项 | 已覆盖 | ../../../src/test/credentialResponse.test.js::test_credential_shape_and_counts | parser 断言 transfer_root=false 的 0/2 项非法。 |
-| 详情页 ROOT 提升只展示 root 单凭据 | 提升失败或结果未知 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_main_flow_password_integration | 断言 rejection 无成功提示、显示脱敏错误。 |
+| 账号卡密码重置请求与受理 | 受理凭据数量或字段非法 | 已覆盖 | ../../../src/test/credentialResponse.test.js::test_non_root_credentials_require_exactly_one_complete_item | 断言 reset 非预期项数与空字段被拒。 |
+| 详情页 ROOT 上位统一交接 | 只提交一次无分支交接请求 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_handover_sends_one_request_without_flag_and_shows_both_credentials | 断言只发一次 updateRole，请求体无 `transfer_root`，无旧 ROOT 降级调用，也无第二个 HTTP。 |
+| 详情页 ROOT 上位统一交接 | 普通 ADMIN/COLLABORATOR 互换不生成密码 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_main_flow_password_integration | 断言普通角色切换无凭据弹窗、沿用“角色已更新”。 |
+| 详情页 ROOT 交接展示全部凭据且不乐观更新 | 展示原 owner 与 root 两项 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_handover_sends_one_request_without_flag_and_shows_both_credentials | 断言弹窗同时显示原 owner 与永久 root 两项，不只展示 root。 |
+| 详情页 ROOT 交接展示全部凭据且不乐观更新 | 历史多个旧 owner 的 N+1 项全部展示 | 已覆盖 | ../../../src/test/credentialResponse.test.js::test_root_handover_accepts_two_or_more_distinct_complete_credentials；../../../src/test/EditUserModalPasswords.test.jsx::test_home_root_handover_preserves_n_plus_one_and_normal_role_swaps_password_free | parser 断言 3 项原样保留；Home 用例断言 N+1 不截断，详情复用同一弹窗与数组。 |
+| 详情页 ROOT 交接展示全部凭据且不乐观更新 | 凭据少于两项、重复或字段非法 | 已覆盖 | ../../../src/test/credentialResponse.test.js::test_root_handover_rejects_short_duplicate_or_incomplete_credentials；../../../src/test/containerApiCredentials.test.js::test_root_update_rejects_single_credential_without_retry_or_second_request | 断言少于 2 项、空字段、重复 login_name/password 及 API 单凭据均被拒。 |
+| 详情页 ROOT 交接展示全部凭据且不乐观更新 | 目标成为 ROOT 不乐观更新 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_handover_waits_for_authoritative_detail_and_clears_passwords_on_close | 断言立即重取仍为旧角色时目标不提前显示 ROOT；完整详情返回旧 ROOT→ADMIN、目标→ROOT 后才收敛。 |
+| 详情页 ROOT 交接展示全部凭据且不乐观更新 | 提升失败或结果未知 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_handover_failure_shows_error_without_credentials_or_success | 断言 rejection 无成功提示、无凭据弹窗、只显示脱敏错误。 |
+| 详情页 ROOT 交接展示全部凭据且不乐观更新 | 关闭弹窗清空全部密码 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_handover_waits_for_authoritative_detail_and_clears_passwords_on_close | 断言关闭后两项密码从 DOM 消失，localStorage/sessionStorage 为空。 |
 | ContainerDetailPage 主流程 | 启动已受理 | 待复核 | — | 历史主流程场景未在本 change 重跑或重新断言；保留旧台账缺口。 |
 | ContainerDetailPage 主流程 | 新增协作者先拿密码再加入 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_add_collaborator_credentials | 断言先展示密码、不乐观插入账号。 |
 | ContainerDetailPage 主流程 | 普通角色切换保持原响应 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_main_flow_password_integration | 断言普通角色沿用原成功提示、无密码弹窗。 |
-| ContainerDetailPage 主流程 | 详情页 ROOT 提升受理后不等待后台 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_transfer_one_credential | 断言立即展示一项凭据，不阻塞 Node，不提前改角色。 |
+| ContainerDetailPage 主流程 | 详情页 ROOT 交接受理后不等待后台 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_handover_sends_one_request_without_flag_and_shows_both_credentials | 断言立即展示原 owner 与 root 两项，不阻塞 Node，不提前改角色。 |
 
 - 2026-10-24 增量验证：主 spec SHA256 `2f0fe32c4f66c24d316e3952cfbd8f15c6435676ed45fc911af80f526200feb2`；实现提交 `f14a16f`；全量证据 `npm test` Web 77/686 + server 40，0 failed/0 skipped；定向 `ContainerDetailPasswords.test.jsx` 6/6、`ContainerResourcePermission.test.jsx` 3/3。
 - 未覆盖/待复核保留：ADMIN 新增单独断言、缺 user_id/提交前状态变化、oplog 刷新、旧“启动已受理”。这些不写成已覆盖。
@@ -133,4 +136,14 @@
 - 日志：`E:/AI/Fuxi_audit_artifacts/detail-refresh-2026-10-24/`（`RED-*`、`RED2-*`、`full-npm-test-final3.log`、`build-final3.log`、`openspec-validate-final3.log`）。
 - 限制：测试为 jsdom + 拦截 5s interval 的确定性回调/延迟 Promise，不覆盖真实浏览器可见性事件和真实后端时序；主代理已有独立浏览器 RED（`RED-history-live.json`），当前源码仍待其复验；本 capability 历史真实浏览器结果不对应本轮实现。
 
-- 父代理真实 Chromium 复验：`GREEN-history.json` 四项检查通过，覆盖受理密码、延迟成员、其他详情字段及延迟操作历史；使用 mock Ctrl API，不代表真实后端时序。
+## 2026-10-24 ROOT 交接统一验证
+
+- 时间：2026-10-24 +08:00。
+- 版本：基线 `97fd6c5` + 当前工作区未提交改动；本轮保留另一 DSH 已完成的完整详情/操作历史 5s 刷新生命周期修复，并在其上统一 ROOT 交接。
+- 主 spec SHA256：`5a44ca43e9997c71b810a1e93204f5b2462c815c1c0f59bdb7d5b363eeecb3b7`。
+- RED（先写测试、未改实现）：焦点 6 files / 30 tests 中 11 failed / 19 passed。关键失败为：ROOT 请求仍带 `transfer_root:false/true`、ROOT 单凭据被 API 接受（single bypass）、parser 忽略 `rootHandover` 并拒绝两项、详情与 Home 契约测试仍断言旧 flag、ROOT 两项/关闭清密用例失败。
+- GREEN 焦点：6 files / 30 tests 全部通过；`ContainerDetailRefresh.test.jsx` 18/18 保持通过；详情页 ROOT 用例断言只发一次无 flag 请求、同时展示原 owner 与永久 root 两项、立即重取仍为旧角色时不乐观更新、完整详情返回后才收敛、关闭后 DOM/Storage 无密码。
+- 全量：`npm test` 通过 Web 78 files/708 tests + server 40 tests（0 failed/0 skipped）；`npm run build` 15.17s 通过；`npm run lint` 通过；`openspec validate --specs --strict` 28/28 通过。
+- 真实浏览器（复用外部 Playwright 脚本，mock Ctrl API，不操作真实 DB）：`ROOT-after-web-fix` 4/4 检查通过；请求序列仅一次 `update_role` 且无 `transfer_root`，弹窗同时显示 `root` 与 `former_owner` 两项，关闭后两项密码消失，后台权威详情收敛为旧 owner ADMIN + 恰好一个新 ROOT。
+- 限制：jsdom 焦点测试；Ctrl 后台 true/false/省略兼容与真实 Node 时序不在本仓验证；未操作真实 DB。
+- 日志：`E:/AI/Fuxi_audit_artifacts/root-handover-2026-10-24/`（`web-RED-focused.log`、`web-GREEN-focused.log`、`web-GREEN-detail-refresh-18.log`、`web-GREEN-npm-test.log`、`web-GREEN-build.log`、`web-GREEN-lint.log`、`web-GREEN-openspec-strict.log`）。

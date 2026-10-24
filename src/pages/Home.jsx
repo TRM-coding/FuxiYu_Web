@@ -1164,7 +1164,11 @@ const Home = () => {
           onBack={returnToDetail}
           usersList={usersList}
           usersLoading={usersLoading}
-          onCredentialAccepted={(credentials) => setCredentialModal({ open: true, credentials })}
+          onCredentialAccepted={(credentials) => {
+            setCredentialModal({ open: true, credentials });
+            // 受理只代表 Ctrl 已接管交接；角色结果以权威列表事实收敛，不做本地乐观改写。
+            loadContainersRef.current?.({ silent: true });
+          }}
         />
         <CredentialModal
           open={credentialModal.open}

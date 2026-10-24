@@ -71,7 +71,7 @@ export const sanitizeCredentialError = (err, fallback = CREDENTIAL_ERROR_FALLBAC
 };
 
 export const parseCredentialResponse = (body, options = {}) => {
-  const { transferRoot, expectedCount, allowLegacyCreate = false } = options;
+  const { rootHandover = false, expectedCount, allowLegacyCreate = false } = options;
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw makeError(null, {}, CREDENTIAL_ERROR_FALLBACK);
   }
@@ -100,11 +100,23 @@ export const parseCredentialResponse = (body, options = {}) => {
     }
     return { ...item, login_name: loginName, password };
   });
-  const countValid = transferRoot === true
-    ? normalized.length >= 2
-    : normalized.length === 1;
-  if (!countValid || (expectedCount && normalized.length !== expectedCount)) {
-    throw makeError(body);
+  if (rootHandover) {
+    // ROOT 上位始终是交接：至少包含永久 root 与原 owner 独立账号两项；
+    // 历史多旧 owner 允许 N+1 项，不做“恰好 2 项”硬编码。
+    if (normalized.length < 2) throw makeError(body);
+    const loginNames = new Set();
+    const passwords = new Set();
+    for (const item of normalized) {
+      const loginKey = item.login_name.trim();
+      if (loginNames.has(loginKey) || passwords.has(item.password)) {
+        throw makeError(body);
+      }
+      loginNames.add(loginKey);
+      passwords.add(item.password);
+    }
+  } else {
+    const expected = expectedCount ?? 1;
+    if (normalized.length !== expected) throw makeError(body);
   }
   return {
     ...body,

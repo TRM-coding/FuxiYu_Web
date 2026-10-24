@@ -54,7 +54,7 @@ describe('container credential contract', () => {
     await createContainer({ container: { NAME: 'c1' } });
     await addCollaborator({ user_id: 2, container_id: 12, role: 'ADMIN' });
     await resetContainerPassword({ container_id: 12, user_id: 2 });
-    await updateRole({ container_id: 12, user_id: 2, updated_role: 'ROOT', transfer_root: true });
+    await updateRole({ container_id: 12, user_id: 2, updated_role: 'ROOT' });
     await resurrectDeletedContainer(7);
 
     fetchMock.mock.calls.forEach(([, options]) => {
@@ -75,8 +75,10 @@ describe('container credential contract', () => {
     expect(read('pages/Home.jsx')).toContain('CredentialModal');
     expect(read('pages/DeletedContainers.jsx')).toContain('CredentialModal');
     expect(read('components/EditUserModal.jsx')).toContain('onCredentialAccepted');
-    expect(read('components/EditUserModal.jsx')).toContain('transfer_root: true');
-    expect(read('pages/ContainerDetailPage.jsx')).toContain('transfer_root: false');
+    expect(read('api/container_api.jsx')).toContain('rootHandover: true');
+    expect(read('api/container_api.jsx')).not.toMatch(/transfer_root|transferRoot/);
+    expect(read('components/EditUserModal.jsx')).not.toContain('transfer_root');
+    expect(read('pages/ContainerDetailPage.jsx')).not.toContain('transfer_root');
     expect(read('pages/ManageUser.jsx')).not.toContain('CredentialModal');
   });
 });

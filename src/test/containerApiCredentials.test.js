@@ -86,24 +86,45 @@ describe('container credential API boundary', () => {
     expect(fetchMock.mock.calls[1][1].cache).toBe('no-store');
   });
 
-  it('test_credential_shape_and_counts handles transfer_root false/true and non-root role changes', async () => {
+  it('test_root_update_is_always_handover_without_flag_and_accepts_n_plus_one', async () => {
+    const two = [credential('root_user', 'pw-owner'), credential('root', 'pw-root')];
+    const three = [...two, credential('legacy_root', 'pw-legacy')];
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(res({ success: 1, accepted: true, credentials: [credential('root')] }))
-      .mockResolvedValueOnce(res({ success: 1, accepted: true, credentials: [credential('old'), credential('root')] }))
+      .mockResolvedValueOnce(res({ success: 1, accepted: true, credentials: two }))
+      .mockResolvedValueOnce(res({ success: 1, accepted: true, credentials: three }))
       .mockResolvedValueOnce(res({ success: 1, message: 'Role updated successfully' }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const detail = await updateRole({ container_id: 9, user_id: 2, updated_role: 'ROOT', transfer_root: false });
-    expect(detail.credentials).toHaveLength(1);
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).transfer_root).toBe(false);
+    const handover = await updateRole({ container_id: 9, user_id: 2, updated_role: 'ROOT' });
+    expect(handover.credentials).toEqual(two);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      container_id: 9, user_id: 2, updated_role: 'ROOT',
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('transfer_root');
 
-    const home = await updateRole({ container_id: 9, user_id: 2, updated_role: 'ROOT', transfer_root: true });
-    expect(home.credentials).toHaveLength(2);
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).transfer_root).toBe(true);
+    const historical = await updateRole({ container_id: 9, user_id: 2, updated_role: 'ROOT' });
+    expect(historical.credentials).toEqual(three);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).not.toHaveProperty('transfer_root');
 
     const ordinary = await updateRole({ container_id: 9, user_id: 2, updated_role: 'ADMIN' });
     expect(ordinary.credentials).toBeUndefined();
-    expect(JSON.parse(fetchMock.mock.calls[2][1].body).transfer_root).toBeUndefined();
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({
+      container_id: 9, user_id: 2, updated_role: 'ADMIN',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('test_root_update_rejects_single_credential_without_retry_or_second_request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(res({
+      success: 1,
+      accepted: true,
+      credentials: [credential('root')],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(updateRole({ container_id: 9, user_id: 2, updated_role: 'ROOT' })).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('transfer_root');
   });
 
   it('test_add_and_role_requests_use_web_contract_without_secrets', async () => {
@@ -111,8 +132,8 @@ describe('container credential API boundary', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(accepted())
       .mockResolvedValueOnce(accepted())
-      .mockResolvedValueOnce(res({ success: 1, accepted: true, credentials: [credential('root')] }))
-      .mockResolvedValueOnce(res({ success: 1, accepted: true, credentials: [credential('old'), credential('root')] }))
+      .mockResolvedValueOnce(res({ success: 1, accepted: true, credentials: [credential('root_user', 'pw-owner'), credential('root', 'pw-root')] }))
+      .mockResolvedValueOnce(res({ success: 1, accepted: true, credentials: [credential('root_user', 'pw-owner'), credential('legacy_root', 'pw-legacy'), credential('root', 'pw-root')] }))
       .mockResolvedValueOnce(res({ success: 1, accepted: true, credentials: [credential('root')] }))
       .mockResolvedValueOnce(res({ success: 1, accepted: true, credentials: [credential('root')] }));
     vi.stubGlobal('fetch', fetchMock);
@@ -125,14 +146,16 @@ describe('container credential API boundary', () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
       user_id: 2, container_id: 9, role: 'ADMIN',
     });
-    await updateRole({ container_id: 9, user_id: 2, updated_role: 'ROOT', transfer_root: false });
+    await updateRole({ container_id: 9, user_id: 2, updated_role: 'ROOT' });
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({
-      container_id: 9, user_id: 2, updated_role: 'ROOT', transfer_root: false,
+      container_id: 9, user_id: 2, updated_role: 'ROOT',
     });
-    await updateRole({ container_id: 9, user_id: 2, updated_role: 'ROOT', transfer_root: true });
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).not.toHaveProperty('transfer_root');
+    await updateRole({ container_id: 9, user_id: 2, updated_role: 'ROOT' });
     expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toEqual({
-      container_id: 9, user_id: 2, updated_role: 'ROOT', transfer_root: true,
+      container_id: 9, user_id: 2, updated_role: 'ROOT',
     });
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).not.toHaveProperty('transfer_root');
     await resetContainerPassword({ container_id: 9, user_id: 2 });
     expect(JSON.parse(fetchMock.mock.calls[4][1].body)).toEqual({ container_id: 9, user_id: 2 });
     await createContainer({ container: { NAME: 'c1' }, user_id: 2 });

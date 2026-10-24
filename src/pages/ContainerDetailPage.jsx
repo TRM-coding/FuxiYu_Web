@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, Button, Checkbox, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, TeamOutlined, UnlockOutlined } from '@ant-design/icons';
@@ -160,6 +160,7 @@ const ContainerDetailPage = () => {
   const loadingRequestSeqRef = useRef(0);
   const detailMountedRef = useRef(true);
   const usersRequestSeqRef = useRef(0);
+  const navigationEpochRef = useRef(0);
   const containerIdRef = useRef(containerId);
   containerIdRef.current = containerId;
   const {
@@ -350,6 +351,14 @@ const ContainerDetailPage = () => {
       usersRequestSeqRef.current += 1;
     };
   }, []);
+
+  useLayoutEffect(() => {
+    // 导航 epoch 与 5s 详情刷新序号分离：同容器慢请求不会被周期刷新淘汰，
+    // 但 A→B→A 返回同 ID 时，离开前的旧凭据请求也不得通过。
+    navigationEpochRef.current += 1;
+    setCredentials(prev => (prev.length ? [] : prev));
+    setResetConfirm(prev => (prev ? null : prev));
+  }, [containerId]);
 
   useEffect(() => {
     loadDetail();
@@ -608,17 +617,27 @@ const ContainerDetailPage = () => {
     // 成员变更后重取候选用户；平台用户列表不参与 5s 周期轮询。
     await loadUsers();
   };
+  // 凭据/角色请求返回时，页面可能已切换容器、离开后返回同 ID 或卸载。
+  const isCurrentContainerRequest = (requestContainerId, requestNavigationEpoch) => (
+    detailMountedRef.current
+    && requestNavigationEpoch === navigationEpochRef.current
+    && String(containerIdRef.current) === String(requestContainerId)
+  );
   const handleAddUser = async () => {
     if (!selectedUserId || !containerId) return;
+    const requestContainerId = String(containerId);
+    const requestNavigationEpoch = navigationEpochRef.current;
     setPeopleSaving(true);
     try {
       const res = await addCollaborator({ user_id: selectedUserId, container_id: Number(containerId), role: selectedRole });
+      if (!isCurrentContainerRequest(requestContainerId, requestNavigationEpoch)) return;
       setSelectedUserId(null);
       setSelectedRole(ROLE.COLLABORATOR);
       setCredentials(res?.credentials || []);
       message.success('新增协作者请求已受理');
       await refreshAfterPeopleChange();
     } catch (err) {
+      if (!isCurrentContainerRequest(requestContainerId, requestNavigationEpoch)) return;
       await showErrorModal({ message: err?.message || '添加用户失败', status: err?.status, route: err?.route });
     } finally {
       setPeopleSaving(false);
@@ -639,23 +658,29 @@ const ContainerDetailPage = () => {
   };
   const handleRoleChange = async (userId, updatedRole) => {
     if (!userId || !containerId) return;
+    const requestContainerId = String(containerId);
+    const requestNavigationEpoch = navigationEpochRef.current;
     setPeopleSaving(true);
     try {
       if (updatedRole === ROLE.ROOT) {
+        // 与 Home 共用同一 ROOT 交接语义：只发一次目标请求，由 Ctrl 后台降旧 ROOT、
+        // 升目标为唯一 ROOT，并返回永久 root 与原 owner 独立账号的凭据。
         const res = await updateRole({
           container_id: Number(containerId),
           user_id: userId,
           updated_role: ROLE.ROOT,
-          transfer_root: false,
         });
+        if (!isCurrentContainerRequest(requestContainerId, requestNavigationEpoch)) return;
         setCredentials(res?.credentials || []);
-        message.success('ROOT 提升请求已受理');
+        message.success('ROOT 交接请求已受理');
       } else {
         await updateRole({ container_id: Number(containerId), user_id: userId, updated_role: updatedRole });
+        if (!isCurrentContainerRequest(requestContainerId, requestNavigationEpoch)) return;
         message.success('角色已更新');
       }
       await refreshAfterPeopleChange();
     } catch (err) {
+      if (!isCurrentContainerRequest(requestContainerId, requestNavigationEpoch)) return;
       await showErrorModal({ message: err?.message || '更新角色失败', status: err?.status, route: err?.route });
     } finally {
       setPeopleSaving(false);
@@ -673,16 +698,20 @@ const ContainerDetailPage = () => {
       setResetConfirm(null);
       return;
     }
+    const requestContainerId = String(containerId);
+    const requestNavigationEpoch = navigationEpochRef.current;
     setResetSaving(true);
     try {
       const res = await resetContainerPassword({
         container_id: Number(containerId),
         user_id: Number(account.user_id),
       });
+      if (!isCurrentContainerRequest(requestContainerId, requestNavigationEpoch)) return;
       setCredentials(res?.credentials || []);
       setResetConfirm(null);
       message.success('重置密码请求已受理');
     } catch (err) {
+      if (!isCurrentContainerRequest(requestContainerId, requestNavigationEpoch)) return;
       await showErrorModal({ message: err?.message || '重置密码失败', status: err?.status, route: err?.route });
     } finally {
       setResetSaving(false);

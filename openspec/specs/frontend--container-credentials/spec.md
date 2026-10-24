@@ -8,7 +8,7 @@
 
 ### Requirement: 一次性凭据响应的结构校验
 
-Web SHALL 在响应包含 `accepted` 或 `credentials` 时严格解析：仅当 `accepted === true` 且 `credentials` 为非空数组时进入密码展示；每项 MUST 提供非空字符串 `login_name` 与非空字符串 `password`，MAY 不含 `user_id`。创建、新增协作者、单账号重置与容器恢复 SHALL 恰好 1 项。ROOT 请求 SHALL 带纯布尔 `transfer_root`，默认 false：false 时（详情页）只重置 `root`，SHALL 恰好 1 项；true 时（Home/EditUserModal）保留既有交接，正常单个旧 ROOT 为 2 项，历史多旧 ROOT 为所有涉及账号 + `root` 的 N+1 项，可 >2。Web MUST 以响应 `login_name` 作为展示登录名，MUST NOT 用前端账号文本覆盖、截断、去重或合成额外项。
+Web SHALL 在响应包含 `accepted` 或 `credentials` 时严格解析：仅当 `accepted === true` 且 `credentials` 为非空数组时进入密码展示；每项 MUST 提供非空字符串 `login_name` 与非空字符串 `password`，MAY 不含 `user_id`。创建、新增协作者、单账号重置与容器恢复 SHALL 恰好 1 项。ROOT 交接的专项约束见下一 Requirement。Web MUST 以响应 `login_name` 作为展示登录名，MUST NOT 用前端账号文本覆盖。
 
 #### Scenario: 创建受理返回一项
 
@@ -21,24 +21,6 @@ Web SHALL 在响应包含 `accepted` 或 `credentials` 时严格解析：仅当 
 - **GIVEN** 新增协作者（ADMIN 或 COLLABORATOR）返回 `accepted: true` 与一项 `login_name=<新协作者绑定 username>` 的凭据
 - **WHEN** Web 解析响应
 - **THEN** 得到该项凭据并展示；不把前端选择的展示名当作 login_name，不插入未确认的本地账号行
-
-#### Scenario: 详情页 ROOT 提升只返回 root
-
-- **GIVEN** 请求 `transfer_root:false` 或无该字段，详情页把非 ROOT 账号提升为 ROOT
-- **WHEN** Ctrl 返回 `accepted: true` 与一项 `login_name=root`
-- **THEN** Web 只展示该项；不降旧 ROOT、不生成旧 ROOT 凭据、不要求第二项
-
-#### Scenario: Home 交接常规两项
-
-- **GIVEN** 请求 `transfer_root:true`，单个旧 ROOT 交接返回 `accepted: true`，credentials 为旧 ROOT 独立账号与 `root` 两项不同登录名
-- **WHEN** Web 解析响应
-- **THEN** 原样保留两项及各自 login_name；不重排、不合并、不假设共享同一 root 密码
-
-#### Scenario: 历史多 ROOT 全部保留
-
-- **GIVEN** 请求 `transfer_root:true`，历史多旧 ROOT 容器交接返回所有涉及账号 + `root`，credentials 为 N+1 项
-- **WHEN** Web 解析并渲染
-- **THEN** 逐项保留并展示全部 login_name，不截断、不丢弃涉及账号、不为凑固定项数改写任何角色
 
 #### Scenario: 恢复成功返回 root 凭据
 
@@ -57,6 +39,28 @@ Web SHALL 在响应包含 `accepted` 或 `credentials` 时严格解析：仅当 
 - **GIVEN** 前端账号卡展示名与响应 `login_name` 不同
 - **WHEN** Web 渲染凭据
 - **THEN** 使用响应中的 `login_name`，不使用前端展示名或本地推断的账号
+
+### Requirement: ROOT 交接凭据的结构校验
+
+ROOT 上位/交接 SHALL 作为统一交接处理：Web MUST NOT 发送 `transfer_root`，每个入口只提交一次 `update_role`，由 Ctrl 后台完成旧 ROOT 降级与目标成为唯一 ROOT。受理响应 MUST 至少 2 项且每项 `login_name`/`password` 非空并互不相同；正常为原 owner 独立用户名 + 永久 `root` 两项，历史多个旧 owner 为所有涉及账号 + `root` 的 N+1 项。Web MUST 原样展示全部项，MUST NOT 截断为两项、丢弃涉及账号、去重、合成或改写角色。
+
+#### Scenario: ROOT 交接常规两项
+
+- **GIVEN** 详情页或 Home 把非 ROOT 账号选为 ROOT，Web 只提交一次不带 `transfer_root` 的 `update_role`
+- **WHEN** Ctrl 返回 `accepted: true`，credentials 为原 owner 独立用户名与永久 `root` 两项不同 `login_name`/`password`，Web 解析响应
+- **THEN** 原样保留两项及各自 login_name；不重排、不合并、不假设共享同一 root 密码
+
+#### Scenario: 历史多旧 ROOT 全部保留
+
+- **GIVEN** 历史多旧 ROOT 容器交接返回所有涉及账号 + `root`，credentials 为 N+1 项
+- **WHEN** Web 解析并渲染
+- **THEN** 逐项保留并展示全部 login_name，不截断、不丢弃涉及账号、不为凑固定项数改写任何角色
+
+#### Scenario: ROOT 凭据必须完整且互不相同
+
+- **GIVEN** 任一 ROOT 入口响应 `accepted: true`，但 credentials 少于 2 项、任意项 login_name/password 为空，或 login_name/password 重复
+- **WHEN** Web 校验
+- **THEN** 不展示任何部分密码，显示通用“响应异常”错误；不自动重试、不写入成功状态
 
 ### Requirement: 旧响应与无凭据兼容
 
@@ -102,15 +106,15 @@ Web SHALL 在响应包含 `accepted` 或 `credentials` 时严格解析：仅当 
 - **WHEN** Web 构造错误
 - **THEN** 错误保留 8GB/4GB 的安全 message 数值，同时剥离所有 secret 与 unsafe 原始 body；console/错误弹窗不出现密码
 
-#### Scenario: transfer_root:false 凭据不是恰好一项
+#### Scenario: ROOT 交接凭据少于两项或字段非法
 
-- **GIVEN** 详情页请求 `transfer_root:false`，响应 `accepted: true`，但 credentials 缺失、不是数组、项数不是 1，或 login_name/password 为空
+- **GIVEN** 任一 ROOT 入口响应 `accepted: true`，但 credentials 缺失、不是数组、少于 2 项，或任一项 login_name/password 为空
 - **WHEN** Web 校验
 - **THEN** 不展示任何部分密码，显示通用“响应异常”错误，不自动重试、不写入成功状态
 
-#### Scenario: transfer_root:true 凭据少于两项
+#### Scenario: ROOT 交接凭据重复
 
-- **GIVEN** Home 请求 `transfer_root:true`，响应 `accepted: true`，但 credentials 缺失、不是数组、少于 2 项，或 login_name/password 为空
+- **GIVEN** 任一 ROOT 入口响应 `accepted: true` 且至少 2 项，但 login_name 或 password 重复
 - **WHEN** Web 校验
 - **THEN** 不展示任何部分密码，显示通用“响应异常”错误，不自动重试、不写入成功状态
 
@@ -160,7 +164,7 @@ Ctrl SHALL 在受理前执行三层既有守卫：方法层 `container:operation
 
 ### Requirement: 受控一次性密码弹窗
 
-Web SHALL 使用专用受控弹窗展示密码，复用既有确认弹窗的视觉外观，但 MUST NOT 调用 `showErrorModal`，MUST NOT 将密码交给错误日志、错误上报或任何全局错误通道。弹窗每一项 MUST 严格显示“重置后{login_name}的密码：”及该密码；响应有 N 项时 SHALL 显示 N 行。弹窗 SHALL 提供逐项复制与关闭操作；复制失败 SHALL 显示普通失败提示且不记录密码。关闭弹窗、组件卸载或路由离开时，Web MUST 立即从组件状态清除全部密码与引用，MUST NOT 重新展示或提供“再次查看”。该保证是 DOM/状态层不可回看，不承诺 JavaScript 字符串物理零化。
+Web SHALL 使用专用受控弹窗展示密码，复用既有确认弹窗的视觉外观，但 MUST NOT 调用 `showErrorModal`，MUST NOT 将密码交给错误日志、错误上报或任何全局错误通道。弹窗每一项 MUST 严格显示“重置后{login_name}的密码：”及该密码；响应有 N 项时 SHALL 显示 N 行。弹窗 SHALL 提供逐项复制与关闭操作；复制失败 SHALL 显示普通失败提示且不记录密码。关闭弹窗、组件卸载或路由离开时，Web MUST 立即从组件状态清除全部密码与引用，MUST NOT 重新展示或提供“再次查看”。异步凭据返回 MUST 校验发起时的容器与弹窗会话仍有效；旧路由、已关闭弹窗、已卸载组件或已切换容器的响应 MUST NOT 写入密码、提示受理成功或弹出错误。同一人员弹窗的 ROOT 请求在途时 MUST NOT 重复提交，控件 SHALL 呈 disabled，并在完成或失败后释放 busy。该保证是 DOM/状态层不可回看，不承诺 JavaScript 字符串物理零化。
 
 #### Scenario: 单凭据展示与复制
 
@@ -168,23 +172,51 @@ Web SHALL 使用专用受控弹窗展示密码，复用既有确认弹窗的视�
 - **WHEN** 弹窗打开并点击复制
 - **THEN** 行文案精确为“重置后alice的密码：”加该密码；剪贴板写入同一密码，不写入其他字段
 
-#### Scenario: ROOT 交接两项展示
+#### Scenario: ROOT 交接两项或 N+1 全部展示
 
-- **GIVEN** 收到旧 ROOT 独立账号与 `root` 两项凭据
+- **GIVEN** 收到原 owner 独立账号与永久 `root` 两项凭据，或历史多旧 owner 的 N+1 项凭据
 - **WHEN** 弹窗打开
-- **THEN** 两行分别使用各自 login_name 与密码，文案均为严格格式，不合并、不省略、不补行
+- **THEN** 每一项分别使用各自 login_name 与密码，文案均为严格格式；不合并、不省略、不补行，也不截断为两项
 
 #### Scenario: 关闭或卸载后不可再查看
 
 - **GIVEN** 用户已看到密码弹窗
 - **WHEN** 点击关闭、按 Esc、切换路由或组件卸载
-- **THEN** 组件状态中的密码被清空；重新挂载或刷新页面不显示该密码，也没有查回请求
+- **THEN** 组件状态中的密码被清空；重新挂载或刷新页面不显示该密码，也没有查回请求；详情页与 Home 的父组件 MUST 在 `onClose` 中立即清空 credentials
 
 #### Scenario: 复制失败
 
 - **GIVEN** 浏览器拒绝剪贴板写入
 - **WHEN** 用户点击复制
 - **THEN** 显示普通“复制失败”反馈；密码仍在当前弹窗中可见直到关闭，console/oplog 不出现密码
+
+#### Scenario: 旧容器、关闭或卸载后的凭据晚到
+
+- **GIVEN** 详情页 ROOT 请求已发出后切换容器，或人员弹窗 ROOT/新增请求已发出后关闭弹窗或卸载组件
+- **WHEN** 旧响应晚到
+- **THEN** 不写入或展示任何密码，不提示受理成功，也不弹错误窗；不重新打开旧会话的弹窗
+
+#### Scenario: ROOT 请求在途重复提交
+
+- **GIVEN** 人员弹窗的 ROOT 交接请求尚未返回
+- **WHEN** 用户再次选择 ROOT
+- **THEN** 只保留一次 `update_role`，角色控件呈 disabled；请求完成或失败后 finally 释放，不因重复提交产生第二组凭据
+
+### Requirement: 容器导航与凭据生命周期
+
+详情页在容器 ID 变化时 SHALL 立即清空已展示的 credentials、resetConfirm 与打开中的弹窗。页面 SHALL 维护独立的导航 epoch；异步凭据/角色/新增/重置请求返回时 MUST 同时校验发起容器与导航 epoch。离开容器后即使返回同一 ID，离开前发起的响应 MUST NOT 写密码、提示成功或弹错误。该 epoch MUST NOT 复用 5 秒详情刷新请求序号，同容器慢请求不得因周期刷新被淘汰。
+
+#### Scenario: 切换容器立即清空已打开凭据与重置确认
+
+- **GIVEN** 详情页已打开密码弹窗或重置确认框
+- **WHEN** 用户切换到另一容器 ID
+- **THEN** 密码与重置确认立即清除，新容器不显示旧容器的凭据或确认框
+
+#### Scenario: 离开后返回同一容器 ID 的旧响应拒绝
+
+- **GIVEN** 容器 A 的 ROOT/新增/重置请求尚未返回，用户从 A 切到 B 再回到 A
+- **WHEN** 离开 A 前的旧响应晚到
+- **THEN** 导航 epoch 已变化，不写入密码、不提示成功、不弹错误；不能仅因当前容器 ID 相同而接受旧请求
 
 ### Requirement: 密码不进入持久化、日志与回查通道
 

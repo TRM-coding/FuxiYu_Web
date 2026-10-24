@@ -10,46 +10,57 @@ const body = (overrides = {}) => ({
 });
 
 describe('credentialResponse', () => {
-  it('test_credential_shape_and_counts accepts 1 for create/add/reset and 1 root for transfer_root false', () => {
+  it('test_non_root_credentials_require_exactly_one_complete_item', () => {
     expect(parseCredentialResponse(body(), { expectedCount: 1 }).credentials).toEqual([
       { login_name: 'root', password: 'pw-root' },
     ]);
     expect(parseCredentialResponse(body({
       credentials: [{ login_name: 'alice', password: 'pw-a' }],
     }), { expectedCount: 1 }).credentials[0].login_name).toBe('alice');
-    expect(parseCredentialResponse(body(), { transferRoot: false }).credentials).toHaveLength(1);
-    expect(parseCredentialResponse(body({
-      credentials: [
-        { login_name: 'oldroot', password: 'pw-old' },
-        { login_name: 'root', password: 'pw-new' },
-      ],
-    }), { transferRoot: true }).credentials).toHaveLength(2);
-    expect(parseCredentialResponse(body({
-      credentials: [
-        { login_name: 'old1', password: 'pw-1' },
-        { login_name: 'old2', password: 'pw-2' },
-        { login_name: 'root', password: 'pw-3' },
-      ],
-    }), { transferRoot: true }).credentials).toHaveLength(3);
-  });
-
-  it('test_credential_shape_and_counts rejects wrong counts and missing fields', () => {
     expect(() => parseCredentialResponse(body({ credentials: [] }), { expectedCount: 1 })).toThrow();
     expect(() => parseCredentialResponse(body({
       credentials: [
-        { login_name: 'root', password: 'pw' },
-        { login_name: 'other', password: 'pw2' },
+        { login_name: 'a', password: 'pw-a' },
+        { login_name: 'b', password: 'pw-b' },
       ],
-    }), { transferRoot: false })).toThrow();
-    expect(() => parseCredentialResponse(body({
-      credentials: [{ login_name: 'root', password: 'pw' }],
-    }), { transferRoot: true })).toThrow();
+    }), { expectedCount: 1 })).toThrow();
     expect(() => parseCredentialResponse(body({
       credentials: [{ login_name: 'root', password: '' }],
     }), { expectedCount: 1 })).toThrow();
     expect(() => parseCredentialResponse(body({
       credentials: [{ login_name: '', password: 'pw' }],
     }), { expectedCount: 1 })).toThrow();
+  });
+
+  it('test_root_handover_accepts_two_or_more_distinct_complete_credentials', () => {
+    const two = [
+      { login_name: 'root_user', password: 'pw-owner' },
+      { login_name: 'root', password: 'pw-root' },
+    ];
+    expect(parseCredentialResponse(body({ credentials: two }), { rootHandover: true }).credentials).toEqual(two);
+    const three = [...two, { login_name: 'legacy_root', password: 'pw-legacy' }];
+    expect(parseCredentialResponse(body({ credentials: three }), { rootHandover: true }).credentials).toEqual(three);
+  });
+
+  it('test_root_handover_rejects_short_duplicate_or_incomplete_credentials', () => {
+    const owner = { login_name: 'root_user', password: 'pw-owner' };
+    const root = { login_name: 'root', password: 'pw-root' };
+    expect(() => parseCredentialResponse(body({
+      credentials: [{ login_name: 'root', password: 'pw-root' }],
+    }), { rootHandover: true })).toThrow();
+    expect(() => parseCredentialResponse(body({ credentials: [] }), { rootHandover: true })).toThrow();
+    expect(() => parseCredentialResponse(body({
+      credentials: [owner, { ...root, login_name: 'root_user' }],
+    }), { rootHandover: true })).toThrow();
+    expect(() => parseCredentialResponse(body({
+      credentials: [owner, { ...root, password: 'pw-owner' }],
+    }), { rootHandover: true })).toThrow();
+    expect(() => parseCredentialResponse(body({
+      credentials: [owner, { ...root, password: '' }],
+    }), { rootHandover: true })).toThrow();
+    expect(() => parseCredentialResponse(body({
+      credentials: [owner, { ...root, login_name: ' ' }],
+    }), { rootHandover: true })).toThrow();
   });
 
   it('test_credential_legacy_and_empty keeps legacy create and rejects missing acceptance for new flows', () => {

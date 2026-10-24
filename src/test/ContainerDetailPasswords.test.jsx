@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -96,6 +96,18 @@ const selectRole = async (optionName) => {
   await clickOption(optionName);
 };
 
+const peopleCard = () => screen.getByRole('heading', { name: /用户管理/ }).closest('.container-people-card');
+const accountRow = (username, id) => within(peopleCard()).getByText(`@${username} · ID ${id}`).closest('.container-people-item');
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   permissionState.entities = ['container:operation', 'container:manage'];
@@ -110,7 +122,13 @@ beforeEach(() => {
   ] });
   addCollaborator.mockResolvedValue({ accepted: true, credentials: [{ login_name: 'bob', password: 'pw-bob' }] });
   resetContainerPassword.mockResolvedValue({ accepted: true, credentials: [{ login_name: 'alice', password: 'pw-reset' }] });
-  updateRole.mockResolvedValue({ accepted: true, credentials: [{ login_name: 'root', password: 'pw-root' }] });
+  updateRole.mockResolvedValue({
+    accepted: true,
+    credentials: [
+      { login_name: 'root_user', password: 'pw-owner' },
+      { login_name: 'root', password: 'pw-root' },
+    ],
+  });
   vi.spyOn(globalThis, 'setInterval').mockImplementation(() => 1);
   vi.spyOn(globalThis, 'clearInterval').mockImplementation(() => {});
 });
@@ -193,7 +211,7 @@ describe('ContainerDetailPage credential flows', () => {
     expect(args.message).not.toContain('secret');
   });
 
-  it('test_detail_root_transfer_single_target sends transfer_root false and does not demote an old root', async () => {
+  it('test_detail_root_handover_sends_one_request_without_flag_and_shows_both_credentials', async () => {
     renderDetail();
     await screen.findByText('train-a');
     await selectRole('超级管理员');
@@ -202,19 +220,76 @@ describe('ContainerDetailPage credential flows', () => {
       container_id: 12,
       user_id: 2,
       updated_role: 'ROOT',
-      transfer_root: false,
     });
+    expect(updateRole.mock.calls[0][0]).not.toHaveProperty('transfer_root');
     expect(updateRole).not.toHaveBeenCalledWith(expect.objectContaining({ user_id: 1 }));
+    expect(await screen.findByText('重置后root_user的密码：')).toBeInTheDocument();
+    expect(await screen.findByText('重置后root的密码：')).toBeInTheDocument();
+    expect(message.success).toHaveBeenCalledWith('ROOT 交接请求已受理');
+    expect(message.success).not.toHaveBeenCalledWith('角色已更新');
+    expect(updateRole).toHaveBeenCalledTimes(1);
   });
 
-  it('test_detail_root_transfer_one_credential shows one root and does not optimistically change role', async () => {
+  it('test_detail_root_handover_waits_for_authoritative_detail_and_clears_passwords_on_close', async () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    const immediateRefresh = deferred();
+    getContainerDetailInformation.mockReset();
+    getContainerDetailInformation
+      .mockResolvedValueOnce({ container_info: detail() })
+      .mockImplementationOnce(() => immediateRefresh.promise);
+
     renderDetail();
     await screen.findByText('train-a');
     await selectRole('超级管理员');
+
+    expect(await screen.findByText('重置后root_user的密码：')).toBeInTheDocument();
     expect(await screen.findByText('重置后root的密码：')).toBeInTheDocument();
-    expect(screen.queryByText('重置后alice的密码：')).not.toBeInTheDocument();
-    expect(message.success).toHaveBeenCalledWith('ROOT 提升请求已受理');
-    expect(message.success).not.toHaveBeenCalledWith('角色已更新');
+    await waitFor(() => expect(getContainerDetailInformation).toHaveBeenCalledTimes(2));
+
+    // 受理只负责展示凭据；目标角色不得先于权威详情被本地改写。
+    const aliceBefore = accountRow('alice', 2);
+    expect(within(aliceBefore).getAllByText('协作者').length).toBeGreaterThan(0);
+    expect(within(aliceBefore).queryByText('超级管理员')).toBeNull();
+
+    await act(async () => {
+      immediateRefresh.resolve({
+        container_info: detail({
+          accounts: [
+            { user_id: 1, username: 'root_user', role: 'ADMIN' },
+            { user_id: 2, username: 'alice', role: 'ROOT' },
+          ],
+        }),
+      });
+      await immediateRefresh.promise;
+    });
+
+    await waitFor(() => {
+      expect(within(accountRow('alice', 2)).getAllByText('超级管理员').length).toBeGreaterThan(0);
+      expect(within(accountRow('root_user', 1)).getAllByText('管理员').length).toBeGreaterThan(0);
+    });
+    expect(screen.getByText('重置后root_user的密码：')).toBeInTheDocument();
+    expect(screen.getByText('重置后root的密码：')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /关\s*闭/ }));
+    expect(screen.queryByText('重置后root_user的密码：')).not.toBeInTheDocument();
+    expect(screen.queryByText('重置后root的密码：')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('pw-owner');
+    expect(document.body.textContent).not.toContain('pw-root');
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it('test_detail_root_handover_failure_shows_error_without_credentials_or_success', async () => {
+    updateRole.mockRejectedValueOnce(Object.assign(new Error('结果未知'), { status: 409 }));
+    renderDetail();
+    await screen.findByText('train-a');
+    await selectRole('超级管理员');
+    await waitFor(() => expect(showErrorModal).toHaveBeenCalled());
+    expect(updateRole).toHaveBeenCalledTimes(1);
+    expect(updateRole.mock.calls[0][0]).not.toHaveProperty('transfer_root');
+    expect(message.success).not.toHaveBeenCalledWith('ROOT 交接请求已受理');
+    expect(screen.queryByText(/重置后/)).not.toBeInTheDocument();
   });
 
   it('test_detail_main_flow_password_integration keeps ordinary role change password-free and unknown results unconfirmed', async () => {

@@ -175,13 +175,14 @@ export const removeCollaborator = async ({ user_id = '', container_id = 0 } = {}
 	}
 };
 
-export const updateRole = async ({ container_id = 0, user_id = '', updated_role = 'COLLABORATOR', transfer_root = false } = {}, timeout = null) => {
+export const updateRole = async ({ container_id = 0, user_id = '', updated_role = 'COLLABORATOR' } = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const url = new URL(API_ROUTES.CONTAINERS_UPDATE_ROLE, BACKEND_ORIGIN).toString();
-		const isRootTransfer = updated_role === 'ROOT';
+		const isRootHandover = updated_role === 'ROOT';
+		// ROOT 上位不再暴露单目标/交接分支：只提交一次目标请求，不发送旧布尔标记；
+		// Ctrl 后台统一执行旧 ROOT→ADMIN、目标→唯一 ROOT，并返回永久 root 与原 owner 凭据。
 		const payload = { container_id, user_id, updated_role };
-		if (isRootTransfer) payload.transfer_root = transfer_root === true;
 		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
@@ -194,8 +195,8 @@ export const updateRole = async ({ container_id = 0, user_id = '', updated_role 
 		});
 		clearTimeout(timer);
 		const body = await ensureOkCredential(res, 'Update role');
-		const result = isRootTransfer
-			? parseCredentialResponse(body, { transferRoot: transfer_root === true })
+		const result = isRootHandover
+			? parseCredentialResponse(body, { rootHandover: true })
 			: body;
 		unregisterController(controller);
 		return result;

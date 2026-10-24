@@ -17,7 +17,7 @@
 
 ### Requirement: ContainerDetailPage 主流程
 
-页面 SHALL 保持以下已实现的交互及数据职责：加载详情、日志，并在可见页每 5 秒静默刷新完整详情（运行状态及成员等可变详情事实均以该响应为准，不再以仅含状态的接口作为周期刷新来源）；支持启停重启删除、长期标记、解冻、协作者增删改；受理动作等待运行状态收敛；镜像信息卡在该容器详情下发 image_dockerfile 时原样展示它（容器自身记录），页面不按当前模板另行渲染。新增协作者 SHALL 按凭据流程展示密码，普通 ADMIN/COLLABORATOR 互换 SHALL 保持现有实现与成功响应且不改变密码；ROOT 提升 SHALL 使用 `transfer_root:false` 默认单目标，受理后只展示一项 root 凭据，不等待 Node，不降旧 ROOT，不乐观改写本地角色。
+页面 SHALL 保持以下已实现的交互及数据职责：加载详情、日志，并在可见页每 5 秒静默刷新完整详情（运行状态及成员等可变详情事实均以该响应为准，不再以仅含状态的接口作为周期刷新来源）；支持启停重启删除、长期标记、解冻、协作者增删改；受理动作等待运行状态收敛；镜像信息卡在该容器详情下发 image_dockerfile 时原样展示它（容器自身记录），页面不按当前模板另行渲染。新增协作者 SHALL 按凭据流程展示密码，普通 ADMIN/COLLABORATOR 互换 SHALL 保持现有实现与成功响应且不改变密码；ROOT 上位 SHALL 与 Home 使用同一交接语义：只提交一次不带 `transfer_root` 的 `update_role`，由 Ctrl 后台降旧 ROOT、目标成为唯一 ROOT；受理后展示永久 `root` 与旧 owner 独立用户名的全部凭据，不等待 Node，不降旧 ROOT，不乐观改写本地角色，结果以完整详情刷新为准。
 
 #### Scenario: 启动已受理
 
@@ -36,11 +36,11 @@
 - **WHEN** 用户把它切换为另一普通角色
 - **THEN** 页面沿用既有成功响应与提示，不显示密码弹窗，不改变该账号密码
 
-#### Scenario: 详情页 ROOT 提升受理后不等待后台
+#### Scenario: 详情页 ROOT 交接受理后不等待后台
 
-- **GIVEN** 用户把非 ROOT 账号选为 ROOT，详情页使用默认 `transfer_root:false`
-- **WHEN** 页面收到 `accepted: true` 与一项 root 凭据
-- **THEN** 页面立即展示该项并等待用户关闭；不阻塞 Node，不降旧 ROOT，不把受理当作角色已完成
+- **GIVEN** 用户把非 ROOT 账号选为 ROOT
+- **WHEN** 页面收到 `accepted: true` 与至少两项凭据（原 owner 独立用户名 + 永久 `root`）
+- **THEN** 页面立即展示全部凭据并等待用户关闭；不阻塞 Node，不在 Web 侧降级旧 ROOT，不把受理当作角色已完成
 
 ### Requirement: ContainerDetailPage 详情权威事实周期收敛
 
@@ -214,15 +214,15 @@ ContainerDetailPage 的每个账号卡 SHALL 提供“重置密码”按钮。�
 - **WHEN** 页面校验
 - **THEN** 不展示任何部分密码，显示通用“响应异常”错误；不自动重试、不宣称成功
 
-### Requirement: 详情页 ROOT 提升默认单目标
+### Requirement: 详情页 ROOT 上位统一交接
 
-当详情页把非 ROOT 绑定改选为 ROOT 时，页面 SHALL 只调用一次 `POST /api/containers/update_role`，参数为 `{ container_id, user_id, updated_role: 'ROOT', transfer_root: false }`（或省略 `transfer_root`，默认 false）。这是详情页原有行为：只升目标，不降旧 ROOT。Web MUST NOT 自行先降旧 ROOT、自行创建旧 owner 独立账号、自行发起第二次 `update_role`，也 MUST NOT 提交任何密码、登录名或默认口令。
+当详情页把非 ROOT 绑定改选为 ROOT 时，页面 SHALL 只调用一次 `POST /api/containers/update_role`，参数精确为 `{ container_id, user_id, updated_role: 'ROOT' }`，MUST NOT 发送 `transfer_root`。旧 ROOT→ADMIN、目标→唯一 ROOT、永久 `root` 新密码及原 owner 独立用户名新密码 SHALL 由 Ctrl 后台编排并在受理响应返回；Web MUST NOT 自行先降旧 ROOT、自行创建旧 owner 独立账号、自行发起第二次 `update_role`，也 MUST NOT 提交任何密码、登录名或默认口令。
 
-#### Scenario: 只提升目标
+#### Scenario: 只提交一次无分支交接请求
 
 - **GIVEN** 容器已有 ROOT 绑定，另有一个非 ROOT 绑定可选为 ROOT
-- **WHEN** 页面提交 ROOT 提升
-- **THEN** 只发出一次目标 `update_role` 请求，`transfer_root` 为 false；Web 不调用旧 ROOT 降级请求，不要求旧 ROOT 凭据
+- **WHEN** 页面提交 ROOT 上位
+- **THEN** 只发出一次目标 `update_role` 请求，请求体不含 `transfer_root`；Web 不调用旧 ROOT 降级请求，不要求旧 ROOT 凭据，也不发出第二个 HTTP
 
 #### Scenario: 普通 ADMIN/COLLABORATOR 互换不生成密码
 
@@ -230,27 +230,45 @@ ContainerDetailPage 的每个账号卡 SHALL 提供“重置密码”按钮。�
 - **WHEN** 用户在同一账号上切换 ADMIN/COLLABORATOR
 - **THEN** 只调用既有角色接口，响应可无凭据；不打开密码弹窗，不生成密码，不发送默认口令
 
-### Requirement: 详情页 ROOT 提升只展示 root 单凭据
+### Requirement: 详情页 ROOT 交接展示全部凭据且不乐观更新
 
-`transfer_root:false` 的 ROOT 提升受理响应 `accepted === true` 且 `credentials` 恰好一项 `root` 时，页面 SHALL 在受控密码弹窗展示该项。Web MUST NOT 要求第二项、生成旧 ROOT 凭据或乐观改写账号角色；结果以既有 `UPDATE_COLLABORATOR_ROLE` oplog 与刷新后的权威详情为准，超时/未知结果不得伪装 Node 确认成功。
+详情页 ROOT 受理响应 `accepted === true` 且 `credentials` 至少 2 项、每项 login_name/password 非空且互不相同时，页面 SHALL 在受控密码弹窗逐项展示永久 `root` 与原 owner 独立用户名的全部密码；历史多个旧 owner 的 N+1 项 MUST 全部展示，MUST NOT 截断、丢弃、合并或只取 `root`。Web MUST NOT 乐观改写账号角色；目标成为 ROOT 与旧 ROOT 降级 MUST 以受理后的完整详情刷新（立即重取与 5 秒周期）为准。关闭弹窗 MUST 立即清空凭据状态，不持久化、不记录日志、不回查。
 
-#### Scenario: 只展示 root 一项
+#### Scenario: 展示原 owner 与 root 两项
 
-- **GIVEN** ROOT 提升返回 `accepted: true` 与一项 `login_name=root` 的凭据
+- **GIVEN** ROOT 交接返回 `accepted: true` 与原 owner 独立用户名、永久 `root` 两项凭据
 - **WHEN** 页面处理响应
-- **THEN** 弹窗只显示一项“重置后root的密码：”；不显示旧 ROOT 行，不要求两项
+- **THEN** 弹窗显示两条“重置后{login_name}的密码：”，分别为原 owner 与 `root`；不省略原 owner、不只展示 `root`
 
-#### Scenario: 凭据不是恰好一项
+#### Scenario: 历史多个旧 owner 的 N+1 项全部展示
 
-- **GIVEN** 响应 `accepted: true`，但凭据为零项、多于一项或 login_name/password 为空
+- **GIVEN** 历史多旧 owner 容器交接返回所有涉及账号 + `root`，凭据为 3 项或更多
+- **WHEN** 页面处理响应
+- **THEN** 弹窗逐项显示全部 login_name 与密码，不截断为两项，不为凑固定项数丢弃旧 owner
+
+#### Scenario: 凭据少于两项、重复或字段非法
+
+- **GIVEN** 响应 `accepted: true`，但凭据少于两项、login_name/password 为空，或 login_name/password 重复
 - **WHEN** 页面校验
 - **THEN** 不展示任何部分密码，不乐观改写角色，显示通用“响应异常”错误；不自动重试
 
+#### Scenario: 目标成为 ROOT 不乐观更新
+
+- **GIVEN** ROOT 交接受理后，立即完整详情重取仍返回旧角色
+- **WHEN** 页面处理受理与立即重取
+- **THEN** 本地角色保持旧值，不因 `accepted` 提前显示目标为 ROOT；后续完整详情返回旧 ROOT→ADMIN、目标→ROOT 后才更新，且刷新不再次弹密码
+
 #### Scenario: 提升失败或结果未知
 
-- **GIVEN** ROOT 提升请求失败、被拒绝、超时或 oplog 结果未知
+- **GIVEN** ROOT 交接请求失败、被拒绝、超时或 oplog 结果未知
 - **WHEN** 页面处理结果
 - **THEN** 不打开/保留密码弹窗，不改变本地角色，不提示成功或 Node 已确认；只显示脱敏错误，后续以 oplog 为准
+
+#### Scenario: 关闭弹窗清空全部密码
+
+- **GIVEN** ROOT 交接弹窗已展示两项或 N+1 项密码
+- **WHEN** 用户关闭弹窗
+- **THEN** 页面立即清空全部凭据状态，密码不再出现在 DOM、localStorage 或 sessionStorage，也没有查回请求
 
 ### Requirement: ContainerDetailPage 构建归属
 
