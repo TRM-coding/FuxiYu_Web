@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Typography, Input, InputNumber, Button, Card, Tag, message, Empty, Spin, Slider, Select } from 'antd';
 import { SearchOutlined, CheckCircleFilled, ThunderboltOutlined, CodeOutlined, LockOutlined } from '@ant-design/icons';
 import showErrorModal from '../utils/showErrorModal';
+import CredentialModal from '../components/CredentialModal';
 import { usePermission } from '../contexts/PermissionContext';
 import { listAllMachineBrefInformation, getDetailInformation, listMachinePermissions } from '../api/machine_api';
 import { listAllUserBrefInformation } from '../api/user_api';
@@ -163,6 +164,8 @@ const CreateContainer = () => {
   const [sharedGb, setSharedGb] = useState(null);
   const [publicKey, setPublicKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [credentials, setCredentials] = useState([]);
+  const [pendingAfterCredential, setPendingAfterCredential] = useState(null);
   const [quotaError, setQuotaError] = useState(null);
 
   // 代建门禁：持有 container:manage 才显示 ROOT 用户选择器
@@ -471,7 +474,16 @@ const CreateContainer = () => {
     };
     setSubmitting(true);
     try {
-      await createContainer(payload);
+      const res = await createContainer(payload);
+      if (res?.accepted === true && Array.isArray(res.credentials) && res.credentials.length > 0) {
+        setCredentials(res.credentials);
+        setPendingAfterCredential({
+          machineId,
+          containerName: payload.container.NAME,
+        });
+        message.success('容器创建请求已发送');
+        return;
+      }
       message.success('容器创建请求已发送');
       try {
         // 跳转「我的容器」并携带 startHeartbeat，由 Home 跟踪启动状态
@@ -480,14 +492,25 @@ const CreateContainer = () => {
         navigate('/index');
       }
     } catch (err) {
-      console.error('createContainer failed', err);
       await showErrorModal({
-        message: err?.body || err || '创建容器失败',
+        message: err?.message || '创建容器失败',
         status: err?.status || err?.response?.status,
         route: err?.route || err?.response?.url,
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const finishCredentialFlow = () => {
+    const pending = pendingAfterCredential;
+    setCredentials([]);
+    setPendingAfterCredential(null);
+    if (!pending) return;
+    try {
+      navigate('/index', { state: { startHeartbeat: { machine_id: pending.machineId, container_name: pending.containerName } } });
+    } catch {
+      navigate('/index');
     }
   };
 
@@ -717,6 +740,11 @@ const CreateContainer = () => {
           </div>
         </div>
       </section>
+      <CredentialModal
+        open={credentials.length > 0}
+        credentials={credentials}
+        onClose={finishCredentialFlow}
+      />
     </div>
   );
 };

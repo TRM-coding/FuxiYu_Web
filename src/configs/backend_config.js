@@ -64,6 +64,7 @@ export const API_ROUTES = {
 	CONTAINERS_ADD_COLLABORATOR: '/api/containers/add_collaborator',
 	CONTAINERS_REMOVE_COLLABORATOR: '/api/containers/remove_collaborator',
 	CONTAINERS_UPDATE_ROLE: '/api/containers/update_role',
+	CONTAINERS_RESET_PASSWORD: '/api/containers/reset_container_password',
 	CONTAINERS_GET_DETAIL: '/api/containers/get_container_detail_information',
 	CONTAINERS_STATUS: '/api/containers/container_status',
 	CONTAINERS_LIST: '/api/containers/list_all_container_bref_information',

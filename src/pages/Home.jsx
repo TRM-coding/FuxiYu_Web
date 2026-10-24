@@ -6,6 +6,7 @@ import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import EditUserModal from '../components/EditUserModal';
+import CredentialModal from '../components/CredentialModal';
 import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer, unpauseContainer } from '../api/container_api';
 import { formatCleanupCountdown } from '../utils/timeFormat';
 import {
@@ -60,6 +61,7 @@ const Home = () => {
   // containers state loaded from backend
   const [containers, setContainers] = useState(initialContainers);
   const [loadingContainers, setLoadingContainers] = useState(false);
+  const [credentialModal, setCredentialModal] = useState({ open: false, credentials: [] });
   const [longTermRemaining, setLongTermRemaining] = useState(null);
   const [longTermLimit, setLongTermLimit] = useState(null);
   const longTermStateRef = useRef({ remaining: null, limit: null });
@@ -1162,6 +1164,12 @@ const Home = () => {
           onBack={returnToDetail}
           usersList={usersList}
           usersLoading={usersLoading}
+          onCredentialAccepted={(credentials) => setCredentialModal({ open: true, credentials })}
+        />
+        <CredentialModal
+          open={credentialModal.open}
+          credentials={credentialModal.credentials}
+          onClose={() => setCredentialModal({ open: false, credentials: [] })}
         />
       </div>
     </div>

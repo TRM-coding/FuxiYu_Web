@@ -145,18 +145,21 @@ describe('DeletedContainers', () => {
     expect(resurrectDeletedContainer).toHaveBeenCalledTimes(2);
   });
 
-  it('passes the full error body to showErrorModal so the restore reason survives', async () => {
+  it('keeps the safe restore message without passing the raw error body', async () => {
     const user = userEvent.setup();
     const body = {
       success: 0,
       message: 'User 1 has reached long-term container limit (1/1)',
       error_reason: 'long_term_limit_reached',
     };
-    resurrectDeletedContainer.mockRejectedValueOnce({
-      status: 409,
-      route: 'https://api.test/api/containers/resurrect_container',
-      body,
-    });
+    resurrectDeletedContainer.mockRejectedValueOnce(Object.assign(
+      new Error('User 1 has reached long-term container limit (1/1)'),
+      {
+        status: 409,
+        route: 'https://api.test/api/containers/resurrect_container',
+        body,
+      },
+    ));
 
     render(
       <MemoryRouter>
@@ -172,10 +175,10 @@ describe('DeletedContainers', () => {
 
     await waitFor(() => expect(showErrorModal).toHaveBeenCalledWith(expect.objectContaining({
       title: '恢复容器失败',
-      // 整个 body（不是 body.message）——error_reason 必须随 message 一起到达映射层
-      message: body,
+      message: 'User 1 has reached long-term container limit (1/1)',
       status: 409,
     })));
+    expect(showErrorModal.mock.calls.at(-1)[0].body).toBeUndefined();
     expect(showErrorModal.mock.calls.at(-1)[0].route).toContain('/containers/resurrect_container');
 
     // 超限是"未恢复"：不得出现成功提示，也不刷新列表（记录仍留在已删除列表里）

@@ -1,5 +1,6 @@
 import { BACKEND_ORIGIN, API_ROUTES, REQUEST_TIMEOUT, MOUNT_USAGE_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
 import { createController, unregisterController, abortAll } from '../utils/requestManager';
+import { parseCredentialResponse, sanitizeCredentialError } from '../utils/credentialResponse';
 
 
 const createTimeoutController = (timeout) => {
@@ -14,6 +15,26 @@ const toOptionalId = (value) => {
 	if (value === '' || value === null || value === undefined) return null;
 	const id = Number(value);
 	return Number.isInteger(id) && id >= 0 ? id : null;
+};
+
+const ensureOkCredential = async (res, action) => {
+	let body = null;
+	try {
+		body = await res.json();
+	} catch {
+		body = await res.text().catch(() => null);
+	}
+	const businessFailure = body && typeof body === 'object' && !Array.isArray(body)
+		&& (body.success === 0 || body.success === false);
+	if (!res.ok || businessFailure) {
+		const err = new Error(`${action} failed: ${res.status}`);
+		err.status = res.status;
+		err.route = res.url;
+		err.body = body;
+		if (res.status === 401) abortAll('auth');
+		throw sanitizeCredentialError(err);
+	}
+	return body;
 };
 
 const ensureOk = async (res, action) => {
@@ -62,9 +83,11 @@ export const createContainer = async (payload = {}, timeout = null) => {
 			body: JSON.stringify(payload),
 			signal: controller.signal,
 			credentials: CREDENTIALS,
+			cache: 'no-store',
 		});
 		clearTimeout(timer);
-		const result = await ensureOk(res, 'Create container');
+		const body = await ensureOkCredential(res, 'Create container');
+		const result = parseCredentialResponse(body, { expectedCount: 1, allowLegacyCreate: true });
 		unregisterController(controller);
 		return result;
 	} catch (err) {
@@ -112,9 +135,11 @@ export const addCollaborator = async ({ user_id = '', container_id = 0, role = '
 			body: JSON.stringify({ user_id, container_id, role }),
 			signal: controller.signal,
 			credentials: CREDENTIALS,
+			cache: 'no-store',
 		});
 		clearTimeout(timer);
-		const result = await ensureOk(res, 'Add collaborator');
+		const body = await ensureOkCredential(res, 'Add collaborator');
+		const result = parseCredentialResponse(body, { expectedCount: 1 });
 		unregisterController(controller);
 		return result;
 	} catch (err) {
@@ -150,21 +175,28 @@ export const removeCollaborator = async ({ user_id = '', container_id = 0 } = {}
 	}
 };
 
-export const updateRole = async ({ container_id = 0, user_id = '', updated_role = 'COLLABORATOR' } = {}, timeout = null) => {
+export const updateRole = async ({ container_id = 0, user_id = '', updated_role = 'COLLABORATOR', transfer_root = false } = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const url = new URL(API_ROUTES.CONTAINERS_UPDATE_ROLE, BACKEND_ORIGIN).toString();
+		const isRootTransfer = updated_role === 'ROOT';
+		const payload = { container_id, user_id, updated_role };
+		if (isRootTransfer) payload.transfer_root = transfer_root === true;
 		const res = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({ container_id, user_id, updated_role }),
+			body: JSON.stringify(payload),
 			signal: controller.signal,
 			credentials: CREDENTIALS,
+			cache: 'no-store',
 		});
 		clearTimeout(timer);
-		const result = await ensureOk(res, 'Update role');
+		const body = await ensureOkCredential(res, 'Update role');
+		const result = isRootTransfer
+			? parseCredentialResponse(body, { transferRoot: transfer_root === true })
+			: body;
 		unregisterController(controller);
 		return result;
 	} catch (err) {
@@ -441,9 +473,15 @@ export const resurrectDeletedContainer = async (deleted_id = 0, content_source =
 			body: JSON.stringify({ deleted_id, content_source }),
 			signal: controller.signal,
 			credentials: CREDENTIALS,
+			cache: 'no-store',
 		});
 		clearTimeout(timer);
-		const result = await ensureOk(res, 'Resurrect deleted container');
+		const body = await ensureOkCredential(res, 'Resurrect deleted container');
+		const result = body?.requires_choice === true
+			? body
+			: (body?.accepted === true || body?.credentials !== undefined
+				? parseCredentialResponse(body, { expectedCount: 1 })
+				: body);
 		unregisterController(controller);
 		return result;
 	} catch (err) {
@@ -601,6 +639,31 @@ export const unpauseContainer = async (container_id = 0, timeout = null) => {
 	}
 };
 
+export const resetContainerPassword = async ({ container_id = 0, user_id = 0 } = {}, timeout = null) => {
+	const { controller, timer } = createTimeoutController(timeout);
+	try {
+		const url = new URL(API_ROUTES.CONTAINERS_RESET_PASSWORD, BACKEND_ORIGIN).toString();
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ container_id, user_id }),
+			signal: controller.signal,
+			credentials: CREDENTIALS,
+			cache: 'no-store',
+		});
+		clearTimeout(timer);
+		const body = await ensureOkCredential(res, 'Reset container password');
+		const result = parseCredentialResponse(body, { expectedCount: 1 });
+		unregisterController(controller);
+		return result;
+	} catch (err) {
+		clearTimeout(timer);
+		unregisterController(controller);
+		if (err.name === 'AbortError') throw new Error('Reset container password request timed out');
+		throw err;
+	}
+};
+
 export default {
 	createContainer,
 	deleteContainer,
@@ -615,6 +678,7 @@ export default {
 	getDeletedContainerMountUsage,
 	cleanDeletedContainerMount,
 	resurrectDeletedContainer,
+	resetContainerPassword,
 	startContainer,
 	stopContainer,
 	restartContainer,

@@ -22,7 +22,7 @@ const ROLE_CONFIG = {
 
 const getAvatarUrl = (username) => `https://api.dicebear.com/7.x/miniavs/svg?seed=${username}`;
 
-const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], usersLoading = false, forceSystemAdmin = false }) => {
+const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], usersLoading = false, forceSystemAdmin = false, onCredentialAccepted = () => {} }) => {
   const [form] = Form.useForm();
   const { userId: currentUserId } = usePermission();
   // editing state removed (no local save flow)
@@ -60,29 +60,17 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       return;
     }
     setAdding(true);
-    addCollaborator({ user_id: selectedUser.id, container_id: cid, role: selectedRole }).then(() => {
-      const newAccount = {
-        username: selectedUser.username,
-        role: selectedRole,
-        ownerName: selectedUser.name,
-        user_id: selectedUser.id,
-        key: String(selectedUser.id)
-      };
-      if (selectedRole === ROLE.ROOT) {
-        const demoted = accounts.map(acc => acc.role === ROLE.ROOT ? { ...acc, role: ROLE.ADMIN } : acc);
-        setAccounts([...demoted, newAccount]);
-      } else {
-        setAccounts(prev => [...prev, newAccount]);
-      }
+    try {
+      const res = await addCollaborator({ user_id: selectedUser.id, container_id: cid, role: selectedRole });
+      onCredentialAccepted(res?.credentials || []);
       setSelectedUser(null);
       setSelectedRole(ROLE.COLLABORATOR);
-      message.success('用户已添加');
-    }).catch(async err => {
-    console.error('addCollaborator failed', err);
-    const bodyMsg = err?.body?.message || err?.body || null;
-    const messageText = bodyMsg ? `添加用户失败: ${bodyMsg}` : '添加用户失败';
-    await showErrorModal({ message: err?.body || err || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
-    }).finally(() => setAdding(false));
+      message.success('新增协作者请求已受理');
+    } catch (err) {
+      await showErrorModal({ message: err?.message || '添加用户失败', status: err?.status, route: err?.route });
+    } finally {
+      setAdding(false);
+    }
   };
 
   const handleDeleteUser = async (userId) => {
@@ -124,50 +112,28 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
     }
     try {
       if (newRole === ROLE.ROOT) {
-        const roots = accounts.filter(acc => acc.role === ROLE.ROOT && String(acc.user_id) !== String(resolvedUserId));
-        for (const r of roots) {
-          const rid = r.user_id;
-          if (rid) {
-            await updateRole({ container_id: cid, user_id: rid, updated_role: ROLE.ADMIN });
-          }
+        const res = await updateRole({
+          container_id: cid,
+          user_id: resolvedUserId,
+          updated_role: ROLE.ROOT,
+          transfer_root: true,
+        });
+        onCredentialAccepted(res?.credentials || []);
+        message.success('ROOT 交接请求已受理');
+        // Home 保留既有“目标非自己时关闭人员弹窗”的行为；凭据弹窗挂在 Home 页面级。
+        if (String(resolvedUserId) !== String(currentUserId) && !forceSystemAdmin) {
+          onClose();
         }
-        await updateRole({ container_id: cid, user_id: resolvedUserId, updated_role: ROLE.ROOT });
-        setAccounts(prev => prev.map(acc => {
-          if (String(acc.user_id) === String(resolvedUserId)) return { ...acc, role: ROLE.ROOT, username: 'root' };
-          if (acc.role === ROLE.ROOT) {
-            // demoted root -> restore username from usersList when possible
-            const restored = usersList.find(u => String(u.id) === String(acc.user_id));
-            return { ...acc, role: ROLE.ADMIN, username: restored ? restored.username : acc.username };
-          }
-          return acc;
-        }));
-          message.success('角色已更新');
-          // 转让后关闭编辑窗口（"当前用户是谁"来自 context，不再读 localStorage 副本）
-          if (String(resolvedUserId) !== String(currentUserId) && !forceSystemAdmin) {
-            onClose();
-          }
-          return;
+        return;
       }
       await updateRole({ container_id: cid, user_id: resolvedUserId, updated_role: newRole });
       setAccounts(prev => prev.map(acc => {
         if (String(acc.user_id) !== String(resolvedUserId)) return acc;
-        // If demoting from ROOT, restore username from usersList if possible
-        if (newRole !== ROLE.ROOT && acc.role === ROLE.ROOT) {
-          const restored = usersList.find(u => String(u.id) === String(acc.user_id));
-          return { ...acc, role: newRole, username: restored ? restored.username : acc.username };
-        }
-        // If promoting to ROOT, set username to 'root'
-        if (newRole === ROLE.ROOT) {
-          return { ...acc, role: newRole, username: 'root' };
-        }
         return { ...acc, role: newRole };
       }));
       message.success('角色已更新');
     } catch (err) {
-      console.error('updateRole failed', err);
-      const bodyMsg = err?.body?.message || err?.body || null;
-      const messageText = bodyMsg ? `更新角色失败: ${bodyMsg}` : '更新角色失败';
-      await showErrorModal({ message: err?.body || err || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.message || '更新角色失败', status: err?.status, route: err?.route });
     }
   };
 

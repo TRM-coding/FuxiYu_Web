@@ -9,6 +9,7 @@ import {
   getContainerOperationLogs,
   getContainerStatus,
   removeCollaborator,
+  resetContainerPassword,
   restartContainer,
   setLongTermContainer,
   startContainer,
@@ -21,9 +22,12 @@ import CopyChip from '../components/CopyChip';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import RuntimeTrendChart from '../components/RuntimeTrendChart';
 import showErrorModal from '../utils/showErrorModal';
+import CredentialModal from '../components/CredentialModal';
+import ConfirmModal from '../components/ConfirmModal';
 import { formatNumber, formatSnapshotTime, formatContainerImage } from '../utils/detailFormat';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
 import {
+  canResetContainerCredentials,
   createContainerStatusTransition,
   deriveContainerEffectiveStatus,
   getContainerActionReasonText,
@@ -134,12 +138,17 @@ const ContainerDetailPage = () => {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [selectedRole, setSelectedRole] = useState(ROLE.COLLABORATOR);
   const [peopleSaving, setPeopleSaving] = useState(false);
+  const [credentials, setCredentials] = useState([]);
+  const [resetConfirm, setResetConfirm] = useState(null);
+  const [resetSaving, setResetSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState(null); // 'start' | 'stop' | 'restart' | 'unpause' | 'delete' | null
   const [containerActionConfirm, setContainerActionConfirm] = useState({ visible: false, action: '' });
   const {
     entities,
     userId: currentUserId,
     userName: currentUserName,
+    hasPermission,
+    containerResourceUnrestricted,
   } = usePermission();
   const pendingContainerTransitionRef = useRef(new Map());
   const operationLogsRequestSeqRef = useRef(0);
@@ -504,6 +513,17 @@ const ContainerDetailPage = () => {
   const accounts = (container?.accounts || []).map(account => normalizeAccount(account, usersList));
   const isRoot = accounts.some(account => account.role === ROLE.ROOT && String(account.user_id) === String(currentUserId));
   const canManagePeople = isRoot && status === 'online';
+  const hasOperationPermission = typeof hasPermission === 'function'
+    ? hasPermission('container:operation')
+    : entities.includes('container:operation');
+  const resetEligibility = canResetContainerCredentials({
+    accounts,
+    userId: currentUserId,
+    userName: currentUserName,
+    containerResourceUnrestricted,
+    hasOperationPermission,
+    containerStatus: status,
+  });
   const availableUsers = usersList.filter(user => !accounts.some(account => String(account.user_id) === String(user.id)));
   const refreshAfterPeopleChange = async () => {
     await loadDetail({ silent: true });
@@ -512,13 +532,14 @@ const ContainerDetailPage = () => {
     if (!selectedUserId || !containerId) return;
     setPeopleSaving(true);
     try {
-      await addCollaborator({ user_id: selectedUserId, container_id: Number(containerId), role: selectedRole });
+      const res = await addCollaborator({ user_id: selectedUserId, container_id: Number(containerId), role: selectedRole });
       setSelectedUserId(null);
       setSelectedRole(ROLE.COLLABORATOR);
+      setCredentials(res?.credentials || []);
+      message.success('新增协作者请求已受理');
       await refreshAfterPeopleChange();
-      message.success('用户已添加');
     } catch (err) {
-      await showErrorModal({ message: err?.body || err || '添加用户失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.message || '添加用户失败', status: err?.status, route: err?.route });
     } finally {
       setPeopleSaving(false);
     }
@@ -540,13 +561,51 @@ const ContainerDetailPage = () => {
     if (!userId || !containerId) return;
     setPeopleSaving(true);
     try {
-      await updateRole({ container_id: Number(containerId), user_id: userId, updated_role: updatedRole });
+      if (updatedRole === ROLE.ROOT) {
+        const res = await updateRole({
+          container_id: Number(containerId),
+          user_id: userId,
+          updated_role: ROLE.ROOT,
+          transfer_root: false,
+        });
+        setCredentials(res?.credentials || []);
+        message.success('ROOT 提升请求已受理');
+      } else {
+        await updateRole({ container_id: Number(containerId), user_id: userId, updated_role: updatedRole });
+        message.success('角色已更新');
+      }
       await refreshAfterPeopleChange();
-      message.success('角色已更新');
     } catch (err) {
-      await showErrorModal({ message: err?.body || err || '更新角色失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
+      await showErrorModal({ message: err?.message || '更新角色失败', status: err?.status, route: err?.route });
     } finally {
       setPeopleSaving(false);
+    }
+  };
+
+  const openResetConfirm = (account) => {
+    if (!resetEligibility.visible || !resetEligibility.enabled || !account?.user_id || peopleSaving) return;
+    setResetConfirm(account);
+  };
+
+  const confirmResetPassword = async () => {
+    const account = resetConfirm;
+    if (!account?.user_id || !resetEligibility.visible || !resetEligibility.enabled) {
+      setResetConfirm(null);
+      return;
+    }
+    setResetSaving(true);
+    try {
+      const res = await resetContainerPassword({
+        container_id: Number(containerId),
+        user_id: Number(account.user_id),
+      });
+      setCredentials(res?.credentials || []);
+      setResetConfirm(null);
+      message.success('重置密码请求已受理');
+    } catch (err) {
+      await showErrorModal({ message: err?.message || '重置密码失败', status: err?.status, route: err?.route });
+    } finally {
+      setResetSaving(false);
     }
   };
 
@@ -792,6 +851,16 @@ const ContainerDetailPage = () => {
                         </div>
                       </Space>
                       <Space className="container-people-actions">
+                        {resetEligibility.visible ? (
+                          <Button
+                            size="small"
+                            disabled={!resetEligibility.enabled || !account.user_id || peopleSaving}
+                            title={resetEligibility.enabled ? undefined : '仅在线且具备操作权限时可重置密码'}
+                            onClick={() => openResetConfirm(account)}
+                          >
+                            重置密码
+                          </Button>
+                        ) : null}
                         <Select
                           size="small"
                           value={account.role}
@@ -882,6 +951,20 @@ const ContainerDetailPage = () => {
               loading={Boolean(actionLoading)}
               onConfirm={handleConfirmContainerAction}
               onCancel={closeContainerActionConfirm}
+            />
+            <ConfirmModal
+              visible={Boolean(resetConfirm)}
+              title="确认重置密码"
+              message={`确定要重置 ${resetConfirm?.username || resetConfirm?.ownerName || ''} 的密码吗？`}
+              confirmText="确认重置"
+              onConfirm={confirmResetPassword}
+              onCancel={() => setResetConfirm(null)}
+              loading={resetSaving}
+            />
+            <CredentialModal
+              open={credentials.length > 0}
+              credentials={credentials}
+              onClose={() => setCredentials([])}
             />
           </>
         )}

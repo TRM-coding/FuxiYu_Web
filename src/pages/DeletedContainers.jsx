@@ -9,6 +9,7 @@ import {
   resurrectDeletedContainer,
 } from '../api/container_api';
 import CopyChip from '../components/CopyChip';
+import CredentialModal from '../components/CredentialModal';
 import TableComponent from '../components/TableComponent';
 import '../components/NestedEntityGrid.css';
 import { usePermission } from '../contexts/PermissionContext';
@@ -73,6 +74,7 @@ export default function DeletedContainers() {
   // 界面，这样"替用户拿主意"这件事发生在用户看得见的地方。
   const [contentChoice, setContentChoice] = useState(null);
   const [chosenSource, setChosenSource] = useState('snapshot');
+  const [credentials, setCredentials] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
@@ -220,6 +222,7 @@ export default function DeletedContainers() {
         return;
       }
       message.success('容器恢复请求已发送');
+      setCredentials(Array.isArray(res?.credentials) ? res.credentials : []);
       setContentChoice(null);
       await loadRecords();
     } catch (err) {
@@ -229,8 +232,7 @@ export default function DeletedContainers() {
       }
       showErrorModal({
         title: '恢复容器失败',
-        // 传整个 body（而非 body.message），让 error_reason 到达 showErrorModal 的映射层。
-        message: err?.body || err?.message || '无法恢复容器',
+        message: err?.message || '无法恢复容器',
         status: err?.status,
         route: err?.route,
       });
@@ -563,6 +565,11 @@ export default function DeletedContainers() {
           <Radio.Button value="template">按当前模板恢复</Radio.Button>
         </Radio.Group>
       </Modal>
+      <CredentialModal
+        open={credentials.length > 0}
+        credentials={credentials}
+        onClose={() => setCredentials([])}
+      />
     </div>
   );
 }

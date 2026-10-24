@@ -139,6 +139,28 @@ export function normalizeContainerActionContext(raw) {
 }
 
 /** 只从真实账号快照中提取当前用户容器角色，不扩展角色层级。 */
+/** 账号重置三层资格：方法层、ROOT/资源通配、机器在线。
+ * 只做展示防呆；Ctrl 仍是最终裁决。 */
+export function canResetContainerCredentials({
+  accounts,
+  userId = null,
+  userName = '',
+  containerResourceUnrestricted = false,
+  hasOperationPermission = false,
+  containerStatus = '',
+} = {}) {
+  const role = getContainerRoleFromAccounts(accounts, userId, userName);
+  const methodAllowed = hasOperationPermission === true;
+  const resourceAllowed = role === 'ROOT' || containerResourceUnrestricted === true;
+  const online = normalizeStatus(containerStatus) === 'online';
+  const visible = methodAllowed && resourceAllowed;
+  let reason = null;
+  if (!methodAllowed) reason = 'container_permission_denied';
+  else if (!resourceAllowed) reason = 'container_permission_denied';
+  else if (!online) reason = 'container_not_online';
+  return { visible, enabled: visible && online, reason };
+}
+
 export function getContainerRoleFromAccounts(accounts, userId = null, userName = '') {
   if (!accounts) return null;
   const matchId = userId !== null && userId !== undefined && String(userId) !== '';

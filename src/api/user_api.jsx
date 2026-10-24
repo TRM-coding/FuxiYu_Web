@@ -318,6 +318,7 @@ export const getUserPermissions = async (timeout = null) => {
     return {
       entities: (data && data.entities) || [],
       imageResourceUnrestricted: (data && data.image_resource_unrestricted) === true,
+      containerResourceUnrestricted: (data && data.container_resource_unrestricted) === true,
       userId: (data && data.user_id) ?? null,
       userName: (data && data.username) || '',
     };

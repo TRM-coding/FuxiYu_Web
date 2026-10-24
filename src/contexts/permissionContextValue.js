@@ -16,6 +16,7 @@ import { createContext } from 'react';
 export const PermissionContext = createContext({
   entities: [],
   imageResourceUnrestricted: false,
+  containerResourceUnrestricted: false,
   loaded: false,
   userId: null,
   userName: '',
