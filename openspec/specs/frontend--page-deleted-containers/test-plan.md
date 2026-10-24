@@ -4,8 +4,8 @@
 
 ## 台账状态
 
-- 主 spec SHA256：`b2fe4a2e3350b487a01c549d5422d34cf785567eeca4e68401561452b6ee44d4`
-- 本轮映射：已覆盖 36；部分覆盖 6；待复核 5。
+- 主 spec SHA256：`adf785e7fc84cc421c3170e473b1de6645bcaf13c81fec87a92fb11e0236f6c6`
+- 本轮映射：已覆盖 39；部分覆盖 6；待复核 5。
 - 测试基线：当前工作区最终实现；历史 `a98e51d` 基线保留。
 - 运行证据：父代理最终 `npm test` 68 files/652 tests + server 40 tests，0 failed；本 capability 的 `DeletedContainersDisplay.test.jsx` 9/9、`DeletedContainersMountUsage.test.jsx` 18/18、`DeletedContainers.test.jsx` 10/10、`DeletedContainersMobile.test.jsx` 17/17 在最终全量中通过。
 - 真实浏览器：父代理 26 cases / 315 checks 全部通过，覆盖 320/390/768/1440px；`verified-complete/results.json` 的 sourceHashes 与当前实现一致。旧 508px/遮挡失败保留为历史。
@@ -62,6 +62,9 @@
 | DeletedContainers 移动端分页、确认流程与轮询语义不变 | pending 时切换分页 | 已覆盖 | ../../../src/test/DeletedContainersMountUsage.test.jsx::翻页 abort 旧请求并丢弃迟到响应，不覆盖新页 | 断言翻页取消旧请求且迟到响应不覆盖新页。 |
 | DeletedContainers 移动端分页、确认流程与轮询语义不变 | 移动端最后一页减少 | 已覆盖 | ../../../src/test/DeletedContainers.test.jsx::清空当前页最后一条后按新 total 回到有效页，而不是一律回第一页 | 断言越界时回退有效末页，不强制回首页。 |
 | DeletedContainers 移动端分页、确认流程与轮询语义不变 | 轮询预算耗尽 | 已覆盖 | ../../../src/test/DeletedContainersMountUsage.test.jsx::pending 单计时器精确轮询 120 次后停止，提示测量未完成且不再请求 | 断言 120 次后停止、提示测量未完成且不再请求。 |
+| 恢复成功后的 root 凭据展示 | 恢复成功展示 root 密码 | 已覆盖 | ../../../src/test/DeletedContainersRestorePassword.test.jsx::test_deleted_restore_root_credential | 断言实际恢复成功返回 accepted + root 凭据时展示“重置后root的密码：”，其他恢复业务不变。 |
+| 恢复成功后的 root 凭据展示 | requires_choice 不展示密码 | 已覆盖 | ../../../src/test/DeletedContainersRestorePassword.test.jsx::test_deleted_restore_root_credential | 断言 requires_choice 响应不出现密码弹窗，仍走二选一。 |
+| 恢复成功后的 root 凭据展示 | 恢复失败或凭据非法 | 已覆盖 | ../../../src/test/DeletedContainersRestorePassword.test.jsx::test_deleted_restore_root_credential | 断言失败响应含 secret/body 时不展示密码，showErrorModal 不接收 body/secret。 |
 
 ## 最近验证
 
@@ -89,3 +92,10 @@
 - 当前 `deleted` 用例覆盖 390/320 卡片七列、真实 Mount 剪贴板、展开/收起、全部用量状态、分页、恢复/清理确认取消与长路径，均通过。
 - 父代理最终 `npm test` 68 files/652 tests + server 40 tests 全部通过；本会话 15/16 次全量的既有 5 秒超时见上，单 worker 28 项通过，父代理最终全量通过。
 - 未覆盖：真实后端采样/清理/恢复、真实设备、其他浏览器与全部历史场景；不能把夹具确认框当作生产恢复成功。
+## 2026-10-24 容器凭据增量验证
+
+- 主 spec SHA256：`adf785e7fc84cc421c3170e473b1de6645bcaf13c81fec87a92fb11e0236f6c6`。
+- 版本：Web 实现提交 `f14a16f`；本轮仅文档同步，未重跑套件。
+- 命令与环境：全量证据沿用 `npm test`（Node v26）→ Web 77 files/686 tests + server 40 tests，0 failed/0 skipped；定向 `DeletedContainersRestorePassword.test.jsx` 1/1。
+- 结果：新增 3 个恢复 root 凭据场景映射为同一具名测试的真实断言；旧台账 36/6/5 映射与历史证据保留。
+- 限制：jsdom 测试，不证明真实浏览器剪贴板/像素；真实浏览器历史证据保留。

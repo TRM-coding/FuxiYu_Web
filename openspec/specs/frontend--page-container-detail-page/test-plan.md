@@ -4,8 +4,8 @@
 
 ## 台账状态
 
-- 主 spec SHA256：`14c4ad545eb63165805bf7ddf8c7732f0f57b69543af0d5798ffa05dc8adb54b`
-- 本轮映射：已覆盖 10；部分覆盖 4；待复核 9。
+- 主 spec SHA256：`2f0fe32c4f66c24d316e3952cfbd8f15c6435676ed45fc911af80f526200feb2`
+- 历史映射：已覆盖 10；部分覆盖 4；待复核 9；2026-10-24 增量 25 行见文末。
 - 测试基线：当前工作区最终实现；本轮同步新增窄屏布局场景，并保留 a98e51d 的历史测试记录。
 - 运行证据：父代理最终 `npm test` 68 files / 652 tests + server 40 tests，0 failed；本 capability 既有定向证据 C 组 19 files/189、Q61 6 files/58、change1 6 files/57。
 - 真实浏览器：父代理 26 cases / 315 checks 全部通过，`verified-complete/results.json` 的 sourceHashes 与当前实现一致；旧 468px 失败保留为历史。
@@ -66,3 +66,36 @@
 - 当前 `detail` 用例覆盖 390/320 长标题、长 bind 路径真实复制、320 长指标、768/1440 共享布局、缺路径无复制控件，均通过。
 - 父代理最终 `npm test` 68 files/652 tests + server 40 tests 全部通过；本会话第 15/16 次全量遇到既有 `HomeEligibility`/`DeletedContainersMountUsage` 5 秒超时，单 worker 28 项通过，父代理最终全量通过；原因未充分证明，保留 warning。
 - 未覆盖：真实后端、真实设备、其他浏览器、全部历史场景；当前通过证据只对应上述 26 cases/315 checks 与当前源码 hash。
+
+## 2026-10-24 容器凭据增量映射
+
+| Requirement | Scenario | 覆盖状态 | 测试位置与 nodeid/参数 | 验证范围或缺口 |
+| --- | --- | --- | --- | --- |
+| 新增协作者凭据与不乐观加入 | 新增 ADMIN 协作者 | 部分覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_add_collaborator_credentials | 当前用例走 COLLABORATOR 新增路径；ADMIN 仅由同一处理器推断，未单独断言。 |
+| 新增协作者凭据与不乐观加入 | 新增 COLLABORATOR 协作者 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_add_collaborator_credentials | 断言返回一项凭据、弹窗文案、无“用户已添加”提示且不乐观插入。 |
+| 新增协作者凭据与不乐观加入 | 新增受理失败或凭据异常 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_add_collaborator_credentials | 追加 422 rejection：不展示凭据、不显示成功提示、只调用 showErrorModal。 |
+| 账号卡密码重置入口与权限 | ROOT 本人可见 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_reset_permission_guards | 断言 ROOT 本人渲染两个账号的重置按钮。 |
+| 账号卡密码重置入口与权限 | 资源管理通配者可见 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_reset_permission_guards | 断言资源通配、非 ROOT 时仍显示按钮。 |
+| 账号卡密码重置入口与权限 | ADMIN、COLLABORATOR 与方法通配不得放行 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_reset_permission_guards | 断言普通管理员/协作者/无资源位时不显示按钮。 |
+| 账号卡密码重置入口与权限 | 缺少 container:operation 方法层守卫 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_reset_permission_guards | 断言 entities 无 container:operation 时按钮不出现。 |
+| 账号卡密码重置入口与权限 | 容器不在线或主机不可用 | 已覆盖 | ../../../src/test/ContainerResourcePermission.test.jsx::test_auth_container_resource_capability | helper 断言 offline 时 visible=true、enabled=false；详情页沿用同一谓词。 |
+| 账号卡密码重置入口与权限 | 目标绑定缺少 user_id 或提交前变化 | 待复核 | — | 当前 UI 用例未构造缺 user_id 或确认前状态变化；保留缺口。 |
+| 账号卡密码重置入口与权限 | 不得回退到默认密码 | 已覆盖 | ../../../src/test/containerApiCredentials.test.js::test_audit_reuse_no_duplicate_logs | 断言 reset 请求体只含 container_id/user_id，无 password/login_name。 |
+| 账号卡密码重置请求与受理 | 只提交绑定身份 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_reset_request_and_result | 断言 resetContainerPassword 收到绑定 user_id=2、container_id=12。 |
+| 账号卡密码重置请求与受理 | 登录名以前端展示名伪装 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_reset_request_and_result | 断言弹窗使用响应 login_name=alice，而非卡片展示名。 |
+| 账号卡密码重置请求与受理 | 受理后立即展示 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_reset_request_and_result | 断言响应后立即出现一项凭据弹窗，不等待轮询。 |
+| 账号卡密码重置请求与受理 | 后续结果只看 oplog | 待复核 | — | 未在 UI 用例中断言刷新 oplog 的 reset_container_password 记录；保留缺口。 |
+| 账号卡密码重置请求与受理 | 重置失败不泄露密码 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_reset_request_and_result | 失败响应夹带 secret，断言错误参数不含 secret。 |
+| 账号卡密码重置请求与受理 | 受理凭据数量或字段非法 | 已覆盖 | ../../../src/test/credentialResponse.test.js::test_credential_shape_and_counts | 断言 reset/ROOT 非预期项数与空字段被拒。 |
+| 详情页 ROOT 提升默认单目标 | 只提升目标 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_transfer_single_target | 断言只发一次 updateRole，transfer_root=false，且无旧 ROOT 降级调用。 |
+| 详情页 ROOT 提升默认单目标 | 普通 ADMIN/COLLABORATOR 互换不生成密码 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_main_flow_password_integration | 断言普通角色切换无凭据弹窗、沿用“角色已更新”。 |
+| 详情页 ROOT 提升只展示 root 单凭据 | 只展示 root 一项 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_transfer_one_credential | 断言只显示 root 一项，不要求第二项。 |
+| 详情页 ROOT 提升只展示 root 单凭据 | 凭据不是恰好一项 | 已覆盖 | ../../../src/test/credentialResponse.test.js::test_credential_shape_and_counts | parser 断言 transfer_root=false 的 0/2 项非法。 |
+| 详情页 ROOT 提升只展示 root 单凭据 | 提升失败或结果未知 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_main_flow_password_integration | 断言 rejection 无成功提示、显示脱敏错误。 |
+| ContainerDetailPage 主流程 | 启动已受理 | 待复核 | — | 历史主流程场景未在本 change 重跑或重新断言；保留旧台账缺口。 |
+| ContainerDetailPage 主流程 | 新增协作者先拿密码再加入 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_add_collaborator_credentials | 断言先展示密码、不乐观插入账号。 |
+| ContainerDetailPage 主流程 | 普通角色切换保持原响应 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_main_flow_password_integration | 断言普通角色沿用原成功提示、无密码弹窗。 |
+| ContainerDetailPage 主流程 | 详情页 ROOT 提升受理后不等待后台 | 已覆盖 | ../../../src/test/ContainerDetailPasswords.test.jsx::test_detail_root_transfer_one_credential | 断言立即展示一项凭据，不阻塞 Node，不提前改角色。 |
+
+- 2026-10-24 增量验证：主 spec SHA256 `2f0fe32c4f66c24d316e3952cfbd8f15c6435676ed45fc911af80f526200feb2`；实现提交 `f14a16f`；全量证据 `npm test` Web 77/686 + server 40，0 failed/0 skipped；定向 `ContainerDetailPasswords.test.jsx` 6/6、`ContainerResourcePermission.test.jsx` 3/3。
+- 未覆盖/待复核保留：ADMIN 新增单独断言、缺 user_id/提交前状态变化、oplog 刷新、旧“启动已受理”。这些不写成已覆盖。
