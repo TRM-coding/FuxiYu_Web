@@ -179,13 +179,19 @@ describe('DeletedContainers 移动端共享卡片布局', () => {
   });
 
   it('tc_dc_04_mobile_empty_page_pagination', async () => {
-    listDeletedContainers.mockResolvedValue(listResponse([], { total_number: 21, total_page: 2 }));
+    const response = deferred();
+    listDeletedContainers.mockReturnValue(response.promise);
     setViewport(390);
     renderPage();
     await screen.findByText('暂无已删除容器');
 
+    expect(document.querySelector('.ant-pagination-item-2')).toBeNull();
+    await act(async () => {
+      response.resolve(listResponse([], { total_number: 21, total_page: 2 }));
+    });
+
     expect(document.querySelector('.app-table-mobile-empty')).not.toBeNull();
-    expect(document.querySelector('.ant-pagination-item-2')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('.ant-pagination-item-2')).not.toBeNull());
     expect(document.querySelectorAll('.app-table-mobile-card')).toHaveLength(0);
   });
 });

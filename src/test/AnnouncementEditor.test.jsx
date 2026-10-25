@@ -400,9 +400,11 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
     await waitFor(() => expect(listTemplates).toHaveBeenCalledTimes(1));
     expect(listTemplates).toHaveBeenNthCalledWith(1, { limit: 200, offset: 0 });
 
-    fireEvent.click(screen.getByRole('button', { name: /加载更多/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /加载更多/ }));
     await waitFor(() => expect(listTemplates).toHaveBeenCalledTimes(2));
     expect(listTemplates).toHaveBeenNthCalledWith(2, { limit: 200, offset: 200 });
+    // 调用发生不等于响应已写入：等第 205 项加载完再打开选项。
+    await waitFor(() => expect(screen.queryByRole('button', { name: /加载更多/ })).toBeNull());
 
     openSelect(templateCard());
     const searchInput = templateCard().querySelector('input');
@@ -432,7 +434,7 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
     renderEditor();
     await waitFor(() => expect(listTemplates).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole('button', { name: /加载更多/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /加载更多/ }));
     await waitFor(() => expect(listTemplates).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(message.error).toHaveBeenCalledWith(expect.stringMatching(/加载更多模板失败/)));
 

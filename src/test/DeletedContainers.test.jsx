@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -188,8 +188,9 @@ describe('DeletedContainers', () => {
   });
 
   it('当前页为空但 total>0 时仍保留分页入口', async () => {
+    const response = deferred();
     listDeletedContainers.mockReset();
-    listDeletedContainers.mockResolvedValue({ success: 1, records: [], total_number: 5, total_page: 1 });
+    listDeletedContainers.mockReturnValue(response.promise);
 
     render(
       <MemoryRouter>
@@ -198,9 +199,14 @@ describe('DeletedContainers', () => {
     );
 
     expect(await screen.findByText('暂无已删除容器')).toBeInTheDocument();
+    // 初始空文案早于列表响应，不能把它当作 total 已经写入的信号。
+    expect(document.querySelector('.ant-pagination')).toBeNull();
+    await act(async () => {
+      response.resolve({ success: 1, records: [], total_number: 5, total_page: 1 });
+    });
     // Table 仍在（空文案走 locale.emptyText），分页入口没有被 Empty 顶掉
     expect(document.querySelector('.ant-table')).not.toBeNull();
-    expect(document.querySelector('.ant-pagination')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('.ant-pagination')).not.toBeNull());
   });
 
   it('清空当前页最后一条后按新 total 回到有效页，而不是一律回第一页', async () => {
