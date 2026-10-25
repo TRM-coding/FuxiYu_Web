@@ -1,40 +1,176 @@
-# Docs 测试覆盖
+# frontend--page-docs Test Plan
 
-规格：[spec.md](spec.md)
+Spec: [spec.md](spec.md)
 
-每个场景映射到可执行测试或真实命令；状态以 2026-10-24 本轮最终运行结果为准。
+<!-- [X] 仅表示 test/check 映射已确认，不表示实际运行、通过或整个 Scenario 已覆盖。 -->
 
-| Requirement | Scenario | Test File | Test Name | Initial State |
-|-------------|----------|-----------|-----------|---------------|
-| specs/frontend--page-docs/spec.md → Docs 页面入口与身份 | 装配页面 | `src/test/DocsPage.test.jsx` | `从已复制指南渲染正文与 15 项目录，不渲染旧硬编码章节` | 🟢 green（红态：`red-web-docs-markdown.log`） |
-| specs/frontend--page-docs/spec.md → Docs 页面入口与身份 | 旧正文残留被拒绝 | `scripts/tests/docs-cleanup.integration.mjs` | `test_q36_docs_old_hardcoded_body_removed` | 🟢 green（红态：`red-docs-cleanup-integration.log`） |
-| specs/frontend--page-docs/spec.md → Docs 主流程 | 点击目录项 | `src/test/DocsMarkdown.test.jsx` | `点击目录按钮时聚焦标题、平滑滚动且不改 URL hash` | 🟢 green（红态：同上） |
-| specs/frontend--page-docs/spec.md → Docs 主流程 | 减少动态效果 | `src/test/DocsMarkdown.test.jsx` | `reduced-motion 时使用 auto 滚动` | 🟢 green（红态：同上） |
-| specs/frontend--page-docs/spec.md → Docs 主流程 | 标题 id 的唯一性与 AST 来源 | `src/test/DocsMarkdown.test.jsx` | `按 H1-H3 建立层级、唯一中文 id，并忽略代码块假标题`；`渲染真实目录按钮、唯一 docs- id，并跳过代码块假标题`；`标题 id 使用 docs- 前缀，不与页面已有 DOM id 冲突` | 🟢 green（红态：同上） |
-| specs/frontend--page-docs/spec.md → Docs 构建归属 | 生成生产产物 | `npm run build` | `vite-build` | 🟢 green（构建命令，无单测红态；`build-after-fixes.log`） |
-| specs/frontend--page-docs/spec.md → Docs 构建归属 | 外部路径依赖被拒绝 | `scripts/tests/docs-cleanup.integration.mjs` | `test_q36_docs_no_global_repository_dependency` | 🟢 green（红态：`red-docs-cleanup-integration.log`） |
-| specs/frontend--page-docs/spec.md → Docs 页面只保留生产可达资源 | 零引用资源删除且构建通过 | `scripts/tests/docs-cleanup.integration.mjs`；`npm run build` | `test_q36_docs_zero_ref_removed`；`vite-build` | 🟢 green（`red-docs-cleanup-integration.log` → `build-after-fixes.log`） |
-| specs/frontend--page-docs/spec.md → Docs 页面只保留生产可达资源 | 仍被引用的 statusDisplay 保留 | `scripts/tests/docs-cleanup.integration.mjs` | `test_q36_docs_keeps_shared_status_display` | 🟢 green（红态：`red-docs-cleanup-integration.log`） |
-| specs/frontend--page-docs/spec.md → Docs 页面只保留生产可达资源 | 有引用的资源不得删除 | `scripts/tests/docs-cleanup.integration.mjs` | `test_q36_docs_referenced_file_guard` | 🟢 green（红态：`red-docs-cleanup-integration.log`） |
-| specs/frontend--page-docs/spec.md → Docs Markdown 正文字节保真 | 字节与哈希一致 | `scripts/tests/docs-cleanup.integration.mjs` | `test_q36_docs_guide_bytes_are_source_faithful` | 🟢 green（红态：`red-docs-cleanup-integration.log`） |
-| specs/frontend--page-docs/spec.md → Docs Markdown 正文字节保真 | 换行被 Git 改写 | `scripts/tests/docs-cleanup.integration.mjs`；`git check-attr text -- src/content/USER_GUIDE_v1.md` | `test_q36_docs_gitattributes_preserve_guide_bytes`；`git check-attr` | 🟢 green（`text: unset`） |
-| specs/frontend--page-docs/spec.md → Docs Markdown 正文字节保真 | 副本内容偏离 | `scripts/tests/docs-cleanup.integration.mjs` | `test_q36_docs_guide_bytes_are_source_faithful` | 🟢 green（长度 6052、SHA256 匹配） |
-| specs/frontend--page-docs/spec.md → Docs Markdown 安全渲染与 GFM 能力 | 安全链接与原始 HTML | `src/test/DocsMarkdown.test.jsx` | `外链补 rel、危险协议被默认安全转换拦下、原始 HTML 不可执行` | 🟢 green（红态：`red-web-docs-markdown.log`） |
-| specs/frontend--page-docs/spec.md → Docs Markdown 安全渲染与 GFM 能力 | 正文内部锚点保持 HashRouter | `src/test/DocsMarkdown.test.jsx` | `正文内部锚点聚焦目标并滚动，不改变 HashRouter 的 hash` | 🟢 green（父级 review 后新增的缺陷回归；测试随修复加入，未伪造红态） |
-| specs/frontend--page-docs/spec.md → Docs Markdown 安全渲染与 GFM 能力 | GFM 表格与代码块 | `src/test/DocsMarkdown.test.jsx` | `GFM 表格包在局部滚动容器，代码块有可复制结构` | 🟢 green（红态：`red-web-docs-markdown.log`） |
-| specs/frontend--page-docs/spec.md → Docs Markdown 安全渲染与 GFM 能力 | 复制代码成功与失败 | `src/test/DocsMarkdown.test.jsx` | `Clipboard 成功时复制完整代码并显示“已复制”`；`Clipboard 拒绝但 execCommand 回退成功时仍显示“已复制”`；`Clipboard 与 execCommand 都失败时显示“复制失败”且不崩溃` | 🟢 green（红态：`red-web-docs-markdown.log`） |
-| specs/frontend--page-docs/spec.md → Docs 阅读布局与响应式目录 | 桌面两栏与移动折叠 | `src/test/DocsMarkdown.test.jsx`；`E:/AI/Fuxi_audit_artifacts/help-markdown-2026-10-24/browser-help-local.mjs` | `同时提供桌面目录和默认折叠的移动目录`；`browser-matrix` | 🟢 green（1440 两栏、390/320 折叠；`browser-help-local.json`） |
-| specs/frontend--page-docs/spec.md → Docs 阅读布局与响应式目录 | 窄屏横向溢出防护 | `E:/AI/Fuxi_audit_artifacts/help-markdown-2026-10-24/browser-help-local.mjs`；`scripts/tests/docs-cleanup.integration.mjs` | `browser-matrix`；`test_q36_docs_responsive_local_scroll_contract` | 🟢 green（320/390/768/1440/1201/1024 均 `documentWidth <= viewport`） |
-| specs/frontend--page-docs/spec.md → Docs 阅读布局与响应式目录 | 移动端标题定位 | `E:/AI/Fuxi_audit_artifacts/help-markdown-2026-10-24/browser-help-local.mjs` | `browser-matrix`（targetTop >= 56） | 🟢 green（320/390/768） |
-| specs/frontend--page-docs/spec.md → Docs 阅读布局与响应式目录 | 移动端先折叠再定位 | `src/test/DocsMarkdown.test.jsx` | `移动端选择目录项时先折叠，再在下一帧滚动` | 🟢 green（红态：`red-web-docs-markdown.log`） |
-| specs/frontend--page-docs/spec.md → Docs 阅读布局与响应式目录 | 帮助页滑动手势隔离 | `src/test/DocsMarkdown.test.jsx` | `TOC、代码块与表格拦截触摸冒泡，正文空白仍可冒泡` | 🟢 green（外部 review R6 后新增的缺陷回归；测试随修复加入，未伪造红态） |
+## Current Mapping
 
-## Coverage Notes
+### Requirement: Docs 页面入口与身份
 
-- 红态证据：`E:/AI/Fuxi_audit_artifacts/help-markdown-2026-10-24/red-web-docs-markdown.log`（新 Docs 测试在旧页面上失败）与 `red-docs-cleanup-integration.log`（新清理/字节守护在旧实现上失败）。
-- 未伪造红态：正文内部锚点、触摸冒泡隔离及复制 fallback 分支是父级 review/浏览器缺陷修复后新增的回归覆盖；它们在修复时加入，未声称先运行过红灯。build 与 browser matrix 为后置机械/浏览器验收，不是单测红绿流程。
-- 绿态命令与结果：`npm run test:web -- src/test/DocsMarkdown.test.jsx src/test/DocsPage.test.jsx` → 2 files / 16 tests passed；`node --test scripts/tests/docs-cleanup.integration.mjs` → 8/8 passed；`npm run lint` → 0 problems；`npm run build` → Vite build passed（Docs chunk 输出）。
-- 浏览器证据：`browser-help-local.mjs` 在 1440/1201/1024/768/390/320 六个宽度通过，输出 `browser-help-local.json`，6 张截图在外部 artifact 目录；使用 reduced-motion、真实目录 button、复制、焦点与 hash 断言。父级 `browser-help.mjs` 当前版本在 390 的 TOC/代码横滑断言已通过，但其手工注入 React 表格 fixture 的 `createRoot` 导入失败；本地副本使用同一浏览器环境完成矩阵，表格/代码局部滚动另由组件 fixture 与 CSS 守护测试覆盖，未改父级脚本。
-- 字节证据：Global 源与 Web 副本读取同一字节数组，`source_bytes=6052`、`copy_bytes=6052`、SHA256 均为 `4C2DEA950538717E5608A654692B6CC8A0B61DA18F84578A6EA9735893D2BF34`；`git check-attr text` 为 `unset`。
-- 全量 `npm test`：`full-npm-test.log` 在 2026-10-24 23:42:55 被外部 harness 中断，停在 RbacMatrix 的通过用例，未写入 Test Files/Tests 总结；按用户指示未重启/重复整套。该日志保留原样，不作为全量通过证据；本 change 使用上述定向 Web/集成测试、lint、build 和真实浏览器矩阵验收。
-- 暂存 blob 校验、主规格同步、archive 与 commit 均为父级门禁；本实现未执行这些动作。父级提交前仍需按 R3 核验暂存 blob。
+#### Scenario: 装配页面
+
+- Test/check:
+  - [X] `src/test/DocsPage.test.jsx::从已复制指南渲染正文与 15 项目录，不渲染旧硬编码章节`
+- Assertion scope: H1「快速开始」与「多人共用容器」、指南正文句、H2「防止容器被删除」、15 个目录 button、TOC 无 link、旧「概念卡 · 状态标签」与 `script` 不出现。
+- Coverage note: 该测试直接渲染 `<Docs />`，未在 `/index/docs` 路由与 `MainLayout` 下断言页面装配。
+
+#### Scenario: 旧正文残留被拒绝
+
+- Test/check:
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_old_hardcoded_body_removed`
+- Assertion scope: `Docs.jsx` 与 `src/components/docs` 不含 `TOC_ITEMS`、`JOURNEYS`、`FAQ_ROWS`、`概念卡 · 状态标签`、`jd-journey`、`DocsJourney.css`；`Docs` 导出存在，`MarkdownGuide.jsx` 存在。
+
+### Requirement: Docs 主流程
+
+#### Scenario: 点击目录项
+
+- Test/check:
+  - [X] `src/test/DocsMarkdown.test.jsx::点击目录按钮时聚焦标题、平滑滚动且不改 URL hash`
+  - [X] `src/test/DocsMarkdown.test.jsx::渲染真实目录按钮、唯一 docs- id，并跳过代码块假标题`
+- Assertion scope: 目标标题获得焦点；`scrollIntoView` 收到 `{ behavior: 'smooth', block: 'start' }`；`window.location.hash` 不变且不等于 `#<id>`；TOC 内无 link、无 `href`。
+
+#### Scenario: 减少动态效果
+
+- Test/check:
+  - [X] `src/test/DocsMarkdown.test.jsx::reduced-motion 时使用 auto 滚动`
+- Assertion scope: `matchMedia('(prefers-reduced-motion: reduce)')` 命中时，`scrollIntoView` 的 `behavior` 为 `auto` 且 `block` 为 `start`。
+
+#### Scenario: 标题 id 的唯一性与 AST 来源
+
+- Test/check:
+  - [X] `src/test/DocsMarkdown.test.jsx::按 H1-H3 建立层级、唯一中文 id，并忽略代码块假标题`
+  - [X] `src/test/DocsMarkdown.test.jsx::渲染真实目录按钮、唯一 docs- id，并跳过代码块假标题`
+  - [X] `src/test/DocsMarkdown.test.jsx::标题 id 使用 docs- 前缀，不与页面已有 DOM id 冲突`
+- Assertion scope: TOC 层级、中文与重复标题 id、`docs-` 前缀、`-2` 去重、代码围栏假标题排除、行内 code 进入 id/标签、H4 有 id 但不进入 TOC、页面已有 `id="快速开始"` 保留且存在 `docs-快速开始`。
+- Coverage note: 测试只预置无前缀 `id="快速开始"`；`usedIds` 仅覆盖当前 Markdown 树，未证明页面已有任意 `docs-*` id 时无冲突。
+
+### Requirement: Docs 构建归属
+
+#### Scenario: 生成生产产物
+
+- Test/check:
+  - [X] `npm run build`
+  - [X] `node E:/AI/Fuxi/FuxiYu_Global/.local/web-docs-normalize-2026-10-25/dist-check.cjs`
+- Assertion scope: 构建命令存在；dist-check 读取现有 Docs chunk，确认 H1 与完整正文句存在，且 dist JS assets 不含已删除 basename。
+- Coverage note: 未在本次归一化重跑 build；dist-check 只读现有产物，不证明当前构建运行。
+
+#### Scenario: 外部路径依赖被拒绝
+
+- Test/check:
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_no_global_repository_dependency`
+- Assertion scope: `src`、`public`、`index.html`、`vite.config.js`、`package.json` 不出现 `FuxiYu_Global`、`../Global` 或 `E:/AI/Fuxi/FuxiYu_Global`；`Docs.jsx` 通过 `../content/USER_GUIDE_v1.md?raw` 导入并装配 `components/docs/MarkdownGuide`。
+
+### Requirement: Docs 页面只保留生产可达资源
+
+#### Scenario: 零引用资源删除且构建通过
+
+- Test/check:
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_zero_ref_removed`
+- Assertion scope: `Docs.css`、`DocsJourney.css`、`Guides.jsx`、`docs-apply.svg`、`docs-apply-mobile.svg`、`docs-home.svg`、`docs-home-mobile.svg` 不存在，basename 在扫描范围内无引用。
+- Coverage note: 构建通过与 dist basename 检查由「生成生产产物」场景的 `npm run build` 与 dist-check 共享覆盖。
+
+#### Scenario: 仍被引用的 statusDisplay 保留
+
+- Test/check:
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_keeps_shared_status_display`
+- Assertion scope: `src/utils/statusDisplay.js` 存在；`ContainerDetailPage.jsx` 与 `MachineDetailPage.jsx` 仍引用 `utils/statusDisplay`。
+- Coverage note: 只验证文件与 import，未执行两个页面的状态渲染，未证明其它页面状态展示行为不变。
+
+#### Scenario: 有引用的资源不得删除
+
+- Test/check:
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_referenced_file_guard`
+- Assertion scope: `MarkdownGuide.jsx`、`MarkdownGuide.css`、`markdownToc.js` 存在；对 `MarkdownGuide.css` 执行零引用删除守护时抛出匹配 `/仍被引用/` 的错误。
+
+### Requirement: Docs Markdown 正文字节保真
+
+#### Scenario: 字节与哈希一致
+
+- Test/check:
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_guide_bytes_are_source_faithful`
+- Assertion scope: 副本为 6052 字节、SHA256 `4C2DEA...BF34`、CRLF 数等于 LF 数且大于 0。
+- Coverage note: Global 原稿当前缺失；历史 `source-copy-hash.txt` 记录源与副本字节相等，当前测试只校验副本记录值，未做新的跨仓库比较。
+
+#### Scenario: 换行被 Git 改写
+
+- Test/check:
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_gitattributes_preserve_guide_bytes`
+- Assertion scope: `.gitattributes` 的目标路径行声明 `-text`；测试内的 `git check-attr` 输出 `text: unset`。
+- Coverage note: 测试只匹配目标路径行；当前 `.gitattributes` 只有该条 `-text`，未机械断言不存在其它 `-text` 行。
+
+#### Scenario: 副本内容偏离
+
+- Test/check:
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_guide_bytes_are_source_faithful`
+- Assertion scope: 当前副本的长度、SHA256 常量与 CRLF 条件由 `assert.equal` 比较，任一不匹配会失败；未执行字节篡改运行。
+
+### Requirement: Docs Markdown 安全渲染与 GFM 能力
+
+#### Scenario: 安全链接与原始 HTML
+
+- Test/check:
+  - [X] `src/test/DocsMarkdown.test.jsx::外链补 rel、危险协议被默认安全转换拦下、原始 HTML 不可执行`
+- Assertion scope: HTTPS 外链保留 href、`target="_blank"`、`rel="noopener noreferrer"`；`javascript:` 链接不保留该协议；原始 `<script>` 不生成 script 元素。
+
+#### Scenario: 正文内部锚点保持 HashRouter
+
+- Test/check:
+  - [X] `src/test/DocsMarkdown.test.jsx::正文内部锚点聚焦目标并滚动，不改变 HashRouter 的 hash`
+- Assertion scope: `#docs-安装` 使目标获得焦点并调用 `scrollIntoView({ behavior: 'smooth', block: 'start' })`；hash 不变；`#docs-missing` 不写 hash，页面不崩溃。
+
+#### Scenario: GFM 表格与代码块
+
+- Test/check:
+  - [X] `src/test/DocsMarkdown.test.jsx::GFM 表格包在局部滚动容器，代码块有可复制结构`
+- Assertion scope: 表格位于 `.docs-table-scroll`；代码 `pre` 带 `.docs-code-pre` 且位于 `.docs-code-block`；复制按钮存在。
+- Coverage note: 未断言 `pre` 下的 `code` 子元素；表格/代码局部横向滚动只有 CSS 契约，无运行时几何验证。
+
+#### Scenario: 复制代码成功与失败
+
+- Test/check:
+  - [X] `src/test/DocsMarkdown.test.jsx::Clipboard 成功时复制完整代码并显示“已复制”`
+  - [X] `src/test/DocsMarkdown.test.jsx::Clipboard 拒绝但 execCommand 回退成功时仍显示“已复制”`
+  - [X] `src/test/DocsMarkdown.test.jsx::Clipboard 与 execCommand 都失败时显示“复制失败”且不崩溃`
+- Assertion scope: Clipboard 成功写入完整代码并显示「已复制」；Clipboard 拒绝后调用 `execCommand('copy')`、返回 true 时显示「已复制」并移除 textarea；两路失败显示「复制失败」且不崩溃。
+- Coverage note: 回退分支未断言 textarea 完整值或选中文本；未覆盖 Clipboard 不可用（仅拒绝）分支。
+
+### Requirement: Docs 阅读布局与响应式目录
+
+#### Scenario: 桌面两栏与移动折叠
+
+- Test/check:
+  - [X] `src/test/DocsMarkdown.test.jsx::同时提供桌面目录和默认折叠的移动目录`
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_responsive_local_scroll_contract`
+- Assertion scope: 桌面 `.docs-toc-desktop` 存在；移动 `details.docs-toc-mobile` 默认无 `open`；CSS 使用右侧 224px 目录、`.docs-toc-desktop` sticky、`.docs-toc-mobile` 桌面 display none，并存在 `@media (max-width: 1024px)` 文本。
+- Coverage note: 1024px media 内的单栏、桌面隐藏/移动显示规则未被机械断言；桌面 TOC 可见性、白色卡片背景与右侧粘性位置没有程序化视觉断言。
+
+#### Scenario: 窄屏横向溢出防护
+
+- Test/check:
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_responsive_local_scroll_contract`
+  - [X] `E:/AI/Fuxi_audit_artifacts/help-markdown-2026-10-24/browser-help-local.mjs`
+- Assertion scope: CSS 无 `overflow-x: hidden`，表格/代码声明 `overflow-x: auto`；浏览器脚本检查 1440/1201/1024/768/390/320 的页面宽度与 `border-box`。
+- Coverage note: 浏览器脚本只证明页面级宽度，未证明表格/代码局部容器的实际横向滚动。
+
+#### Scenario: 移动端标题定位
+
+- Test/check:
+  - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_responsive_local_scroll_contract`
+  - [X] `E:/AI/Fuxi_audit_artifacts/help-markdown-2026-10-24/browser-help-local.mjs`
+- Assertion scope: CSS `scroll-margin-top: 72px`；浏览器脚本在 320/390/768 记录 `targetTop >= 56`。
+
+#### Scenario: 移动端先折叠再定位
+
+- Test/check:
+  - [X] `src/test/DocsMarkdown.test.jsx::移动端选择目录项时先折叠，再在下一帧滚动`
+- Assertion scope: 点击后最终 `details.open === false`，目标标题获得焦点并调用 `scrollIntoView({ behavior: 'smooth', block: 'start' })`。
+- Coverage note: 目标 id 的 `docs-` 前缀由「标题 id 的唯一性与 AST 来源」场景的共享测试覆盖；本测试的 RAF shim 同步执行，只断言最终状态，未记录关闭、聚焦、滚动的执行顺序。
+
+#### Scenario: 帮助页滑动手势隔离
+
+- Test/check:
+  - [X] `src/test/DocsMarkdown.test.jsx::TOC、代码块与表格拦截触摸冒泡，正文空白仍可冒泡`
+  - [X] `Select-String -Path src/components/docs/MarkdownGuide.jsx -Pattern 'onTouchStart|onTouchEnd|stopTouchPropagation|preventDefault'`
+- Assertion scope: 四个局部容器的父级 touchstart/touchend 不被调用；正文空白 touchstart 冒泡一次；源码触摸处理器只调用 `stopPropagation()`，不调用 `preventDefault()`。
+- Coverage note: 未断言 `defaultPrevented`、正文空白 touchend 或真实 `MainLayout` 导航；源码检查不等于端到端运行。
