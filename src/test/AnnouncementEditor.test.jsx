@@ -32,12 +32,17 @@ import { getDetailInformation, listAllMachineBrefInformation } from '../api/mach
 import { getContainerDetailInformation, listAllContainerBrefInformation } from '../api/container_api';
 import { message } from 'antd';
 import AnnouncementEditor from '../pages/AnnouncementEditor';
+import {
+  findEditorView,
+  replaceEditorText,
+  setEditorSelection,
+} from './editorTestUtils';
 
 const TEMPLATE = {
   id: 5,
   name: '维护模板',
   subject_template: '维护主题',
-  body_template: '维护正文',
+  body_template: '**维护正文**',
 };
 
 const MACHINE_A = { machine_id: 1, machine_name: '机器A', machine_ip: '10.0.0.1' };
@@ -101,7 +106,9 @@ const renderEditorWithRoutes = (entry = '/admin/announcements/editor') =>
 const templateCard = () => screen.getByText('模板选择').closest('.ant-card');
 const machineCard = () => screen.getByText('机器属性').closest('.ant-card');
 const containerCard = () => screen.getByText('容器属性').closest('.ant-card');
-const contentTextarea = () => screen.getByPlaceholderText(/在此编写公告正文/);
+const contentEditor = () => screen.getByRole('textbox', { name: '公告正文' });
+const contentEditorView = () => findEditorView(contentEditor());
+const editorContent = () => contentEditorView().state.doc.toString();
 
 const openSelect = (card) => {
   fireEvent.mouseDown(card.querySelector('.ant-select-selector'));
@@ -144,7 +151,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   listTemplates.mockResolvedValue({ templates: [TEMPLATE] });
   getDraft.mockResolvedValue({
-    draft: { id: 9, title: '草稿标题', content: '草稿内容', raw_content: '草稿内容' },
+    draft: {
+      id: 9,
+      title: '草稿标题',
+      content: '**草稿内容**',
+      raw_content: '**草稿内容**',
+    },
   });
   saveDraft.mockResolvedValue({ success: 1, draft_id: 9 });
 });
@@ -156,7 +168,8 @@ describe('AnnouncementEditor 模板/草稿契约（Q06/Q07）', () => {
 
     await selectTemplate('维护模板');
 
-    await waitFor(() => expect(contentTextarea().value).toBe('维护正文'));
+    await waitFor(() => expect(editorContent()).toBe('**维护正文**'));
+    await waitFor(() => expect(contentEditor().querySelector('.cm-md-strong')).not.toBeNull());
     expect(screen.getByPlaceholderText('输入公告标题（邮件主题）').value).toBe('维护主题');
   });
 
@@ -164,22 +177,25 @@ describe('AnnouncementEditor 模板/草稿契约（Q06/Q07）', () => {
     renderEditor();
     await waitFor(() => expect(listTemplates).toHaveBeenCalled());
     await selectTemplate('维护模板');
-    await waitFor(() => expect(contentTextarea().value).toBe('维护正文'));
+    await waitFor(() => expect(editorContent()).toBe('**维护正文**'));
 
-    fireEvent.change(contentTextarea(), { target: { value: '维护正文 + 用户补充' } });
+    const editedContent = '<b>原文</b> &amp;\n\n# 维护正文\n\n**用户补充**';
+    replaceEditorText(contentEditorView(), editedContent);
     fireEvent.click(screen.getByRole('button', { name: /保存草稿/ }));
 
     await waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(1));
     const payload = saveDraft.mock.calls[0][0];
     expect(payload).not.toHaveProperty('template_id');
-    expect(payload.content).toBe('维护正文 + 用户补充');
+    expect(payload.content).toBe(editedContent);
+    expect(payload.raw_content).toBe(editedContent);
   });
 
   it('重开草稿：内容只来自草稿快照，不恢复也不重放模板选择', async () => {
     renderEditor('/admin/announcements/editor?draft_id=9');
 
     await waitFor(() => expect(getDraft).toHaveBeenCalledWith(9));
-    await waitFor(() => expect(contentTextarea().value).toBe('草稿内容'));
+    await waitFor(() => expect(editorContent()).toBe('**草稿内容**'));
+    await waitFor(() => expect(contentEditor().querySelector('.cm-md-strong')).not.toBeNull());
     expect(screen.getByPlaceholderText('输入公告标题（邮件主题）').value).toBe('草稿标题');
     // 草稿没有模板关联：下拉不应显示任何已选项，模板正文也不会覆盖草稿内容
     expect(templateCard().querySelector('.ant-select-selection-item')).toBeNull();
@@ -189,13 +205,13 @@ describe('AnnouncementEditor 模板/草稿契约（Q06/Q07）', () => {
     renderEditor();
     await waitFor(() => expect(listTemplates).toHaveBeenCalled());
     await selectTemplate('维护模板');
-    await waitFor(() => expect(contentTextarea().value).toBe('维护正文'));
+    await waitFor(() => expect(editorContent()).toBe('**维护正文**'));
 
     const clear = templateCard().querySelector('.ant-select-clear');
     expect(clear).toBeTruthy();
     fireEvent.mouseDown(clear);
 
-    expect(contentTextarea().value).toBe('维护正文');
+    expect(editorContent()).toBe('**维护正文**');
   });
 });
 
@@ -411,7 +427,7 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
     fireEvent.keyDown(searchInput, { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38, which: 38 });
     fireEvent.keyDown(searchInput, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13 });
 
-    await waitFor(() => expect(contentTextarea().value).toBe('正文205'));
+    await waitFor(() => expect(editorContent()).toBe('正文205'));
   });
 
   it('test_q52_announcement_edit_template_link “编辑此模板”跳转携带 template_id', async () => {
@@ -419,7 +435,7 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
     await waitFor(() => expect(listTemplates).toHaveBeenCalled());
 
     await selectTemplate('维护模板');
-    await waitFor(() => expect(contentTextarea().value).toBe('维护正文'));
+    await waitFor(() => expect(editorContent()).toBe('**维护正文**'));
     fireEvent.click(screen.getByRole('button', { name: /编辑此模板/ }));
 
     await waitFor(() => expect(screen.getByTestId('location-search').textContent).toContain('template_id=5'));
@@ -441,39 +457,70 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
     // 列表未被清空：仍可直接选择首批里的模板
     openSelect(templateCard());
     await clickSelectOptionExact('模板1');
-    await waitFor(() => expect(contentTextarea().value).toBe('正文1'));
+    await waitFor(() => expect(editorContent()).toBe('正文1'));
   });
 
   it('test_q55_announcement_insert_selection 保持焦点时替换原选区并把光标移到插入内容末尾', async () => {
     renderEditor();
-    const textarea = contentTextarea();
-    fireEvent.change(textarea, { target: { value: 'ABCDE' } });
-    textarea.focus();
-    textarea.setSelectionRange(2, 4); // 选中 CD
-    fireEvent.select(textarea);
+    const view = contentEditorView();
+    replaceEditorText(view, 'ABCDE');
+    act(() => view.focus());
+    setEditorSelection(view, 2, 4); // 选中 CD
 
     fireEvent.click(screen.getByRole('button', { name: '标准问候' }));
 
-    expect(contentTextarea().value).toBe('AB您好！\nE');
-    expect(document.activeElement).toBe(contentTextarea());
-    await waitFor(() => expect(contentTextarea().selectionStart).toBe(6));
-    expect(contentTextarea().selectionEnd).toBe(6);
+    expect(editorContent()).toBe('AB您好！\nE');
+    expect(document.activeElement).toBe(contentEditor());
+    await waitFor(() => expect(view.state.selection.main.head).toBe(6));
+    expect(view.state.selection.main.empty).toBe(true);
   });
 
   it('test_q55_announcement_insert_after_blur 按钮夺焦后仍按缓存选区插入而不是追加到末尾', async () => {
     renderEditor();
-    const textarea = contentTextarea();
-    fireEvent.change(textarea, { target: { value: 'ABCDE' } });
-    textarea.focus();
-    textarea.setSelectionRange(1, 3); // 选中 BC
-    fireEvent.select(textarea);
+    const view = contentEditorView();
+    replaceEditorText(view, 'ABCDE');
+    act(() => view.focus());
+    setEditorSelection(view, 1, 3); // 选中 BC
 
     const button = screen.getByRole('button', { name: '标准问候' });
-    button.focus(); // 模拟浏览器点击按钮时 textarea 先失焦
+    button.focus(); // 模拟浏览器点击按钮时编辑器先失焦
     expect(document.activeElement).toBe(button);
     fireEvent.click(button);
 
-    expect(contentTextarea().value).toBe('A您好！\nDE');
+    expect(editorContent()).toBe('A您好！\nDE');
+    await waitFor(() => expect(view.state.selection.main.head).toBe(5));
+    expect(view.state.selection.main.empty).toBe(true);
+  });
+
+  it('test_q55_announcement_insert_clamped_after_short_template', async () => {
+    const longTemplate = {
+      id: 21,
+      name: '长模板',
+      subject_template: '长主题',
+      body_template: 'ABCDEFGHIJ',
+    };
+    const shortTemplate = {
+      id: 22,
+      name: '短模板',
+      subject_template: '短主题',
+      body_template: '短',
+    };
+    listTemplates.mockResolvedValue({ templates: [longTemplate, shortTemplate] });
+
+    renderEditor();
+    await waitFor(() => expect(listTemplates).toHaveBeenCalled());
+    const view = contentEditorView();
+    replaceEditorText(view, longTemplate.body_template);
+    act(() => view.focus());
+    setEditorSelection(view, 8, 10); // 缓存偏移超出随后短模板的长度
+
+    await selectTemplate('短模板');
+    await waitFor(() => expect(editorContent()).toBe('短'));
+
+    expect(() => fireEvent.click(screen.getByRole('button', { name: '标准问候' }))).not.toThrow();
+    expect(editorContent()).toBe('短您好！\n');
+    await waitFor(() => expect(view.state.selection.main.head).toBe(5));
+    expect(view.state.selection.main.empty).toBe(true);
   });
 
   it('test_q22_announcement_unmount_no_apply 卸载后旧机器/容器列表与详情响应不写回且无错误副作用', async () => {

@@ -14,10 +14,10 @@ import { saveDraft, getDraft, listTemplates } from '../api/announcement_api';
 import { listAllMachineBrefInformation, getDetailInformation } from '../api/machine_api';
 import { listAllContainerBrefInformation, getContainerDetailInformation } from '../api/container_api';
 import showErrorModal from '../utils/showErrorModal';
+import MarkdownSourceEditor from '../components/MarkdownSourceEditor';
 import './AnnouncementEditor.css';
 
 const { Text, Title } = Typography;
-const { TextArea } = Input;
 
 // ── 静态元素内容 ──────────────────────────────────────────────────────
 
@@ -73,7 +73,7 @@ export default function AnnouncementEditor() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const draftId = searchParams.get('draft_id');
-  const textareaRef = useRef(null);
+  const editorRef = useRef(null);
 
   // ── 编辑器状态 ────────────────────────────────────────────────────
   const [title, setTitle] = useState('');
@@ -103,8 +103,6 @@ export default function AnnouncementEditor() {
   const machineListSeqRef = useRef(0);
   const containerSeqRef = useRef(0);
   const mountedRef = useRef(true);
-  // 文本域失焦前的选区缓存（按钮夺焦后仍按原选区插入）。
-  const cachedSelectionRef = useRef(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -283,36 +281,8 @@ export default function AnnouncementEditor() {
   // 在光标位置插入文本
   // ══════════════════════════════════════════════════════════════════
 
-  const rememberSelection = () => {
-    const el = textareaRef.current?.resizableTextArea?.textArea;
-    if (!el) return;
-    cachedSelectionRef.current = {
-      start: el.selectionStart ?? 0,
-      end: el.selectionEnd ?? 0,
-    };
-  };
-
   const insertAtCursor = (text) => {
-    const el = textareaRef.current?.resizableTextArea?.textArea;
-    const focused = !!el && document.activeElement === el;
-    const fallback = content.length;
-    const cached = cachedSelectionRef.current;
-    const rawStart = focused ? (el.selectionStart ?? fallback) : (cached?.start ?? fallback);
-    const rawEnd = focused ? (el.selectionEnd ?? fallback) : (cached?.end ?? fallback);
-    // 内容可能已被模板/草稿替换，缓存选区必须钳制在当前正文范围内。
-    const start = Math.min(Math.max(Number(rawStart) || 0, 0), content.length);
-    const end = Math.min(Math.max(Number(rawEnd) || start, start), content.length);
-    const newContent = content.slice(0, start) + text + content.slice(end);
-    setContent(newContent);
-    setRawContent(newContent);
-    cachedSelectionRef.current = { start: start + text.length, end: start + text.length };
-    setTimeout(() => {
-      const current = textareaRef.current?.resizableTextArea?.textArea;
-      if (!current) return;
-      current.focus();
-      const pos = start + text.length;
-      current.setSelectionRange(pos, pos);
-    }, 0);
+    editorRef.current?.insertText(text);
   };
 
   const insertAtCursorWithNewline = (text) => {
@@ -409,18 +379,13 @@ export default function AnnouncementEditor() {
           </Card>
 
           <Card size="small" title="正文" style={{ marginTop: 12 }}>
-            <TextArea
-              ref={textareaRef}
-              className="ann-editor-textarea"
-              placeholder="在此编写公告正文...&#10;&#10;点击右侧元素按钮直接在光标位置插入内容。"
+            <MarkdownSourceEditor
+              ref={editorRef}
               value={content}
-              onChange={e => { setContent(e.target.value); setRawContent(e.target.value); }}
-              onSelect={rememberSelection}
-              onKeyUp={rememberSelection}
-              onClick={rememberSelection}
-              onBlur={rememberSelection}
-              rows={18}
-              autoSize={{ minRows: 14, maxRows: 35 }}
+              onChange={(nextContent) => {
+                setContent(nextContent);
+                setRawContent(nextContent);
+              }}
             />
           </Card>
         </Col>
