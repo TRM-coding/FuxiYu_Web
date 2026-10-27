@@ -688,14 +688,27 @@ const ContainerDetailPage = () => {
     }
   };
 
+  const getResetBlockReason = (account) => {
+    if (!account?.user_id) return '账号缺少有效用户 ID，请刷新后重试';
+    if (!resetEligibility.visible) return getContainerActionReasonText(resetEligibility.reason);
+    if (!resetEligibility.enabled) return '仅容器在线且宿主机可用时可重置密码';
+    if (!accounts.some(current => String(current.user_id) === String(account.user_id))) {
+      return '账号绑定已变化，请刷新后重试';
+    }
+    if (peopleSaving) return '账号信息正在保存，请稍后重试';
+    return '';
+  };
+
   const openResetConfirm = (account) => {
-    if (!resetEligibility.visible || !resetEligibility.enabled || !account?.user_id || peopleSaving) return;
+    if (getResetBlockReason(account)) return;
     setResetConfirm(account);
   };
 
   const confirmResetPassword = async () => {
     const account = resetConfirm;
-    if (!account?.user_id || !resetEligibility.visible || !resetEligibility.enabled) {
+    const blockReason = getResetBlockReason(account);
+    if (blockReason) {
+      message.warning(blockReason);
       setResetConfirm(null);
       return;
     }
@@ -965,8 +978,8 @@ const ContainerDetailPage = () => {
                         {resetEligibility.visible ? (
                           <Button
                             size="small"
-                            disabled={!resetEligibility.enabled || !account.user_id || peopleSaving}
-                            title={resetEligibility.enabled ? undefined : '仅在线且具备操作权限时可重置密码'}
+                            disabled={Boolean(getResetBlockReason(account))}
+                            title={getResetBlockReason(account) || undefined}
                             onClick={() => openResetConfirm(account)}
                           >
                             重置密码

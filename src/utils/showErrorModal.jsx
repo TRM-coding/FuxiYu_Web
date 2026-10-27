@@ -64,6 +64,10 @@ const CONTAINER_GUARD_REASONS = new Set([
   'container_host_maintenance',
 ]);
 
+const UPSTREAM_PROXY_REASONS = new Set([
+  'upstream_unavailable', 'upstream_timeout', 'upstream_tls_untrusted', 'upstream_error',
+]);
+
 const CONTAINER_GUARD_MESSAGE_PATTERNS = [
   /^container operation [a-z0-9_]+ is not allowed while effective_status is [a-z0-9_]+$/i,
   /^container is not online: status=[a-z0-9_]+$/i,
@@ -233,6 +237,10 @@ export const routeErrorMap = {
     // 通用/鉴权
     '': { invalid_token: '身份验证失败，请重新登录', insufficient_permission: '权限不足', unexpected_response: '远端返回意外响应', NODE_error: '节点错误' },
     '*': {
+      upstream_unavailable: '后端服务暂时无法连接，请稍后重试。',
+      upstream_timeout: '后端响应超时，请稍后重试。',
+      upstream_tls_untrusted: '后端安全连接验证失败，请联系管理员。',
+      upstream_error: '后端代理请求失败，请稍后重试。',
       create_failed: '创建失败',
       list_failed: '获取列表失败',
       duplicate_entry: '重复项导致失败',
@@ -410,9 +418,9 @@ const showErrorModal = (input = {}) => {
 
   let errorReason = null;
   if (message && typeof message === 'object') {
-    errorReason = message.error_reason || message.error || (message.body && message.body.error_reason) || (message.data && message.data.error_reason) || null;
+    errorReason = message.error_reason || message.error || (message.body && (message.body.error_reason || message.body.error)) || (message.data && message.data.error_reason) || null;
   }
-  errorReason = errorReason || inputErrorReason || (params.body && params.body.error_reason) || null;
+  errorReason = errorReason || inputErrorReason || (params.body && (params.body.error_reason || params.body.error)) || null;
 
   // 后端具体 message（可能带申请值与上限等数字）与中文原因映射分开保存：
   // 具体 message 优先保留，中文映射只作为补充行，不再反过来覆盖数值。
@@ -424,7 +432,11 @@ const showErrorModal = (input = {}) => {
   // 已映射时不再把它当“具体细节”展示，也不保留会被误读为输入错误的通用 HTTP 提示。
   const suppressGuardNoise = Boolean(mappedReasonMessage)
     && (containerGuardReason || isContainerGuardMessage(rawMessage));
-  const specificMessage = isSpecificMessage(rawMessage, errorReason) && !suppressGuardNoise
+  // API 包装器拼接的失败状态与代理 JSON 不是业务详细信息；只抑制已知代理错误的确切包装形态。
+  const suppressProxyNoise = UPSTREAM_PROXY_REASONS.has(errorReason)
+    && /\bfailed:\s*(?:502|503|504)\s+\{/.test(rawMessage)
+    && rawMessage.endsWith(JSON.stringify({ error: errorReason }));
+  const specificMessage = isSpecificMessage(rawMessage, errorReason) && !suppressGuardNoise && !suppressProxyNoise
     ? rawMessage
     : null;
   const hasStatusCode = Number.isFinite(Number(code)) || Number.isFinite(Number(status));
