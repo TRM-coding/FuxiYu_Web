@@ -14,7 +14,7 @@
 
 ### Requirement: 提交信息采用真实变更条目
 
-提交信息 SHALL 每行采用 `- NEW 中文短句`、`- AMEND 中文短句` 或 `- FIX 中文短句`；关键字 SHALL 只取 NEW、AMEND、FIX 三者之一，不得自造。每行 SHALL 说明具体变更，写得能脱离当次对话独立理解；空行与以 `#` 开头的 Git 注释行 SHALL NOT 计入条目。格式化由 `githooks/commit-msg` 检查，中文表达与内容真实性由评审确认。
+提交信息 SHALL 每行采用 `- NEW 中文短句`、`- AMEND 中文短句`、`- FIX 中文短句`、`- SPEC 中文短句` 或 `- TEST 中文短句`；关键字 SHALL 只取 NEW、AMEND、FIX、SPEC、TEST 五者之一，不得自造；SPEC 用于规格与文档，TEST 用于测试。每行 SHALL 说明具体变更，写得能脱离当次对话独立理解；空行与以 `#` 开头的 Git 注释行 SHALL NOT 计入条目。格式化由 `githooks/commit-msg` 检查，中文表达与内容真实性由评审确认。
 
 #### Scenario: 多项变更
 
@@ -23,7 +23,7 @@
 
 #### Scenario: 错误关键字
 
-- **WHEN** 使用 DOCS、SPEC、DEBUG 或自造关键字
+- **WHEN** 使用 DOCS、DEBUG 或自造关键字
 - **THEN** commit-msg 拒绝提交并列出允许的格式与关键字
 
 #### Scenario: 脱离上下文不可读
@@ -248,7 +248,7 @@ PR 正文校验 SHALL 由工作流读取 GitHub event JSON 的 `pull_request.bod
 
 ### Requirement: commit 关键字与 PR 栏目相互独立
 
-提交信息的 NEW/AMEND/FIX SHALL 与 PR 正文栏目各自维护。PR 说明本次交付，MUST NOT 把 commit 的 AMEND 改写成 PR 的栏目关键字，也 MUST NOT 用 PR 栏目名改写历史提交关键字。
+提交信息的 NEW/AMEND/FIX/SPEC/TEST SHALL 与 PR 正文栏目各自维护。PR 说明本次交付，MUST NOT 把 commit 的 AMEND 改写成 PR 的栏目关键字，也 MUST NOT 用 PR 栏目名改写历史提交关键字。
 
 #### Scenario: PR 内含 AMEND 提交
 
