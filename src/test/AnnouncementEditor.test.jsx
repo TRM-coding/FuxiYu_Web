@@ -322,8 +322,11 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
   it('test_q22_announcement_independent_selectors 机器选择不筛选/清空独立的容器选项与已选容器', async () => {
     listAllMachineBrefInformation.mockResolvedValue({ machines: [MACHINE_A, MACHINE_B] });
     listAllContainerBrefInformation.mockResolvedValue({ containers_info: [CONTAINER_A, CONTAINER_B] });
-    getDetailInformation.mockImplementation(async (machineId) => (
-      machineId === MACHINE_B.machine_id ? machineDetail(MACHINE_B) : machineDetail(MACHINE_A)
+    const selectedMachineDetail = deferred();
+    getDetailInformation.mockImplementation((machineId) => (
+      machineId === MACHINE_B.machine_id
+        ? selectedMachineDetail.promise
+        : Promise.resolve(machineDetail(MACHINE_A))
     ));
     getContainerDetailInformation.mockResolvedValue(containerDetail(CONTAINER_A));
 
@@ -335,12 +338,18 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
     await selectContainer('容器A (port:2201)');
     await waitFor(() => expect(getContainerDetailInformation).toHaveBeenCalledWith(CONTAINER_A.container_id));
     expect(within(containerCard()).getByText('容器A (port:2201)')).toBeInTheDocument();
-    expect(within(containerCard()).getByRole('button', { name: /容器名\(端口\): 容器A/ })).toBeInTheDocument();
+    expect(await within(containerCard()).findByRole('button', { name: /容器名\(端口\): 容器A/ })).toBeInTheDocument();
 
     const containerCallsBefore = listAllContainerBrefInformation.mock.calls.length;
     await selectMachine('机器B (10.0.0.2)');
     await waitFor(() => expect(getDetailInformation).toHaveBeenCalledWith(MACHINE_B.machine_id));
-    expect(screen.getByRole('button', { name: /机器名: 机器B/ })).toBeInTheDocument();
+    // 请求发出时详情尚未返回，先确认独立容器仍保留，再释放响应。
+    expect(screen.queryByRole('button', { name: /机器名: 机器B/ })).toBeNull();
+    expect(within(containerCard()).getByRole('button', { name: /容器名\(端口\): 容器A/ })).toBeInTheDocument();
+    await act(async () => {
+      selectedMachineDetail.resolve(machineDetail(MACHINE_B));
+    });
+    expect(await screen.findByRole('button', { name: /机器名: 机器B/ })).toBeInTheDocument();
 
     // 机器选择不影响独立的容器选择器：不重拉、不清空选项、不丢已选容器。
     expect(listAllContainerBrefInformation).toHaveBeenCalledTimes(containerCallsBefore);

@@ -187,6 +187,8 @@ const contentEditorView = () => findEditorView(contentEditor());
 const editorContent = () => contentEditorView().state.doc.toString();
 
 const openSelect = (card) => {
+  // 调用方可能已为等待列表而展开；再次 mousedown 会把选项关闭。
+  if (card.querySelector('.ant-select-open')) return;
   fireEvent.mouseDown(card.querySelector('.ant-select-selector'));
 };
 
