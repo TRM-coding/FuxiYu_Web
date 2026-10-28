@@ -1,35 +1,83 @@
-# TemplateManager 测试覆盖
+# frontend--page-template-manager Test Plan
 
-规格：[spec.md](spec.md)
+Spec: [spec.md](spec.md)
 
-## 台账状态
+## Current Mapping
 
-- 主 spec SHA256：`b8b1b660917b3124d2f327fe5f0d45c1e17766a2a0d87c815fcae602540f601e`
-- 本轮映射：已覆盖 6；部分覆盖 0；待复核 3。
-- 测试基线：固定版 Web 代码 `a98e51d`；验收文档 HEAD `372fb80`。本轮只同步文档，未重跑业务套件。
-- 运行证据：A 组 9/78；`TemplateManager.test.jsx` 的 Q37/Q52 用例通过；固定版 `npm test` 64/605+40。
-- 定向证据：A 组 9 files/78（`.git/q28-handoff-a9-78-tests.log`）。
-- 限制：jsdom 组件测试；真实浏览器/E2E/视觉验收未运行；CI Node 20.19.0/22 未实际远程运行；本轮未重跑业务套件。
+### Requirement: TemplateManager 页面入口与身份
 
-## 当前场景映射
+#### Scenario: 装配页面
 
-| Requirement | Scenario | 覆盖状态 | 测试位置与 nodeid/参数 | 验证范围或缺口 |
-| --- | --- | --- | --- | --- |
-| TemplateManager 页面入口与身份 | 装配页面 | 待复核 | — | 本轮未审计；旧契约保留，未用本 change 总套件数字推断该场景已覆盖。 |
-| TemplateManager 主流程 | 删除已经被公告或草稿引用的自定义模板 | 待复核 | — | 本轮未审计；旧契约保留，未用本 change 总套件数字推断该场景已覆盖。 |
-| TemplateManager 构建归属 | 生成生产产物 | 待复核 | — | 本轮未审计；旧契约保留，未用本 change 总套件数字推断该场景已覆盖。 |
-| TemplateManager 列表分页与深链定位 | 205 个模板分两页 | 已覆盖 | ../../../src/test/TemplateManager.test.jsx::test_q52_template_manager_205_pages | 断言「205 个模板分两页」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
-| TemplateManager 列表分页与深链定位 | 深链定位第 205 个模板 | 已覆盖 | ../../../src/test/TemplateManager.test.jsx::test_q52_template_manager_deep_link_205 | 断言「深链定位第 205 个模板」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
-| TemplateManager 列表分页与深链定位 | 无效模板 ID 不崩溃 | 已覆盖 | ../../../src/test/TemplateManager.test.jsx::test_q52_template_manager_invalid_id | 断言「无效模板 ID 不崩溃」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
-| TemplateManager 模板错误按现有协议映射 | 重名创建显示模板名称已存在 | 已覆盖 | ../../../src/test/TemplateManager.test.jsx::test_q37_template_known_reasons | 断言「重名创建显示模板名称已存在」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
-| TemplateManager 模板错误按现有协议映射 | 删除系统模板显示不可删除 | 已覆盖 | ../../../src/test/TemplateManager.test.jsx::test_q37_template_system_delete_mapping | 断言「删除系统模板显示不可删除」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
-| TemplateManager 模板错误按现有协议映射 | 未登记模板原因保留兜底 | 已覆盖 | ../../../src/test/TemplateManager.test.jsx::test_q37_template_unknown_reason | 断言「未登记模板原因保留兜底」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
+- Test/check:
+  - [X] `src/test/AnvilContentPages.test.jsx::test_anvil_template_manager_route_assembles_under_admin_layout`
+- Assertion scope: 规划测试用真实 `AppRoutes`、`PermissionProvider`、`MemoryRouter` 和真实 `AdminLayout` 渲染 `/admin/announcements/templates`；mock `../api/user_api` 的 `getUserPermissions` 为 `vi.fn().mockResolvedValue({ entities: ['announcement:manage'], userId: 1, userName: 'audit' })`，使权限快照 loaded=true；断言路径保持、页面出现「模板管理」与「新建模板」、未被 403 拦截。只 mock 公告 API、上述权限 API 与 `antd.message`，不发真实权限请求。
+- Coverage note: 现有 `TemplateManager.test.jsx` 直接渲染页面组件，不断言路由入口、管理布局或权限快照；本条为 apply 阶段新增。
 
-## 最近验证
+### Requirement: TemplateManager 主流程
 
-- 时间：2026-10-21 04:01:26 +08:00（固定提交npm test起始时间；本轮归档未重跑）。
-- 版本：Web 代码 `a98e51d`；验收文档 `372fb80`。
-- 主 spec SHA256：`b8b1b660917b3124d2f327fe5f0d45c1e17766a2a0d87c815fcae602540f601e`。
-- 命令与环境：固定版 `npm test`（Node v26.8.1）→ 64 files/605 + 40 tests，0 failed/0 skipped/0 todo；本 capability 定向证据：A 组 9 files/78（`.git/q28-handoff-a9-78-tests.log`）。
-- 结果：新增/修改场景按上表具名测试或机械检查映射；未把 skip/excluded 或未运行项写成通过。
-- 限制或尚未运行项：jsdom 组件测试；真实浏览器/E2E/视觉验收未运行；CI Node 20.19.0/22 未实际远程运行；本轮未重跑业务套件。
+#### Scenario: 删除已经被公告或草稿引用的自定义模板
+
+- Test/check:
+  - [X] `src/test/TemplateManager.test.jsx::自定义模板可删除：确认后调用删除并回列表`
+  - [X] `src/test/TemplateManager.test.jsx::系统模板不暴露删除入口`
+- Assertion scope: 列表中的自定义模板显示删除入口，确认后调用 `deleteTemplate(5)` 并重新拉取列表；系统模板不显示删除入口，页面不要求先删除草稿或公告。
+- Coverage note: “旧草稿/公告的模板引用由后端解除、已有正文和投递记录不变”是后端解除引用语义；Web 侧只能断言前端不阻止删除、删除后刷新列表，不能证明后端保存的草稿/公告内容不变。人工检查（需 Ctrl 后端）：让一份草稿和一条公告引用该自定义模板，删除后分别读取草稿与公告，确认正文与投递记录不变且无需先删除引用；该检查不在 Web 自动化内，也不声称已执行。
+
+### Requirement: TemplateManager 构建归属
+
+#### Scenario: 生成生产产物
+
+- Test/check:
+  - [X] `npm run build`
+- Assertion scope: `npm run build` 退出码 0；本 check 只证明构建命令成功。页面级异步 chunk 的存在/命名、是否与入口隔离、体积和 Rollup 警告未由该命令自动断言。
+- Coverage note: 该 check 只对构建命令负责；`React.lazy`/`Suspense` 组织、`manualChunks` 配置、静态导入现状属人工核对事实。chunk 产出、体积与警告清单未由该命令证明，也不在本计划声称已观测。
+
+### Requirement: TemplateManager 列表分页与深链定位
+
+#### Scenario: 205 个模板分两页
+
+- Test/check:
+  - [X] `src/test/TemplateManager.test.jsx::test_q52_template_manager_205_pages`
+- Assertion scope: 首批以 `{ limit: 200, offset: 0 }` 请求，第二页以 `{ limit: 200, offset: 200 }` 请求；页面显示「模板200」与「模板205」，第 205 个可打开编辑，编辑内容与模板正文一致。既有用例未逐项计数每页 DOM 卡片数量。
+- Coverage note: 未逐项断言“显示 200 个/5 个”；本行只证明请求参数、首/末项可见与第 205 个可打开编辑。
+
+#### Scenario: 深链定位第 205 个模板
+
+- Test/check:
+  - [X] `src/test/TemplateManager.test.jsx::test_q52_template_manager_deep_link_205`
+- Assertion scope: 目标不在当前页时调用 `getTemplate(205)`，打开「编辑模板 — 模板205」并显示正文；`location.search` 仍包含 `template_id=205`。
+
+#### Scenario: 无效模板 ID 不崩溃
+
+- Test/check:
+  - [X] `src/test/TemplateManager.test.jsx::test_q52_template_manager_invalid_id`
+- Assertion scope: `getTemplate(999)` 以 404 拒绝后显示「模板不存在」，列表仍渲染模板 1，首批列表仍以 `{ limit: 200, offset: 0 }` 加载。
+- Coverage note: 用例未直接断言“无未捕获异常/无空白”，只证明上述可见结果；不把测试未报错推导成完整错误边界。
+
+### Requirement: TemplateManager 模板错误按现有协议映射
+
+#### Scenario: 重名创建显示模板名称已存在
+
+- Test/check:
+  - [X] `src/test/TemplateManager.test.jsx::test_q37_template_known_reasons`
+  - [X] `src/test/showErrorModalMap.test.js::/announcements/templates → duplicate_entry 显示「模板名称已存在」`
+  - [X] `src/test/showErrorModalMap.test.js::/announcements/templates → duplicate_entry`
+- Assertion scope: 创建模板以 409 拒绝时，页面以 `{ message: body, status: 409, route: CREATE_ROUTE }` 调用 `showErrorModal`，其中 `body.error_reason` 为 `duplicate_entry`；映射表断言该 route/reason 的中文为「模板名称已存在」；真实弹窗用例用同一 route/reason 调用 `showErrorModal`，断言可见弹窗包含该中文且不显示未收录原因。
+
+#### Scenario: 删除系统模板显示不可删除
+
+- Test/check:
+  - [X] `src/test/TemplateManager.test.jsx::test_q37_template_system_delete_mapping`
+  - [X] `src/test/showErrorModalMap.test.js::/announcements/templates → cannot_delete_system_template 显示「系统模板不可删除」`
+  - [X] `src/test/AnvilContentPages.test.jsx::test_anvil_template_manager_system_delete_and_unknown_error_popups`
+- Assertion scope: 删除接口以 400 和 `cannot_delete_system_template` 拒绝时，页面以结构化 body/status/route 调用 `showErrorModal`，模板列表仍显示原模板；映射表断言该 route/reason 的中文为「系统模板不可删除」。规划测试让页面使用真实 `showErrorModal` 触发同一失败，断言真实弹窗包含「系统模板不可删除」。
+- Coverage note: 既有页面用例 mock 了 `showErrorModal`，只断言调用参数；映射表只断言 route/reason 值。规划测试补真实弹窗呈现。
+
+#### Scenario: 未登记模板原因保留兜底
+
+- Test/check:
+  - [X] `src/test/TemplateManager.test.jsx::test_q37_template_unknown_reason`
+  - [X] `src/test/ErrorPresentation.test.jsx::未知 error_reason 有中文兜底并标明未收录，不硬套已知错误`
+  - [X] `src/test/AnvilContentPages.test.jsx::test_anvil_template_manager_system_delete_and_unknown_error_popups`
+- Assertion scope: 页面把未登记的 `template_locked` body、409 和 route 原样交给 `showErrorModal`，不改成已知原因；通用错误呈现用例证明未知 reason 走「发生未知错误」并标注「未收录的错误原因」。规划测试在模板 route 上触发该原因，断言真实弹窗包含「未收录的错误原因：template_locked」且不包含「模板名称已存在」。
+- Coverage note: 通用兜底用例使用 machine route，不能证明模板 route 不硬套模板文案；规划测试补 route-specific 分支。

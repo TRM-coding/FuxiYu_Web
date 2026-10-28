@@ -1,45 +1,93 @@
-# AdminLogs 测试覆盖
+# frontend--page-admin-logs Test Plan
 
-规格：[spec.md](spec.md)
+Spec: [spec.md](spec.md)
 
-## 台账状态
+## Current Mapping
 
-- 主 spec SHA256：`4a8dc705b6a9b95fe5fdbe9b4ae0ba4411d680745645cedfcaa521f6afc382f0`
-- 本轮映射：已覆盖 5；部分覆盖 2；待复核 3。
-- 测试基线：当前工作区最终实现；保留 a98e51d 的 A 组历史记录。
-- 运行证据：父代理最终 `npm test` 68 files/652 tests + server 40 tests，0 failed；`AdminLogsMobile.test.jsx` 当前 4/4，`AdminLogs.test.jsx` 11/11。
-- 真实浏览器：父代理 26 cases / 315 checks 全部通过，`verified-complete/results.json` 的 sourceHashes 与当前实现一致；旧 353px 无详情入口为历史基线。
-- 限制：jsdom/CSS 契约测试不计算真实 `scrollWidth`/日期范围高度；真实 320/390/768/1440 由外部浏览器补足；CI Node 20.19.0/22 未在本轮实际远程运行。
+### Requirement: AdminLogs 页面入口与身份
 
-## 当前场景映射
+#### Scenario: 装配页面
 
-| Requirement | Scenario | 覆盖状态 | 测试位置与 nodeid/参数 | 验证范围或缺口 |
-| --- | --- | --- | --- | --- |
-| AdminLogs 页面入口与身份 | 装配页面 | 待复核 | — | 本轮未审计；旧契约保留，未用本 change 总套件数字推断该场景已覆盖。 |
-| AdminLogs 主流程 | 切换周或过滤条件 | 待复核 | — | 本轮未审计；旧契约保留，未用本 change 总套件数字推断该场景已覆盖。 |
-| AdminLogs 构建归属 | 生成生产产物 | 待复核 | — | 本轮未审计；旧契约保留，未用本 change 总套件数字推断该场景已覆盖。 |
-| AdminLogs 查询结果必须匹配当前周次、筛选与分页 | 当前上下文响应应用 | 已覆盖 | ../../../src/test/AdminLogs.test.jsx::test_q22_admin_logs_current_response | 断言「当前上下文响应应用」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
-| AdminLogs 查询结果必须匹配当前周次、筛选与分页 | 旧周次响应晚到 | 已覆盖 | ../../../src/test/AdminLogs.test.jsx::test_q22_admin_logs_stale_week | 断言「旧周次响应晚到」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
-| AdminLogs 查询结果必须匹配当前周次、筛选与分页 | 旧筛选或旧页响应晚到 | 已覆盖 | ../../../src/test/AdminLogs.test.jsx::test_q22_admin_logs_stale_filter_page | 断言「旧筛选或旧页响应晚到」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
+- Test/check:
+  - [X] `src/test/AnvilTableSettings.test.jsx::anvil_ts_admin_logs_route_assembly`
+- Assertion scope: 真实 `AppRoutes` + `PermissionProvider` + `MemoryRouter` 访问 `/admin/logs`，`getUserPermissions` 返回 `operation_log:manage` 与 `bypass_auth_entity`；断言 AdminLayout 菜单「操作日志」出现、`.admin-shell` 与 `.admin-logs` 同时存在、日志行「更新机器」渲染；页面身份来自权限快照，不读 localStorage 副本。
+- Coverage note: 规划测试，未创建；现有 `AdminLogs.test.jsx` 只直渲页面，不能证明路由、懒加载与布局装配。
 
-| AdminLogs 移动端日志详情与 320px 收缩 | 390px 与 768px 展开日志详情 | 已覆盖 | ../../../src/test/AdminLogsMobile.test.jsx::tc_logs_01_mobile_390_768_expand_collapse | 断言内部状态展开/收起、`aria-expanded`、详情内容与无额外请求；当前文件 4/4 通过。 |
-| AdminLogs 移动端日志详情与 320px 收缩 | 320px 统计区收缩且详情不溢出 | 部分覆盖 | ../../../src/test/AdminLogsMobile.test.jsx::tc_logs_02_320_side_contract | 断言 `.als-side` 的 `min(300px, 100%)` CSS 契约与移动卡片；真实 320px `scrollWidth`、日期高度由外部 26/315 补足。 |
-| AdminLogs 移动端日志详情与 320px 收缩 | 1440px 桌面保持 antd 展开与分页 | 已覆盖 | ../../../src/test/AdminLogs.test.jsx::展开行显示前→后对比（状态值翻译） | 断言桌面 antd 表格展开与详情；当前 `AdminLogs.test.jsx` 11/11 通过。 |
-| AdminLogs 移动端日志详情与 320px 收缩 | 长日志详情在 320px 内可读 | 部分覆盖 | ../../../src/test/AdminLogsMobile.test.jsx::tc_logs_03_long_detail_320 | 断言长详情结构、换行类与收起按钮；真实 320px 宽度/高度由外部 26/315 补足；额外 `tc_logs_04` 锁定周次/工具条 wrap 契约。 |
+### Requirement: AdminLogs 主流程
 
-## 最近验证
+#### Scenario: 切换周或过滤条件
 
-- 时间：2026-10-21 15:38 +08:00（父代理最终全量）；历史记录保留 2026-10-21 04:01:26 的 a98e51d 基线。
-- 版本：当前工作区最终实现；历史基线 `a98e51d`。
-- 主 spec SHA256：`4a8dc705b6a9b95fe5fdbe9b4ae0ba4411d680745645cedfcaa521f6afc382f0`。
-- 命令与环境：父代理 `npm test` → 前端 68 files/652 tests、server 40 tests，0 failed；`AdminLogsMobile.test.jsx` 4/4、`AdminLogs.test.jsx` 11/11；历史 A 组 9 files/78 记录保留。
-- 结果：新增/修改场景按上表具名测试或机械检查映射；CSS 契约场景标“部分覆盖”，不写成真实像素通过。
-- 稳定性：本会话第 15/16 次全量遇到既有 `HomeEligibility`/`DeletedContainersMountUsage` 5 秒超时，单 worker 28 项通过，父代理最终全量通过；原因未充分证明，保留 warning。
-- 限制或尚未运行项：jsdom 组件测试；真实浏览器补充见下；CI Node 20.19.0/22 未实际远程运行。
+- Test/check:
+  - [X] `src/test/AdminLogs.test.jsx::点击「上一周」以新的时间范围重新查询`
+  - [X] `src/test/AdminLogs.test.jsx::test_q22_admin_logs_stale_filter_page`
+  - [X] `src/test/AnvilTableSettings.test.jsx::anvil_ts_admin_logs_week_filter_stats`
+- Assertion scope: 上一周点击后第二次 `listOperationLogs` 调用带 `start`/`end`；筛选下拉切换会触发新列表请求，迟到旧筛选响应不覆盖新结果与分页。规划测试在同一交互后断言 `getOperationLogStats` 被调用，且统计三卡按响应渲染。
+- Coverage note: 规划测试，未创建；既有断言只覆盖列表请求与渲染，未断言统计调用。当前实现的列表与统计在同一 effect 中重跑，规划测试按此可观察行为编写，不新增伪造请求。THEN 末尾“旧请求覆盖的风险登记在 QUESTIONS”属 Global QUESTIONS 文档职责，不在本仓自动化测试范围。
 
-## 真实浏览器审计（历史与当前）
+### Requirement: AdminLogs 构建归属
 
-- 历史基线：320px 下 `.als-side` 固定 300px 最小宽度导致整页 353px；320/390/768px 无可用移动日志详情按钮。旧结果已不再代表当前实现。
-- 当前补验：父代理 26 cases / 315 checks 全部通过，覆盖 320/390/768/1440px；`.als-side` 收缩、周次日期范围高度、移动详情展开、桌面 antd 展开与分页均通过；`verified-complete/results.json` 的 sourceHashes 与当前实现一致。
-- 当前 `npm test` 68 files/652 tests + server 40 tests 通过；本会话 15/16 次全量的既有 5 秒超时已在上一段记录，单 worker 28 项通过，父代理最终全量通过。
-- 未覆盖：真实后端、真实设备、其他浏览器、全部历史场景；本台账不把 CSS 契约测试当作真实宽度/高度证据。
+#### Scenario: 生成生产产物
+
+- Test/check:
+  - [X] `npm run build`
+- Assertion scope: `vite build` 退出码 0，构建完成并生成 `dist`。
+- Coverage note: 只证明构建成功与产物生成；不自动断言 `AdminLogs`/`ModelViewer` 独立 chunk、`vendor-three-*` 分组或 Rollup 警告清单，这些是产物人工核对/验收观测，不由命令退出码证明。
+
+### Requirement: AdminLogs 查询结果必须匹配当前周次、筛选与分页
+
+#### Scenario: 当前上下文响应应用
+
+- Test/check:
+  - [X] `src/test/AdminLogs.test.jsx::test_q22_admin_logs_current_response`
+- Assertion scope: 当前请求返回后日志「当前周日志」渲染、`listOperationLogs` 恰好 1 次、`total_pages=4` 显示 4 页且第 1 页为 active。
+
+#### Scenario: 旧周次响应晚到
+
+- Test/check:
+  - [X] `src/test/AdminLogs.test.jsx::test_q22_admin_logs_stale_week`
+- Assertion scope: 上一周结果先返回并渲染、分页 3 页；本周迟到响应后不出现「本周迟到日志」，列表仍显示上一周结果，分页仍为 3 页。
+- Coverage note: 断言旧响应不覆盖当前结果；请求序号/控制器资源释放是代码层事实，测试未直接观测释放动作。
+
+#### Scenario: 旧筛选或旧页响应晚到
+
+- Test/check:
+  - [X] `src/test/AdminLogs.test.jsx::test_q22_admin_logs_stale_filter_page`
+  - [X] `src/test/AdminLogs.test.jsx::test_q22_admin_logs_stale_page`
+- Assertion scope: 旧筛选迟到响应不改写新筛选结果，旧 `total_pages=5` 不出现；旧页 2 迟到响应不改写第 1 页结果，第 1 页仍为 active。
+- Coverage note: 两个测试分别覆盖旧筛选与旧页；正文的「旧请求只释放自身资源」未由测试直接观测。
+
+### Requirement: AdminLogs 移动端日志详情与 320px 收缩
+
+#### Scenario: 390px 与 768px 展开日志详情
+
+- Test/check:
+  - [X] `src/test/AdminLogsMobile.test.jsx::tc_logs_01_mobile_390_768_expand_collapse`
+  - [X] `src/test/AnvilTableSettings.test.jsx::anvil_ts_admin_logs_mobile_expand_no_requests`
+- Assertion scope: 既有测试在 390/768 点击「展开详情」后断言按钮变「收起详情」且 `aria-expanded=true`、显示「结构化」「复制详情」，再收起后详情消失；规划测试补断言收起后 `aria-expanded=false`，展开/收起前后 `listOperationLogs` 与 `getOperationLogStats` 调用次数均不变。
+- Coverage note: 规划测试，未创建；既有测试未断言收起后的 aria 与请求次数。
+
+#### Scenario: 320px 统计区收缩且详情不溢出
+
+- Test/check:
+  - [X] `src/test/AdminLogsMobile.test.jsx::tc_logs_02_320_side_contract`
+  - [X] `src/test/AnvilTableSettings.test.jsx::anvil_ts_admin_logs_320_layout_dom`
+  - [ ] `npm run dev`
+- Assertion scope: 既有测试在 320 渲染并断言移动卡片、`.als-side`、`.als-wall-wrap` 存在；规划测试补断言统计三卡、筛选栏、日志卡片、分页入口均在 DOM 中。人工浏览器检查在 Chromium 320px 打开 HashRouter 实际地址 `https://localhost:5173/#/admin/logs`（路径 `/admin/logs`），使用现有 Dev/测试数据中一条含已知长 JSON/URL 的日志并展开详情；测量 `document.documentElement.scrollWidth` 与 `window.innerWidth`，断言 `scrollWidth <= 322`，`.als-side` 不再固定 300px、`.als-wall-wrap` 保留内部横向滚动，统计区、筛选、卡片与分页仍可见。
+- Coverage note: 规划测试，未创建；既有 `tc_logs_02` 读取 CSS 源字符串断言 `min(300px, 100%)`，按本轮规则不作为真实布局证据；jsdom 不计算 `scrollWidth`，像素结论只来自人工浏览器。
+
+#### Scenario: 1440px 桌面保持 antd 展开与分页
+
+- Test/check:
+  - [X] `src/test/AdminLogs.test.jsx::展开行显示前→后对比（状态值翻译）`
+  - [X] `src/test/AnvilTableSettings.test.jsx::anvil_ts_admin_logs_desktop_1440_children_expand_page2`
+- Assertion scope: 既有测试在桌面默认 `matchMedia` 下点击 antd `Expand row`，断言「机器状态」「运行中」「维护中」；规划测试在 1440 渲染真实 `AdminLogs`，断言 antd `table`、五列头、展开图标、无移动详情按钮。展开当前行前后 `listOperationLogs` 与 `getOperationLogStats` 调用次数不变（展开不新增 fetch）；点击第 2 页后 `listOperationLogs` 收到 `page=2,page_size=20`，统计三卡按响应渲染，第 2 页仍可用 antd 展开图标打开详情。
+- Coverage note: 规划测试，未创建；既有测试未设置 1440、未断言表头、无移动卡片或分页请求。本场景“请求次数不变”按上下文解释为：响应式调整（桌面 antd/移动卡片切换与展开）不引入额外请求，不禁止既有换页查询；换页沿现有 effect 可重取列表与统计。新页仍有详情功能，但不保留旧页行的展开 DOM。计划据此只断言展开不新增请求、换页列表参数、统计三卡渲染与新页展开能力，不引入新后端或 no-stats 策略。
+
+#### Scenario: 长日志详情在 320px 内可读
+
+- Test/check:
+  - [X] `src/test/AdminLogsMobile.test.jsx::tc_logs_03_long_detail_320`
+  - [X] `src/test/AnvilTableSettings.test.jsx::anvil_ts_admin_logs_320_long_detail_action`
+  - [ ] `npm run dev`
+- Assertion scope: 既有测试在 320 展开含长 URL 的详情，断言 `.admin-logs-kv`、长路径文本、「收起详情」按钮存在；规划测试点击「收起详情」，断言详情消失、按钮恢复「展开详情」，再次展开后长文本重新出现。人工浏览器检查在 Chromium 320px 打开 `https://localhost:5173/#/admin/logs`（路径 `/admin/logs`），使用现有 Dev/测试数据中一条含无空格长 JSON、长 URL 或长 diff 行的日志；展开后测量 `document.documentElement.scrollWidth` 与 `window.innerWidth`，断言 `scrollWidth <= 322`，详情在卡片内换行或按既有滚动容器展示，“收起详情”按钮可见且可点击。
+- Coverage note: 规划测试，未创建；真实换行/溢出只能人工浏览器，jsdom 不断言像素。

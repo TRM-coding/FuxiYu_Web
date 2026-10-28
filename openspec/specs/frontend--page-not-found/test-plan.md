@@ -1,31 +1,49 @@
-# NotFound 测试覆盖
+# frontend--page-not-found Test Plan
 
-规格：[spec.md](spec.md)
+Spec: [spec.md](spec.md)
 
-## 台账状态
+## Current Mapping
 
-- 主 spec SHA256：`a90d8c43562c8344feeb6dc921810a1c9e282251f67b5726d5ee4653d08c0061`
-- 本轮映射：已覆盖 2；部分覆盖 0；待复核 3。
-- 测试基线：固定版 Web 代码 `a98e51d`；验收文档 HEAD `372fb80`。本轮只同步文档，未重跑业务套件。
-- 运行证据：C 组 19/189；`notFoundLayout.test.js` 的 Q66 用例通过；固定版 `npm test` 64/605+40。
-- 定向证据：C 组 19 files/189（`.git/apply-worker-final3-web.log`）。
-- 限制：jsdom 组件测试；真实浏览器/E2E/视觉验收未运行；CI Node 20.19.0/22 未实际远程运行；本轮未重跑业务套件。
+### Requirement: NotFound 页面入口与身份
 
-## 当前场景映射
+#### Scenario: 装配页面
 
-| Requirement | Scenario | 覆盖状态 | 测试位置与 nodeid/参数 | 验证范围或缺口 |
-| --- | --- | --- | --- | --- |
-| NotFound 页面入口与身份 | 装配页面 | 待复核 | — | 本轮未审计；旧契约保留，未用本 change 总套件数字推断该场景已覆盖。 |
-| NotFound 主流程 | 访问未匹配路由 | 待复核 | — | 本轮未审计；旧契约保留，未用本 change 总套件数字推断该场景已覆盖。 |
-| NotFound 构建归属 | 生成生产产物 | 待复核 | — | 本轮未审计；旧契约保留，未用本 change 总套件数字推断该场景已覆盖。 |
-| NotFound 页面使用完整视口高度 | 顶层未知路由无底部空隙 | 已覆盖 | ../../../src/test/notFoundLayout.test.js::test_q66_notfound_full_viewport | 断言「顶层未知路由无底部空隙」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
-| NotFound 页面使用完整视口高度 | 移动端视口无 56px 空隙 | 已覆盖 | ../../../src/test/notFoundLayout.test.js::test_q66_notfound_mobile_no_gap | 断言「移动端视口无 56px 空隙」的 WHEN/THEN；固定版 a98e51d 全套件 64/605+40 通过（0 skip）。 |
+- Test/check:
+  - [X] `src/test/routeLoading.test.jsx::未匹配路径仍落到 404 路由`
+- Assertion scope: 真实 `AppRoutes` + `PermissionProvider` 访问 `/definitely-missing`，懒加载后渲染「页面走丢了」与「404」，证明 `*` 路由装配 NotFound。
+- Coverage note: 未断言「无 API 请求或额外页面权限」；页面实现无数据请求，测试未显式断言。
 
-## 最近验证
+### Requirement: NotFound 主流程
 
-- 时间：2026-10-21 04:01:26 +08:00（固定提交npm test起始时间；本轮归档未重跑）。
-- 版本：Web 代码 `a98e51d`；验收文档 `372fb80`。
-- 主 spec SHA256：`a90d8c43562c8344feeb6dc921810a1c9e282251f67b5726d5ee4653d08c0061`。
-- 命令与环境：固定版 `npm test`（Node v26.8.1）→ 64 files/605 + 40 tests，0 failed/0 skipped/0 todo；本 capability 定向证据：C 组 19 files/189（`.git/apply-worker-final3-web.log`）。
-- 结果：新增/修改场景按上表具名测试或机械检查映射；未把 skip/excluded 或未运行项写成通过。
-- 限制或尚未运行项：jsdom 组件测试；真实浏览器/E2E/视觉验收未运行；CI Node 20.19.0/22 未实际远程运行；本轮未重跑业务套件。
+#### Scenario: 访问未匹配路由
+
+- Test/check:
+  - [X] `src/test/routeLoading.test.jsx::未匹配路径仍落到 404 路由`
+  - [X] `src/test/AnvilTableSettings.test.jsx::anvil_ts_notfound_home_navigation`
+- Assertion scope: 既有测试断言未知路径显示「页面走丢了」与「404」；规划测试点击「回到主页」，断言导航到 `/index` 并渲染目标占位内容。
+- Coverage note: 规划测试，未创建；既有测试未点击返回按钮。
+
+### Requirement: NotFound 构建归属
+
+#### Scenario: 生成生产产物
+
+- Test/check:
+  - [X] `npm run build`
+- Assertion scope: `vite build` 退出码 0，构建完成并生成 `dist`。
+- Coverage note: 只证明构建成功与产物生成；不自动断言 `NotFound`/`ModelViewer` 独立 chunk、`vendor-three-*` 分组或 Rollup 警告清单，这些是产物人工核对/验收观测，不由命令退出码证明。
+
+### Requirement: NotFound 页面使用完整视口高度
+
+#### Scenario: 顶层未知路由无底部空隙
+
+- Test/check:
+  - [ ] `npm run dev`
+- Assertion scope: 人工在 Chromium 1440×900 打开 HashRouter 实际地址 `https://localhost:5173/#/definitely-missing`（路径 `/definitely-missing`），等待 `NotFound` 渲染。读取 `document.querySelector('.notfound-page')`，断言 `page.getBoundingClientRect().height >= window.innerHeight`、`page.getBoundingClientRect().bottom >= window.innerHeight - 1`（页面底边不高于视口底边，即无 64px 底部空隙）、`parseFloat(getComputedStyle(page).minHeight) >= window.innerHeight`（computed 值为 px，不比较 `100vh`/`100dvh` 字符串）、`document.documentElement.scrollHeight >= window.innerHeight`（页面覆盖视口）。`scrollHeight` 可因内容/盒模型略大于视口，不用“必须等于视口”误判底部空隙。
+- Coverage note: 现有 `notFoundLayout.test.js::test_q66_notfound_full_viewport` 只读 CSS 源字符串，按本轮规则不能作为真实视口证据；jsdom 无布局，故只规划人工浏览器检查，不新建机械 CSS 文本测试。
+
+#### Scenario: 移动端视口无 56px 空隙
+
+- Test/check:
+  - [ ] `npm run dev`
+- Assertion scope: 人工在 Chromium 390×844 与 320×568 打开 `https://localhost:5173/#/definitely-missing`（路径 `/definitely-missing`），重复上述 px 测量：`page.getBoundingClientRect().height >= window.innerHeight`、`page.getBoundingClientRect().bottom >= window.innerHeight - 1`、`parseFloat(getComputedStyle(page).minHeight) >= window.innerHeight`、`document.documentElement.scrollHeight >= window.innerHeight`；断言无 56px/64px 底部空隙，404 文案与「回到主页」按钮可见。
+- Coverage note: 现有 `notFoundLayout.test.js::test_q66_notfound_mobile_no_gap` 只读 CSS 源字符串，不作为真实视口证据；jsdom 无布局，故只规划人工浏览器检查。
