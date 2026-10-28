@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { act, waitFor } from '@testing-library/react';
 import showErrorModal, { routeErrorMap } from '../utils/showErrorModal';
+import { toErrorModalInput } from '../utils/errorModalInput';
 
 /** 后端会实际发出的 error_reason 全集（与 Ctrl 代码枚举对齐，改动后端需同步此表） */
 const BACKEND_ERROR_REASONS = [
@@ -124,6 +125,13 @@ const Q37_POPUP_SAMPLES = [
   { route: '/images/create_image', reason: 'duplicate_entry', text: '镜像名称已存在' },
 ];
 
+const UPSTREAM_POPUP_SAMPLES = [
+  { reason: 'upstream_unavailable', status: 502, text: '后端服务暂时无法连接，请稍后重试。' },
+  { reason: 'upstream_timeout', status: 504, text: '后端响应超时，请稍后重试。' },
+  { reason: 'upstream_tls_untrusted', status: 502, text: '后端安全连接验证失败，请联系管理员。' },
+  { reason: 'upstream_error', status: 502, text: '后端代理请求失败，请稍后重试。' },
+].flatMap(sample => ['/login', '/containers/get_container_detail_information'].map(route => ({ ...sample, route })));
+
 describe('Q37 真实弹窗按 route/reason 显示中文', () => {
   const originalGetComputedStyle = window.getComputedStyle;
 
@@ -169,6 +177,46 @@ describe('Q37 真实弹窗按 route/reason 显示中文', () => {
     });
     await waitFor(() => expect(visibleDialogs().length).toBeGreaterThan(before));
     expect(dialogText()).toContain(text);
+    expect(dialogText()).not.toContain('未收录的错误原因');
+  });
+
+  it.each(UPSTREAM_POPUP_SAMPLES)('代理 $route → $reason 显示中文', async ({ route, reason, status, text }) => {
+    await act(async () => {
+      showErrorModal(toErrorModalInput({
+        body: { error: reason },
+        message: `request failed: ${status} ${JSON.stringify({ error: reason })}`,
+        status,
+        route,
+      }));
+    });
+    await waitFor(() => expect(dialogText()).toContain(text));
+    expect(dialogText()).not.toContain('未收录的错误原因');
+    expect(dialogText()).not.toContain(reason);
+    expect(dialogText()).not.toContain('failed:');
+  });
+
+  it.each(['body', 'message.body'])('代理错误直接传入 $0 时也显示中文', async (shape) => {
+    const message = 'request failed: 502 {"error":"upstream_unavailable"}';
+    const body = { error: 'upstream_unavailable' };
+    const input = shape === 'body'
+      ? { message, body, status: 502 }
+      : { message: { message, body }, status: 502 };
+    await act(async () => { showErrorModal(input); });
+    await waitFor(() => expect(dialogText()).toContain('后端服务暂时无法连接，请稍后重试。'));
+    expect(dialogText()).not.toContain('upstream_unavailable');
+    expect(dialogText()).not.toContain('failed:');
+  });
+
+  it('代理原因已有中文映射时仍保留具体错误信息', async () => {
+    await act(async () => {
+      showErrorModal(toErrorModalInput({
+        body: { error: 'upstream_unavailable', message: '请求在维护窗口暂停，请于 22:30 后重试。' },
+        status: 502,
+        route: '/announcements',
+      }));
+    });
+    await waitFor(() => expect(dialogText()).toContain('请求在维护窗口暂停，请于 22:30 后重试。'));
+    expect(dialogText()).toContain('后端服务暂时无法连接，请稍后重试。');
     expect(dialogText()).not.toContain('未收录的错误原因');
   });
 });

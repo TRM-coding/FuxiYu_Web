@@ -111,6 +111,8 @@ const contentEditorView = () => findEditorView(contentEditor());
 const editorContent = () => contentEditorView().state.doc.toString();
 
 const openSelect = (card) => {
+  // 已展开时再次 mousedown 会 toggle 关闭；先按现有 open class 做幂等保护。
+  if (card.querySelector('.ant-select-open')) return;
   fireEvent.mouseDown(card.querySelector('.ant-select-selector'));
 };
 
@@ -370,13 +372,15 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
     await act(async () => {
       machineB.resolve(machineDetail(MACHINE_B));
     });
-    expect(screen.getByRole('button', { name: /机器名: 机器B/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /机器名: 机器B/ })).toBeInTheDocument();
 
     await act(async () => {
       machineA.resolve(machineDetail(MACHINE_A));
     });
-    expect(screen.queryByRole('button', { name: /机器名: 机器A/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /机器名: 机器B/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /机器名: 机器A/ })).toBeNull();
+      expect(screen.getByRole('button', { name: /机器名: 机器B/ })).toBeInTheDocument();
+    });
 
     const containerA = deferred();
     const containerB = deferred();
@@ -394,13 +398,15 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
     await act(async () => {
       containerB.resolve(containerDetail(CONTAINER_B));
     });
-    expect(within(containerCard()).getByRole('button', { name: /容器名\(端口\): 容器B/ })).toBeInTheDocument();
+    expect(await within(containerCard()).findByRole('button', { name: /容器名\(端口\): 容器B/ })).toBeInTheDocument();
 
     await act(async () => {
       containerA.resolve(containerDetail(CONTAINER_A));
     });
-    expect(within(containerCard()).queryByRole('button', { name: /容器名\(端口\): 容器A/ })).toBeNull();
-    expect(within(containerCard()).getByRole('button', { name: /容器名\(端口\): 容器B/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(containerCard()).queryByRole('button', { name: /容器名\(端口\): 容器A/ })).toBeNull();
+      expect(within(containerCard()).getByRole('button', { name: /容器名\(端口\): 容器B/ })).toBeInTheDocument();
+    });
   });
 
   it('test_q52_announcement_template_205 首批 200 项后以 offset=200 取回第 205 个并可选择', async () => {
@@ -605,7 +611,7 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
     await clickSelectOption('机器B (10.0.0.2)');
     await waitFor(() => expect(getDetailInformation).toHaveBeenCalledTimes(2));
     await act(async () => { newMachineDetail.resolve(machineDetail(MACHINE_B)); });
-    expect(screen.getByRole('button', { name: /机器名: 机器B/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /机器名: 机器B/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /机器名: 旧机器/ })).toBeNull();
 
     openSelect(containerCard());
@@ -615,7 +621,7 @@ describe('AnnouncementEditor 分页、乱序与光标（Q22/Q24/Q52/Q55）', () 
     await clickSelectOption('容器B (port:2202)');
     await waitFor(() => expect(getContainerDetailInformation).toHaveBeenCalledTimes(2));
     await act(async () => { newContainerDetail.resolve(containerDetail(CONTAINER_B)); });
-    expect(within(containerCard()).getByRole('button', { name: /容器名\(端口\): 容器B/ })).toBeInTheDocument();
+    expect(await within(containerCard()).findByRole('button', { name: /容器名\(端口\): 容器B/ })).toBeInTheDocument();
     expect(within(containerCard()).queryByRole('button', { name: /容器名\(端口\): 旧容器/ })).toBeNull();
     expect(pageSideEffectErrors()).toEqual([]);
   });
