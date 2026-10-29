@@ -33,6 +33,28 @@
 - **WHEN** 对本基线执行 `npm run build`
 - **THEN** Vite 完成构建并输出页面级与 `ModelViewer` 的异步 chunk；`src/utils/requestManager.jsx` 与 `src/utils/validateCmdArg.jsx` 统一为静态导入后，预期不再出现「同一模块既被静态又被动态导入」的 Rollup 警告；具体 chunk 体积与警告清单属构建验收观测，记入本轮验收报告，不作为本规格固化的历史指标
 
+### Requirement: 个人资料毕业年份不可清空
+
+当前用户个人资料页的毕业年份 SHALL 保持不允许清空。用户清空已有年份并尝试修改时，页面 MUST 给出明确的中文反馈，MUST NOT 发起将该字段置为 `null`、空串或缺失的更新请求。未修改年份时 MUST NOT 因空值产生更新。
+
+#### Scenario: 清空已有毕业年份
+
+- **GIVEN** 当前用户的毕业年份已有值
+- **WHEN** 用户清空毕业年份输入并点击“修改”
+- **THEN** 页面显示“毕业年份不能为空”一类明确提示，不调用资料更新接口，原值保持不变
+
+#### Scenario: 空值不产生更新请求
+
+- **GIVEN** 毕业年份输入为空且与已加载值相同
+- **WHEN** 页面展示毕业年份操作区
+- **THEN** 不出现可提交空值的修改动作，也不发送空 payload
+
+#### Scenario: 有效年份正常更新
+
+- **GIVEN** 用户输入 1900 到 2100 之间的整数年份
+- **WHEN** 点击“修改”且请求成功
+- **THEN** 更新请求携带该数值，页面刷新基准值并显示成功反馈
+
 ## Source references
 
 - [src/pages/User.jsx](../../../src/pages/User.jsx)；[src/routes/index.jsx](../../../src/routes/index.jsx)。

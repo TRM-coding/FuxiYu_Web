@@ -97,4 +97,89 @@ describe('trackAnnouncementSend（异步批量发送的进度轮询）', () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(fetchList.mock.calls.length).toBe(seen);
   });
+
+  it('公告持续缺失超过宽限期后停止轮询并标记 unknown', async () => {
+    const fetchList = vi.fn(async () => ({ announcements: [] }));
+    const onDone = vi.fn();
+    const onUnknown = vi.fn();
+    const progress = [];
+
+    trackAnnouncementSend({
+      announcementIds: [11],
+      fetchList,
+      onProgress: p => progress.push(p),
+      onDone,
+      onUnknown,
+      intervalMs: 10,
+      missingGraceMs: 0,
+    });
+
+    await flush();
+    expect(onUnknown).toHaveBeenCalledTimes(1);
+    expect(onUnknown.mock.calls[0][0]).toMatchObject({
+      total: 1,
+      unknownIds: ['11'],
+      done: 0,
+    });
+    expect(onDone).not.toHaveBeenCalled();
+    expect(progress[0]).toMatchObject({ total: 1, done: 0, unknown: 1 });
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fetchList).toHaveBeenCalledTimes(1);
+  });
+
+  it('短暂缺失后恢复时继续轮询，不提前判未知', async () => {
+    const rounds = [
+      { announcements: [] },
+      { announcements: [{ id: 11, status: 'sending' }] },
+      { announcements: [{ id: 11, status: 'sent', success_count: 1, fail_count: 0 }] },
+    ];
+    let i = 0;
+    const onUnknown = vi.fn();
+    const onDone = vi.fn();
+
+    trackAnnouncementSend({
+      announcementIds: [11],
+      fetchList: async () => rounds[Math.min(i++, rounds.length - 1)],
+      onDone,
+      onUnknown,
+      intervalMs: 10,
+      missingGraceMs: 50,
+    });
+
+    await flush();
+    await vi.advanceTimersByTimeAsync(30);
+    await flush();
+
+    expect(onUnknown).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('部分公告缺失时不把已返回项凑成完成，unknown 保留未知 id', async () => {
+    const onDone = vi.fn();
+    const onUnknown = vi.fn();
+
+    trackAnnouncementSend({
+      announcementIds: [11, 12],
+      fetchList: async () => ({
+        announcements: [{ id: 11, status: 'sent', success_count: 3, fail_count: 0 }],
+      }),
+      onDone,
+      onUnknown,
+      intervalMs: 10,
+      missingGraceMs: 0,
+    });
+
+    await flush();
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onUnknown).toHaveBeenCalledTimes(1);
+    expect(onUnknown.mock.calls[0][0]).toMatchObject({
+      total: 2,
+      unknownIds: ['12'],
+      knownIds: ['11'],
+      done: 1,
+      success: 3,
+      fail: 0,
+    });
+  });
 });

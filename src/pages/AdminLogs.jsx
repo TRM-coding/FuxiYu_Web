@@ -127,6 +127,10 @@ const TARGET_TEXT = {
   announcement: '公告',
 };
 
+/** 目标类别复选项：顺序与 TARGET_TEXT 一致，零项表示全部。 */
+const TARGET_TYPE_OPTIONS = Object.entries(TARGET_TEXT).map(([value, label]) => ({ value, label }));
+const ALL_TARGET_TYPES = TARGET_TYPE_OPTIONS.map(({ value }) => value);
+
 /** detail 字段名 → 可读中文（未知字段显示原文） */
 const FIELD_TEXT = {
   machine_status: '机器状态',
@@ -360,7 +364,7 @@ export default function AdminLogs() {
   const [totalPages, setTotalPages] = useState(0);
 
   const [operation, setOperation] = useState(undefined);
-  const [targetType, setTargetType] = useState(undefined);
+  const [targetTypes, setTargetTypes] = useState([]);
   const [operatorUserId, setOperatorUserId] = useState(undefined);
   const [onlyFailed, setOnlyFailed] = useState(false);
   const [timeRange, setTimeRange] = useState(() => {
@@ -418,7 +422,8 @@ export default function AdminLogs() {
     try {
       const params = { page: p, page_size: ps };
       if (operation) params.operation = operation;
-      if (targetType) params.target_type = targetType;
+      // 零项视为“全部”：不传 target_type；多选按重复参数交给 Ctrl 做 OR。
+      if (targetTypes.length > 0 && targetTypes.length < ALL_TARGET_TYPES.length) params.target_type = targetTypes;
       if (operatorUserId) params.operator_user_id = operatorUserId;
       if (onlyFailed) params.success = 'false';
       if (range && range[0] && range[1]) {
@@ -437,7 +442,7 @@ export default function AdminLogs() {
     } finally {
       if (requestId === requestSeqRef.current) setLoading(false);
     }
-  }, [operation, targetType, operatorUserId, onlyFailed, timeRange]);
+  }, [operation, targetTypes, operatorUserId, onlyFailed, timeRange]);
 
   // 统计窗口：固定滑动窗口——最近 52 周（364 天，周一开头，本周收尾）
   const statsDays = useMemo(() => {
@@ -555,7 +560,7 @@ export default function AdminLogs() {
 
   const handleReset = () => {
     setOperation(undefined);
-    setTargetType(undefined);
+    setTargetTypes([]);
     setOperatorUserId(undefined);
     setOnlyFailed(false);
     const ws = startOfWeek(bjNow());
@@ -742,8 +747,23 @@ export default function AdminLogs() {
 
       {/* 筛选栏 */}
       <div className="admin-logs-filter">
+        <div className="admin-logs-target-filter">
+          <div className="admin-logs-target-head">
+            <Typography.Text type="secondary" className="admin-logs-label">目标类型</Typography.Text>
+            <Button size="small" onClick={() => setTargetTypes(ALL_TARGET_TYPES)}>全选</Button>
+            <Typography.Text type="secondary" className="admin-logs-target-hint">
+              可多选，类别之间为“或”；未选择 = 全部
+            </Typography.Text>
+          </div>
+          <Checkbox.Group
+            className="admin-logs-target-options"
+            value={targetTypes}
+            onChange={setTargetTypes}
+            options={TARGET_TYPE_OPTIONS}
+          />
+        </div>
         <Row gutter={[16, 16]} justify="center" align="middle">
-          <Col xs={24} sm={12} md={4}>
+          <Col xs={24} sm={12} md={5}>
             <Typography.Text type="secondary" className="admin-logs-label">操作类型</Typography.Text>
             <Select
               allowClear
@@ -754,28 +774,7 @@ export default function AdminLogs() {
               options={Object.entries(OPERATION_TEXT).map(([v, label]) => ({ value: v, label }))}
             />
           </Col>
-          <Col xs={24} sm={12} md={3}>
-            <Typography.Text type="secondary" className="admin-logs-label">目标类型</Typography.Text>
-            <Select
-              allowClear
-              placeholder="全部"
-              style={{ width: '100%' }}
-              value={targetType}
-              onChange={setTargetType}
-              options={[
-                { value: 'machine', label: '机器' },
-                { value: 'container', label: '容器' },
-                { value: 'user', label: '用户' },
-                { value: 'rbac_group', label: '权限组' },
-                { value: 'image', label: '镜像' },
-                { value: 'system_setting', label: '系统设置' },
-                { value: 'container_mount_cleanup', label: '容器挂载清理' },
-                { value: 'mail', label: '邮件' },
-                { value: 'announcement', label: '公告' },
-              ]}
-            />
-          </Col>
-          <Col xs={24} sm={12} md={4}>
+          <Col xs={24} sm={12} md={5}>
             <Typography.Text type="secondary" className="admin-logs-label">操作人</Typography.Text>
             <Select
               allowClear
@@ -787,7 +786,7 @@ export default function AdminLogs() {
               options={users.map(u => ({ value: u.id, label: u.username }))}
             />
           </Col>
-          <Col xs={24} sm={12} md={6}>
+          <Col xs={24} sm={12} md={7}>
             <Typography.Text type="secondary" className="admin-logs-label">时间范围</Typography.Text>
             <RangePicker
               style={{ width: '100%' }}

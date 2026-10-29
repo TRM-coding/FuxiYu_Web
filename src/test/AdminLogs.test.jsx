@@ -34,7 +34,7 @@ vi.mock('../api/user_api', () => ({
   }),
 }));
 
-import { listOperationLogs } from '../api/operation_log_api';
+import { listOperationLogs, getOperationLogStats } from '../api/operation_log_api';
 import { getUserPermissions } from '../api/user_api';
 import { PermissionProvider } from '../contexts/PermissionContext';
 import AdminLogs from '../pages/AdminLogs';
@@ -325,5 +325,73 @@ describe('AdminLogs 日志页', () => {
       expect(listOperationLogs.mock.calls.length).toBe(callsBefore + 1);
     });
     await waitFor(() => expect(weekBtn).toBeDisabled()); // 已回到本周
+  });
+
+  it('目标类型多选 OR、全选、全不选：空选择不传参数且无清空按钮', async () => {
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
+    listOperationLogs.mockResolvedValue({ logs: [DEFAULT_LOG], total_pages: 1 });
+    renderPage();
+    await waitPageLoaded();
+
+    const lastParams = () => listOperationLogs.mock.calls[listOperationLogs.mock.calls.length - 1][0];
+    expect(lastParams()).not.toHaveProperty('target_type');
+    expect(screen.queryByRole('button', { name: /清\s*空/ })).toBeNull();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: '机器' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: '容器' }));
+    await waitFor(() => expect(lastParams().target_type).toEqual(['machine', 'container']));
+
+    fireEvent.click(screen.getByRole('button', { name: /全\s*选/ }));
+    await waitFor(() => expect(lastParams()).not.toHaveProperty('target_type'));
+    expect(screen.getByRole('checkbox', { name: '公告' })).toBeChecked();
+
+    for (const label of ['机器', '容器', '用户', '权限组', '镜像', '系统设置', '容器挂载清理', '邮件', '公告']) {
+      const checkbox = screen.getByRole('checkbox', { name: label });
+      if (checkbox.checked) fireEvent.click(checkbox);
+    }
+    await waitFor(() => expect(lastParams()).not.toHaveProperty('target_type'));
+  }, 20000);
+
+  it('多选目标与其他筛选按 AND，分页与统计参数保持既有语义', async () => {
+    getUserPermissions.mockResolvedValue({ entities: ['bypass_auth_entity', 'operation_log:manage'], userId: 1, userName: 'operator1' });
+    listOperationLogs.mockResolvedValue({ logs: [DEFAULT_LOG], total_pages: 3 });
+    renderPage();
+    await waitPageLoaded();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: '机器' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: '容器' }));
+    await waitFor(() => {
+      const last = listOperationLogs.mock.calls[listOperationLogs.mock.calls.length - 1][0];
+      expect(last.target_type).toEqual(['machine', 'container']);
+    });
+
+    await selectFilterOption('操作类型', '创建容器');
+    await userEvent.click(screen.getByRole('checkbox', { name: '仅失败' }));
+    await waitFor(() => {
+      const last = listOperationLogs.mock.calls[listOperationLogs.mock.calls.length - 1][0];
+      expect(last).toMatchObject({
+        operation: 'create_container',
+        success: 'false',
+        target_type: ['machine', 'container'],
+      });
+    });
+
+    fireEvent.click(paginationItem(2));
+    await waitFor(() => {
+      const last = listOperationLogs.mock.calls[listOperationLogs.mock.calls.length - 1][0];
+      expect(last).toMatchObject({
+        page: 2,
+        operation: 'create_container',
+        success: 'false',
+        target_type: ['machine', 'container'],
+      });
+    });
+
+    // 统计仍是既有滑动窗口与固定偏移，不携带目标多选参数
+    const statsParams = getOperationLogStats.mock.calls[getOperationLogStats.mock.calls.length - 1][0];
+    expect(statsParams).toMatchObject({ tz_offset_minutes: 480 });
+    expect(statsParams.start).toBeTruthy();
+    expect(statsParams.end).toBeTruthy();
+    expect(statsParams).not.toHaveProperty('target_type');
   });
 });

@@ -10,18 +10,24 @@
 // 轮询间隔。注意这是"看进度"的节奏，不是请求超时——超时用 POLL_TIMEOUT。
 export const SEND_POLL_INTERVAL_MS = 3000;
 
+// 追踪的公告在状态接口持续缺失多久后判定为“不可确认”。删除发送中公告不会取消投递，
+// 但前端不能因此无限轮询；短暂缺失（刚发起/接口延迟）仍继续等。
+export const SEND_MISSING_GRACE_MS = 15000;
+
 const isSending = (announcement) => String(announcement?.status || '').toLowerCase() === 'sending';
 
 /**
- * 跟踪一批公告的发送进度，直到全部离开 sending。
+ * 跟踪一批公告的发送进度，直到全部离开 sending，或持续查不到而变为不可确认。
  *
  * @param {object}   opts
  * @param {number[]} opts.announcementIds 发起时后端回执里的公告 id
  * @param {Function} opts.fetchList       取公告列表（返回 {announcements: [...]}）
- * @param {Function} [opts.onProgress]    每次轮询回调 {total, done, success, fail}
+ * @param {Function} [opts.onProgress]    每次轮询回调 {total, done, success, fail, unknown}
  * @param {Function} [opts.onDone]        全部到终态时回调（收到的是那几条公告）
+ * @param {Function} [opts.onUnknown]     持续缺失超时后回调 {total, unknownIds, knownIds, done, success, fail}
  * @param {Function} [opts.onError]       单次轮询失败（不中断，下一拍继续）
  * @param {number}   [opts.intervalMs]
+ * @param {number}   [opts.missingGraceMs] 允许公告暂时缺失的连续时长
  * @returns {Function} stop()：停止轮询（组件卸载时必须调）
  */
 export function trackAnnouncementSend({
@@ -29,12 +35,15 @@ export function trackAnnouncementSend({
   fetchList,
   onProgress,
   onDone,
+  onUnknown,
   onError,
   intervalMs = SEND_POLL_INTERVAL_MS,
+  missingGraceMs = SEND_MISSING_GRACE_MS,
 }) {
   const pending = new Set((announcementIds || []).map(String));
   let stopped = false;
   let timer = null;
+  let missingSince = null;
 
   const stop = () => {
     stopped = true;
@@ -52,25 +61,55 @@ export function trackAnnouncementSend({
   const tick = async () => {
     if (stopped) return;
     let finished = null;
+    let unknown = null;
     try {
       const res = await fetchList();
       const mine = (res?.announcements || []).filter((a) => pending.has(String(a.id)));
+      const returnedIds = new Set(mine.map((a) => String(a.id)));
+      const unknownIds = Array.from(pending).filter((id) => !returnedIds.has(id));
       const done = mine.filter((a) => !isSending(a));
+      const success = done.reduce((n, a) => n + (a.success_count || 0), 0);
+      const fail = done.reduce((n, a) => n + (a.fail_count || 0), 0);
       if (onProgress) {
         onProgress({
           total: pending.size,
           done: done.length,
-          success: done.reduce((n, a) => n + (a.success_count || 0), 0),
-          fail: done.reduce((n, a) => n + (a.fail_count || 0), 0),
+          success,
+          fail,
+          unknown: unknownIds.length,
         });
       }
-      // mine 为空说明列表里还没有它们（刚发起、或分页没覆盖到）——不当成"已完成"
-      if (mine.length > 0 && done.length === mine.length) finished = done;
+
+      if (unknownIds.length > 0) {
+        const now = Date.now();
+        if (missingSince === null) missingSince = now;
+        if (now - missingSince >= missingGraceMs) {
+          unknown = {
+            total: pending.size,
+            unknownIds,
+            knownIds: mine.map((a) => String(a.id)),
+            done: done.length,
+            success,
+            fail,
+          };
+        }
+      } else {
+        missingSince = null;
+      }
+
+      // mine 为空说明列表里还没有它们（刚发起、接口延迟、或已删除）——不当成"已完成"。
+      // 只要有持续缺失，就优先进入不可确认，不能用已知项凑出完成。
+      if (unknownIds.length === 0 && mine.length > 0 && done.length === mine.length) finished = done;
     } catch (e) {
       // 一次抖动不该中断进度展示
       if (onError) onError(e);
     }
     if (stopped) return;
+    if (unknown) {
+      stop();
+      if (onUnknown) onUnknown(unknown);
+      return;
+    }
     if (finished) {
       stop();
       if (onDone) onDone(finished);

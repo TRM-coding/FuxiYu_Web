@@ -235,6 +235,22 @@ export default function Announcements() {
         loadDrafts();
         loadAnnouncements();
       },
+      onUnknown: (result) => {
+        // 删除发送中公告不会取消投递，但该批 id 已查不到，不能继续无限轮询，
+        // 也不能把缺失项算成成功/完成；只如实标记为不可确认。
+        setSendProgress(prev => ({
+          ...(prev || {}),
+          total: result.total,
+          done: result.done,
+          success: result.success,
+          fail: result.fail,
+          finished: true,
+          unknown: true,
+          unknownCount: result.unknownIds.length,
+        }));
+        loadDrafts();
+        loadAnnouncements();
+      },
     });
   }, [stopSendPolling, loadDrafts, loadAnnouncements]);
 
@@ -413,14 +429,24 @@ export default function Announcements() {
                     size="small"
                     showInfo={false}
                     style={{ width: 96, marginBottom: 0 }}
-                    strokeColor={sendProgress.finished && sendProgress.fail > 0 ? '#faad14' : undefined}
+                    strokeColor={
+                      sendProgress.unknown
+                        ? '#8c8c8c'
+                        : sendProgress.finished && sendProgress.fail > 0 ? '#faad14' : undefined
+                    }
                     percent={sendProgress.total ? Math.round((sendProgress.done / sendProgress.total) * 100) : 0}
                   />
-                  <Text type={sendProgress.finished && sendProgress.fail > 0 ? 'warning' : 'secondary'}>
-                    {sendProgress.finished ? '已完成 ' : '发送中 '}
-                    {sendProgress.done}/{sendProgress.total} 条
-                    {sendProgress.finished && ` · 成功 ${sendProgress.success} · 失败 ${sendProgress.fail}`}
-                  </Text>
+                  {sendProgress.unknown ? (
+                    <Text type="secondary">
+                      状态不可确认 · {sendProgress.unknownCount}/{sendProgress.total} 条公告已删除或无法查询；后台投递可能仍在继续
+                    </Text>
+                  ) : (
+                    <Text type={sendProgress.finished && sendProgress.fail > 0 ? 'warning' : 'secondary'}>
+                      {sendProgress.finished ? '已完成 ' : '发送中 '}
+                      {sendProgress.done}/{sendProgress.total} 条
+                      {sendProgress.finished && ` · 成功 ${sendProgress.success} · 失败 ${sendProgress.fail}`}
+                    </Text>
+                  )}
                 </Space>
               )}
               <Button

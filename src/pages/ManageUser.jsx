@@ -29,6 +29,7 @@ import { useContainerSnapshots } from '../utils/containerSnapshots';
 import { formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
 import { formatContainerImage } from '../utils/detailFormat';
 import { LIST_REFRESH_INTERVAL_MS, canRunListRefresh, containerListFingerprint, userListFingerprint } from '../utils/listRefresh';
+import { normalizeGraduationYear } from '../utils/graduationYear';
 
 // users and containers will be fetched from backend
 const initialUsers = [];
@@ -43,28 +44,39 @@ const ManageUser = () => {
 
     const original = React.useRef({ username: record.username ?? '', graduation_year: record.graduation_year ?? '' });
 
+    // 毕业年份不可清空：空值/非法值只用于显示错误，不进入待提交字段。
+    const yearChange = React.useMemo(() => {
+      const raw = values.graduation_year;
+      if (String(raw ?? '') === String(original.current.graduation_year ?? '')) {
+        return { changed: false, invalid: false, value: original.current.graduation_year };
+      }
+      const normalized = normalizeGraduationYear(raw);
+      if (!normalized.ok) {
+        return { changed: true, invalid: true, message: normalized.message };
+      }
+      return { changed: true, invalid: false, value: normalized.value };
+    }, [values.graduation_year]);
+
     const changedFields = React.useMemo(() => {
       const out = {};
       if (String(values.username) !== String(original.current.username)) out.username = values.username;
-      if (String(values.graduation_year) !== String(original.current.graduation_year)) {
-        let v = values.graduation_year;
-        if (v === '' || v === undefined || v === null) {
-          v = null;
-        } else {
-          v = parseInt(v, 10);
-        }
-        out.graduation_year = Number.isNaN(v) ? values.graduation_year : v;
-      }
+      if (yearChange.changed && !yearChange.invalid) out.graduation_year = yearChange.value;
       return out;
-    }, [values]);
+    }, [values.username, yearChange]);
 
     const hasChanged = Object.keys(changedFields).length > 0;
+    const yearError = yearChange.invalid ? yearChange.message : null;
 
     const onReset = () => {
       setValues({ ...original.current });
     };
 
     const onSave = () => {
+      if (yearError) {
+        message.error(yearError);
+        return;
+      }
+      if (!hasChanged) return;
       // open modal for confirmation with changedFields
       openModal('save', { record, changedFields });
     };
@@ -86,7 +98,12 @@ const ManageUser = () => {
               </Form.Item>
             </Col>
             <Col flex="auto">
-              <Form.Item label={<span className={labelClass('graduation_year')}>毕业年份</span>} className="manage-user-form-item">
+              <Form.Item
+                label={<span className={labelClass('graduation_year')}>毕业年份</span>}
+                className="manage-user-form-item"
+                validateStatus={yearError ? 'error' : undefined}
+                help={yearError || undefined}
+              >
                 <InputNumber
                   value={values.graduation_year === '' || values.graduation_year === null ? undefined : Number(values.graduation_year)}
                   onChange={v => setValues(val => ({ ...val, graduation_year: v }))}
@@ -101,7 +118,7 @@ const ManageUser = () => {
             </Col>
             <Col>
               <Space size="small">
-                <Button type="primary" size="small" onClick={onSave} disabled={!hasChanged}>保存</Button>
+                <Button type="primary" size="small" onClick={onSave} disabled={!hasChanged || !!yearError}>保存</Button>
                 <Button size="small" onClick={onReset}>{hasChanged ? '重置' : '重置'}</Button>
               </Space>
             </Col>
@@ -1096,18 +1113,22 @@ const ManageUser = () => {
     }));
   };
 
+  const getUserCardYearError = (record) => {
+    const draft = getUserCardDraft(record);
+    const raw = draft.graduation_year;
+    if (String(raw ?? '') === String(record.graduation_year ?? '')) return null;
+    const normalized = normalizeGraduationYear(raw);
+    return normalized.ok ? null : normalized.message;
+  };
+
   const getUserCardChangedFields = (record) => {
     const draft = getUserCardDraft(record);
     const fields = {};
     if (String(draft.username ?? '') !== String(record.username ?? '')) fields.username = draft.username;
     if (String(draft.graduation_year ?? '') !== String(record.graduation_year ?? '')) {
-      const raw = draft.graduation_year;
-      if (raw === '' || raw === null || raw === undefined) {
-        fields.graduation_year = null;
-      } else {
-        const parsed = parseInt(raw, 10);
-        fields.graduation_year = Number.isNaN(parsed) ? raw : parsed;
-      }
+      const normalized = normalizeGraduationYear(draft.graduation_year);
+      // 空值/非法值不进入字段；openUserCardSave 会先阻断整个保存。
+      if (normalized.ok) fields.graduation_year = normalized.value;
     }
     return fields;
   };
@@ -1129,6 +1150,11 @@ const ManageUser = () => {
   };
 
   const openUserCardSave = (record) => {
+    const yearError = getUserCardYearError(record);
+    if (yearError) {
+      message.error(yearError);
+      return;
+    }
     const changedFields = getUserCardChangedFields(record);
     if (!Object.keys(changedFields).length) return;
     openModal('save', { record, changedFields });
@@ -1453,7 +1479,8 @@ const ManageUser = () => {
               const managedContainers = record.amount_of_managed_container ?? record.amountOfManagedContainer ?? 0;
               const longTermContainers = record.amount_of_long_term_container ?? record.amountOfLongTermContainer ?? 0;
               const changedFields = getUserCardChangedFields(record);
-              const hasChanged = Object.keys(changedFields).length > 0;
+              const cardYearError = getUserCardYearError(record);
+              const hasChanged = Object.keys(changedFields).length > 0 || !!cardYearError;
 
               return (
                 <>

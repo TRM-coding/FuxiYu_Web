@@ -18,6 +18,41 @@
   font-size: 12px;
 }
 
+/* 目标类别多选：独占一行，复选项自动换行；零项由页面提示“全部”。 */
+.admin-logs-target-filter {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed #f0f0f0;
+}
+
+.admin-logs-target-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.admin-logs-target-head .admin-logs-label {
+  margin-bottom: 0;
+}
+
+.admin-logs-target-hint {
+  font-size: 12px;
+}
+
+.admin-logs-target-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  min-width: 0;
+}
+
+.admin-logs-target-options .ant-checkbox-wrapper {
+  margin-inline-start: 0;
+  white-space: nowrap;
+}
+
 .admin-logs-table {
   background: #ffffff;
   border: 1px solid #f0f0f0;

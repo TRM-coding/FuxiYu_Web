@@ -12,6 +12,26 @@ const createTimeoutController = (timeout) => {
 	return { controller, timer };
 };
 
+/**
+ * 写入查询参数：数组按重复参数逐项 append，标量保持 set。
+ * 这样 target_type 多选仍走 Ctrl 既有的重复参数契约，单值调用行为不变。
+ */
+const appendQueryParams = (url, params = {}) => {
+	Object.entries(params || {}).forEach(([key, value]) => {
+		if (Array.isArray(value)) {
+			value.forEach((item) => {
+				if (item !== undefined && item !== null && item !== '') {
+					url.searchParams.append(key, String(item));
+				}
+			});
+			return;
+		}
+		if (value !== undefined && value !== null && value !== '') {
+			url.searchParams.set(key, String(value));
+		}
+	});
+};
+
 const ensureOk = async (res, action) => {
 	if (!res.ok) {
 		let body = null;
@@ -39,9 +59,7 @@ export const listOperationLogs = async (params = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const url = new URL(API_ROUTES.ADMIN_OPERATION_LOGS, BACKEND_ORIGIN);
-		Object.entries(params || {}).forEach(([k, v]) => {
-			if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
-		});
+		appendQueryParams(url, params);
 		const res = await fetch(url.toString(), {
 			method: 'GET',
 			signal: controller.signal,
@@ -63,9 +81,7 @@ export const getOperationLogStats = async (params = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const url = new URL(API_ROUTES.ADMIN_OPERATION_LOGS_STATS, BACKEND_ORIGIN);
-		Object.entries(params || {}).forEach(([k, v]) => {
-			if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
-		});
+		appendQueryParams(url, params);
 		const res = await fetch(url.toString(), {
 			method: 'GET',
 			signal: controller.signal,

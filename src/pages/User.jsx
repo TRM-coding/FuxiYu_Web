@@ -7,6 +7,7 @@ import showErrorModal from '../utils/showErrorModal';
 import { clearAuth } from '../utils/authHelpers';
 import { getUserDetailInformation, updateUser, changePasswordUser, logoutUser } from '../api/user_api';
 import { usePermission } from '../contexts/PermissionContext';
+import { normalizeGraduationYear } from '../utils/graduationYear';
 import './User.css';
 
 const User = () => {
@@ -21,6 +22,7 @@ const User = () => {
   const [originalInfo, setOriginalInfo] = useState({ username: '', email: '', graduation_year: null });
   const [usernameMsg, setUsernameMsg] = useState(null);
   const [yearMsg, setYearMsg] = useState(null);
+  const [yearError, setYearError] = useState(null);
   const [passwordMsg, setPasswordMsg] = useState(null);
   const [passwordMsgType, setPasswordMsgType] = useState(null);
   const [usernameInvalid, setUsernameInvalid] = useState(false);
@@ -55,6 +57,7 @@ const User = () => {
         // clear inline messages when data loads
         setUsernameMsg(null);
         setYearMsg(null);
+        setYearError(null);
         setPasswordMsg(null);
         setPasswordMsgType(null);
         form.setFieldsValue({
@@ -278,15 +281,29 @@ const User = () => {
             {/* 毕业时间 + 修改按钮 */}
             <Form.Item label="毕业时间" name="graduation_year">
               <Space>
-                <InputNumber placeholder="选择毕业年份" className="user-input-300" value={graduation_year} onChange={v => setGraduationYear(v)} />
+                <InputNumber
+                  placeholder="选择毕业年份"
+                  className="user-input-300"
+                  value={graduation_year}
+                  onChange={v => { setGraduationYear(v); setYearError(null); }}
+                />
                 {String(graduation_year) === String(originalInfo.graduation_year) ? (
                   <Button type="text" disabled>无变化</Button>
                 ) : (
                   <Button type="text" onClick={async () => {
+                    // Q54：后端不允许把毕业年份写空；这里先拦截，避免提交 null/空串。
+                    const normalized = normalizeGraduationYear(graduation_year);
+                    if (!normalized.ok) {
+                      setYearMsg(null);
+                      setYearError(normalized.message);
+                      return;
+                    }
                     try {
                       const userId = Number(currentUserId);
-                      await updateUser({ user_id: userId, fields: { graduation_year } });
-                      setOriginalInfo(prev => ({ ...prev, graduation_year }));
+                      await updateUser({ user_id: userId, fields: { graduation_year: normalized.value } });
+                      setGraduationYear(normalized.value);
+                      setOriginalInfo(prev => ({ ...prev, graduation_year: normalized.value }));
+                      setYearError(null);
                       setYearMsg('修改成功');
                       setTimeout(() => setYearMsg(null), 3000);
                     } catch (err) {
@@ -296,6 +313,11 @@ const User = () => {
                   }}>修改</Button>
                 )}
               </Space>
+              {yearError ? (
+                <div className="user-msg-wrapper">
+                  <Typography.Text className="user-msg-error">{yearError}</Typography.Text>
+                </div>
+              ) : null}
               {yearMsg ? (
                 <div className="user-msg-wrapper">
                   <Typography.Text className="user-msg-success">{yearMsg}</Typography.Text>
