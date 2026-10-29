@@ -918,7 +918,7 @@ describe('AnvilCreateDeleted mappings', () => {
     expect(card.textContent).toContain('api');
   });
 
-  it('test_deleted_mobile_390_loading_has_no_zero_measurement_or_cleaned_state', async () => {
+  it('test_deleted_mobile_390_loading_covers_path_records_and_keeps_non_success_unmeasured', async () => {
     setViewport(390);
     const batch = deferred();
     listDeletedContainers.mockResolvedValue(listResponse([
@@ -928,22 +928,22 @@ describe('AnvilCreateDeleted mappings', () => {
     ]));
     getDeletedContainerMountUsage.mockReturnValue(batch.promise);
     renderDeleted();
-    expect(await screen.findByText('读取统计中')).toBeInTheDocument();
+    expect((await screen.findAllByText('读取统计中')).length).toBeGreaterThanOrEqual(2);
     const measurable = cardOf('measurable');
     expect(within(measurable).queryByRole('progressbar')).toBeNull();
     expect(within(measurable).queryByText('0 B')).toBeNull();
     expect(within(measurable).queryByText(/^测量 /)).toBeNull();
-    expect(within(measurable).queryByText('已清理')).toBeNull();
-    expect(within(cardOf('cleaned')).getAllByText('已清理').length).toBeGreaterThan(0);
     expect(within(cardOf('no-mount')).getAllByText('无挂载').length).toBeGreaterThan(0);
     await act(async () => {
-      batch.resolve({ success: 1, usages: [usagePending(1)] });
+      batch.resolve({ success: 1, usages: [usagePending(1), usageSuccess(2, 0)] });
       await Promise.resolve();
     });
     expect(await screen.findByText('测量中')).toBeInTheDocument();
-    expect(within(cardOf('measurable')).queryByText('0 B')).toBeNull();
-    expect(within(cardOf('measurable')).queryByText(/^测量 /)).toBeNull();
-    expect(within(cardOf('measurable')).queryByText('已清理')).toBeNull();
+    expect(within(measurable).queryByText('0 B')).toBeNull();
+    expect(within(measurable).queryByText(/^测量 /)).toBeNull();
+    expect(within(measurable).queryByText('已清理')).toBeNull();
+    expect(within(cardOf('cleaned')).getAllByText('可能存在残留').length).toBeGreaterThan(0);
+    expect(within(cardOf('cleaned')).getAllByText('0 B').length).toBeGreaterThan(0);
   });
 
   it('test_deleted_mobile_390_mount_copy_writes_clipboard', async () => {

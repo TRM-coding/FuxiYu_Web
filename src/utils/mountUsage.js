@@ -7,7 +7,7 @@ const isBlankTime = value => value === null || value === undefined || value === 
 
 /**
  * 已清理的条件是 `mount_cleaned === true` 或 `cleaned_at` 非空，满足其一即可。
- * `mount_cleaned === true` 即使 `cleaned_at` 为空也不能再扫描。
+ * 此标记不阻止对历史路径进行只读采样。
  */
 export const isDeletedMountCleaned = record => (
   record?.mount_cleaned === true || !isBlankTime(record?.cleaned_at)
@@ -15,8 +15,9 @@ export const isDeletedMountCleaned = record => (
 
 /**
  * 只有当前页里同时满足以下条件的行才允许请求统计：
- * 正整数 deleted_id、非空 mount_path、未清理。
+ * 正整数 deleted_id、非空 mount_path。
  *
+ * 已清理记录也保留历史路径，仍可请求统计以判断目录是否实际存在或残留。
  * 这里不读 machine_id，也不把 mount_path 交给请求层；路径只用于展示。
  */
 export const isMeasurableDeletedRecord = record => {
@@ -24,7 +25,7 @@ export const isMeasurableDeletedRecord = record => {
   const id = record.deleted_id;
   if (!Number.isInteger(id) || id <= 0) return false;
   if (typeof record.mount_path !== 'string' || record.mount_path === '') return false;
-  return !isDeletedMountCleaned(record);
+  return true;
 };
 
 export const deriveMeasurableDeletedIds = records => {
@@ -87,6 +88,28 @@ export const isStableMountUsageError = error => (
 export const describeMountUsageError = error => (
   isStableMountUsageError(error) ? MOUNT_USAGE_ERROR_LABELS[error] : '统计不可用'
 );
+
+/**
+ * 仅凭列表事实与当前页已有的路径用量结果派生挂载实际状态。
+ * 只有“已清理 + 成功样本”和两个明确错误码会覆盖列表事实；
+ * pending、加载中、缺项、Node 不可用等其他失败一律回退，避免误称目录不存在或残留。
+ */
+export const deriveDeletedMountState = (record, usage) => {
+  if (!record?.mount_path) return { key: 'no_mount', label: '无挂载' };
+  const cleaned = isDeletedMountCleaned(record);
+  if (usage?.status === 'success' && cleaned) {
+    return { key: 'residual', label: '可能存在残留' };
+  }
+  if (usage?.status === 'error' && usage.reason === 'not_found') {
+    return { key: 'not_found', label: '目录不存在' };
+  }
+  if (usage?.status === 'error' && usage.reason === 'permission_denied') {
+    return { key: 'permission_denied', label: '无权限' };
+  }
+  if (cleaned) return { key: 'cleaned', label: '已清理' };
+  if (record.cleanup_escalation) return { key: 'escalation', label: '升级清理' };
+  return { key: 'retained', label: 'mount 保留' };
+};
 
 const UTC_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|\+00:00)$/;
 

@@ -15,7 +15,7 @@ import '../components/NestedEntityGrid.css';
 import { usePermission } from '../contexts/PermissionContext';
 import { handleAuthError } from '../utils/authHelpers';
 import { dockerfileDiff } from '../utils/dockerfileDiff';
-import { formatLogicalBytes, isDeletedMountCleaned, isMeasurableDeletedRecord } from '../utils/mountUsage';
+import { deriveDeletedMountState, formatLogicalBytes, isDeletedMountCleaned, isMeasurableDeletedRecord } from '../utils/mountUsage';
 import { useDeletedMountUsage } from '../utils/useDeletedMountUsage';
 import showErrorModal from '../utils/showErrorModal';
 import './DeletedContainers.css';
@@ -46,12 +46,20 @@ const resolveUsageLimitBytes = (record) => {
 };
 
 
-const statusTag = (record) => {
-  if (!record.mount_path) return <Tag>无挂载</Tag>;
-  // mount_cleaned === true 即使 cleaned_at 为空也算已清理，不能再请求扫描。
-  if (isDeletedMountCleaned(record)) return <Tag color="red">已清理</Tag>;
-  if (record.cleanup_escalation) return <Tag color="orange">升级清理</Tag>;
-  return <Tag color="green">mount 保留</Tag>;
+const STATUS_TAG_COLORS = {
+  residual: 'orange',
+  not_found: 'red',
+  permission_denied: 'orange',
+  cleaned: 'red',
+  escalation: 'orange',
+  retained: 'green',
+};
+
+// 状态列使用列表事实 + 当前页已返回的路径用量派生；pending/其他失败回退列表事实，
+// 不把“尚未测量完成”误写成目录不存在或残留。
+const statusTag = (record, usage) => {
+  const state = deriveDeletedMountState(record, usage);
+  return <Tag color={STATUS_TAG_COLORS[state.key]}>{state.label}</Tag>;
 };
 
 // 翻译后端提供的恢复配方分段。
@@ -241,15 +249,18 @@ export default function DeletedContainers() {
     }
   };
 
-  // 用量只影响本行展示：未请求/已清理行沿用列表事实；畸形/缺项/失败一律不可用，
-  // 任何非成功路径都不会落到 “0 B”。
+  // 用量只影响本行展示与状态派生：success 显示真实样本，pending/缺项/失败不伪造；
+  // 已清理记录保留历史路径时也走同一异步逻辑，由成功样本判断是否存在残留。
   const renderUsageCell = (record) => {
     if (!record.mount_path) return <Typography.Text type="secondary">无挂载</Typography.Text>;
-    if (isDeletedMountCleaned(record)) return <Typography.Text type="secondary">已清理</Typography.Text>;
-    if (!isMeasurableDeletedRecord(record)) return <Typography.Text type="secondary">统计不可用</Typography.Text>;
+    if (!isMeasurableDeletedRecord(record)) {
+      return <Typography.Text type="secondary">{isDeletedMountCleaned(record) ? '已清理' : '统计不可用'}</Typography.Text>;
+    }
 
     const usage = usageById[record.deleted_id];
-    if (!usage) return <Typography.Text type="secondary">统计不可用</Typography.Text>;
+    if (!usage) {
+      return <Typography.Text type="secondary">{isDeletedMountCleaned(record) ? '已清理' : '统计不可用'}</Typography.Text>;
+    }
     if (usage.status === 'loading') {
       return <span className="deleted-usage-loading">读取统计中</span>;
     }
@@ -358,7 +369,7 @@ export default function DeletedContainers() {
     {
       title: '状态',
       key: 'status',
-      render: (_, record) => statusTag(record),
+      render: (_, record) => statusTag(record, usageById[record.deleted_id]),
     },
     {
       title: '操作',

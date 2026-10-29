@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   MOUNT_USAGE_ERROR_CODES,
+  deriveDeletedMountState,
   deriveMeasurableDeletedIds,
   describeMountUsageError,
   formatLogicalBytes,
@@ -54,13 +55,13 @@ const without = (source, field) => {
 };
 
 describe('已删除容器可测记录派生', () => {
-  it('mount_cleaned=true 即使 cleaned_at 为空也算已清理', () => {
+  it('mount_cleaned=true 即使 cleaned_at 为空仍算已清理，但保留路径时仍可采样', () => {
     expect(isDeletedMountCleaned(record({ mount_cleaned: true, cleaned_at: null }))).toBe(true);
-    expect(isMeasurableDeletedRecord(record({ mount_cleaned: true, cleaned_at: null }))).toBe(false);
+    expect(isMeasurableDeletedRecord(record({ mount_cleaned: true, cleaned_at: null }))).toBe(true);
+    expect(isMeasurableDeletedRecord(record({ cleaned_at: '2026-10-18T00:00:00' }))).toBe(true);
   });
 
-  it('cleaned_at 非空、无 mount、非法 ID 均不请求', () => {
-    expect(isMeasurableDeletedRecord(record({ cleaned_at: '2026-10-18T00:00:00' }))).toBe(false);
+  it('无 mount、非法 ID 不请求', () => {
     expect(isMeasurableDeletedRecord(record({ mount_path: '' }))).toBe(false);
     expect(isMeasurableDeletedRecord(record({ mount_path: null }))).toBe(false);
     expect(isMeasurableDeletedRecord(record({ deleted_id: 0 }))).toBe(false);
@@ -68,7 +69,7 @@ describe('已删除容器可测记录派生', () => {
     expect(isMeasurableDeletedRecord(record({ deleted_id: 1.5 }))).toBe(false);
   });
 
-  it('只派生当前页可测 ID，去重且不携带路径', () => {
+  it('只派生当前页可测 ID，去重且不携带路径；已清理但有路径也包含', () => {
     const ids = deriveMeasurableDeletedIds([
       record({ deleted_id: 7 }),
       record({ deleted_id: 7 }),
@@ -77,7 +78,59 @@ describe('已删除容器可测记录派生', () => {
       record({ deleted_id: 10, mount_path: '' }),
       record({ deleted_id: 11 }),
     ]);
-    expect(ids).toEqual([7, 11]);
+    expect(ids).toEqual([7, 8, 9, 11]);
+  });
+});
+
+describe('挂载实际状态派生', () => {
+  it('已清理且路径成功采集到用量时显示可能存在残留', () => {
+    expect(deriveDeletedMountState(
+      record({ mount_cleaned: true }),
+      { status: 'success', bytes: 1024, measuredAt: '2026-10-18T03:04:05Z' },
+    )).toEqual({ key: 'residual', label: '可能存在残留' });
+    expect(deriveDeletedMountState(
+      record({ cleaned_at: '2026-10-18T00:00:00' }),
+      { status: 'success', bytes: 0, measuredAt: '2026-10-18T03:04:05Z' },
+    )).toEqual({ key: 'residual', label: '可能存在残留' });
+  });
+
+  it('not_found 与 permission_denied 使用明确文案', () => {
+    expect(deriveDeletedMountState(
+      record({ mount_cleaned: true }),
+      { status: 'error', reason: 'not_found', message: '目录不存在' },
+    )).toEqual({ key: 'not_found', label: '目录不存在' });
+    expect(deriveDeletedMountState(
+      record(),
+      { status: 'error', reason: 'permission_denied', message: '无权限' },
+    )).toEqual({ key: 'permission_denied', label: '无权限' });
+  });
+
+  it('pending、其他失败、Node 不可用与缺项回退列表事实，不误称', () => {
+    expect(deriveDeletedMountState(record({ mount_cleaned: true }), { status: 'pending' }))
+      .toEqual({ key: 'cleaned', label: '已清理' });
+    expect(deriveDeletedMountState(record(), { status: 'pending' }))
+      .toEqual({ key: 'retained', label: 'mount 保留' });
+    expect(deriveDeletedMountState(
+      record({ mount_cleaned: true }),
+      { status: 'error', reason: 'node_unavailable', message: '机器离线/不可用' },
+    )).toEqual({ key: 'cleaned', label: '已清理' });
+    expect(deriveDeletedMountState(
+      record(),
+      { status: 'error', reason: 'node_timeout', message: '统计超时' },
+    )).toEqual({ key: 'retained', label: 'mount 保留' });
+    expect(deriveDeletedMountState(record({ mount_cleaned: true }), undefined))
+      .toEqual({ key: 'cleaned', label: '已清理' });
+  });
+
+  it('无路径始终无挂载，即使有成功/错误用量', () => {
+    expect(deriveDeletedMountState(
+      record({ mount_path: '' }),
+      { status: 'success', bytes: 1024, measuredAt: '2026-10-18T03:04:05Z' },
+    )).toEqual({ key: 'no_mount', label: '无挂载' });
+    expect(deriveDeletedMountState(
+      record({ mount_path: null }),
+      { status: 'error', reason: 'not_found', message: '目录不存在' },
+    )).toEqual({ key: 'no_mount', label: '无挂载' });
   });
 });
 

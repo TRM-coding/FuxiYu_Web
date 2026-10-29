@@ -115,7 +115,7 @@ afterEach(() => {
 });
 
 describe('DeletedContainers 首批统计与展示状态', () => {
-  it('列表与分页先出现，异步只请求当前页可测 ID；mount_cleaned=true 即使 cleaned_at 空也不请求', async () => {
+  it('列表与分页先出现，异步只请求当前页有路径的正整数 ID；已清理但保留路径也请求', async () => {
     const firstBatch = deferred();
     getDeletedContainerMountUsage.mockReturnValue(firstBatch.promise);
     listDeletedContainers.mockResolvedValue(listResponse([
@@ -133,25 +133,32 @@ describe('DeletedContainers 首批统计与展示状态', () => {
     expect(screen.getAllByText('读取统计中').length).toBeGreaterThan(0);
 
     await waitFor(() => expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1));
-    expect(getDeletedContainerMountUsage.mock.calls[0][0]).toEqual([7, 11]);
+    expect(getDeletedContainerMountUsage.mock.calls[0][0]).toEqual([7, 8, 9, 11]);
     expect(getDeletedContainerMountUsage.mock.calls[0][1]).toEqual(expect.objectContaining({
       signal: expect.any(AbortSignal),
     }));
 
-    expect(within(rowOf('row-8')).getAllByText('已清理').length).toBeGreaterThan(0);
-    expect(within(rowOf('row-9')).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(rowOf('row-8')).getByText('读取统计中')).toBeInTheDocument();
+    expect(within(rowOf('row-9')).getByText('读取统计中')).toBeInTheDocument();
     expect(within(rowOf('row-10')).getAllByText('无挂载').length).toBeGreaterThan(0);
     expect(within(rowOf('row-7')).getAllByText('读取统计中').length).toBeGreaterThan(0);
 
     await act(async () => {
       firstBatch.resolve({
         success: 1,
-        usages: [usageSuccess(7, 1536), usageSuccess(11, 0)],
+        usages: [
+          usageSuccess(7, 1536),
+          usageSuccess(8, 4096),
+          { deleted_id: 9, bytes: null, measured_at: null, pending: false, error: 'not_found' },
+          usageSuccess(11, 0),
+        ],
       });
       await Promise.resolve();
     });
     expect(await screen.findByText('1.5 KiB')).toBeInTheDocument();
     expect(within(rowOf('row-11')).getByText('0 B')).toBeInTheDocument();
+    expect(within(rowOf('row-8')).getAllByText('可能存在残留').length).toBeGreaterThan(0);
+    expect(within(rowOf('row-9')).getAllByText('目录不存在').length).toBeGreaterThan(0);
   });
 
   it('成功非零/成功 0/旧测量时间/pending/错误/缺项/畸形项按行呈现且绝不把 null 当 0', async () => {
@@ -449,11 +456,16 @@ describe('DeletedContainers 有界轮询与取消', () => {
     expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1);
   });
 
-  it('清理开始时旧统计失效；成功后重载只显示已清理，迟到响应不贴回旧值且不再扫描', async () => {
+  it('清理开始时旧统计失效；成功后重载按历史路径重采样，迟到响应不贴回旧值', async () => {
     const user = userEvent.setup();
     const usage = deferred();
     let cleaned = false;
-    getDeletedContainerMountUsage.mockReturnValue(usage.promise);
+    getDeletedContainerMountUsage
+      .mockReturnValueOnce(usage.promise)
+      .mockResolvedValueOnce({
+        success: 1,
+        usages: [{ deleted_id: 7, bytes: null, measured_at: null, pending: false, error: 'not_found' }],
+      });
     listDeletedContainers.mockImplementation(async () => listResponse([
       cleaned
         ? record({ mount_cleaned: true, cleaned_at: null })
@@ -477,7 +489,9 @@ describe('DeletedContainers 有界轮询与取消', () => {
     await waitFor(() => expect(cleanDeletedContainerMount).toHaveBeenCalledWith(11));
     await waitFor(() => expect(listDeletedContainers).toHaveBeenCalledTimes(2));
     expect(signal.aborted).toBe(true);
-    expect((await screen.findAllByText('已清理')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2));
+    expect(getDeletedContainerMountUsage.mock.calls[1][0]).toEqual([7]);
+    expect((await screen.findAllByText('目录不存在')).length).toBeGreaterThan(0);
 
     await act(async () => {
       usage.resolve({ success: 1, usages: [usageSuccess(7, 10 * 1024 * 1024)] });
@@ -485,14 +499,19 @@ describe('DeletedContainers 有界轮询与取消', () => {
     });
     expect(screen.queryByText('10 MiB')).toBeNull();
     expect(screen.queryByText('测量中')).toBeNull();
-    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1);
+    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2);
   });
 
-  it('恢复开始时旧统计失效；成功后迟到响应不贴回旧值且不再扫描', async () => {
+  it('恢复开始时旧统计失效；成功后按历史路径重采样，迟到响应不贴回旧值', async () => {
     const user = userEvent.setup();
     const usage = deferred();
     let restored = false;
-    getDeletedContainerMountUsage.mockReturnValue(usage.promise);
+    getDeletedContainerMountUsage
+      .mockReturnValueOnce(usage.promise)
+      .mockResolvedValueOnce({
+        success: 1,
+        usages: [{ deleted_id: 7, bytes: null, measured_at: null, pending: false, error: 'permission_denied' }],
+      });
     listDeletedContainers.mockImplementation(async () => listResponse([
       restored
         ? record({ mount_cleaned: true, cleaned_at: null })
@@ -516,7 +535,9 @@ describe('DeletedContainers 有界轮询与取消', () => {
     await waitFor(() => expect(resurrectDeletedContainer).toHaveBeenCalledWith(7, null));
     await waitFor(() => expect(listDeletedContainers).toHaveBeenCalledTimes(2));
     expect(signal.aborted).toBe(true);
-    expect((await screen.findAllByText('已清理')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2));
+    expect(getDeletedContainerMountUsage.mock.calls[1][0]).toEqual([7]);
+    expect((await screen.findAllByText('无权限')).length).toBeGreaterThan(0);
 
     await act(async () => {
       usage.resolve({ success: 1, usages: [usageSuccess(7, 10 * 1024 * 1024)] });
@@ -524,7 +545,7 @@ describe('DeletedContainers 有界轮询与取消', () => {
     });
     expect(screen.queryByText('10 MiB')).toBeNull();
     expect(screen.queryByText('测量中')).toBeNull();
-    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1);
+    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2);
   });
 
   it('清理失败不把旧 bytes 贴回；该行保持统计不可用且无后续请求', async () => {

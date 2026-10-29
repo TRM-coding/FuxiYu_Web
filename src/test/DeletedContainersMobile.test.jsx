@@ -342,22 +342,64 @@ describe('DeletedContainers 移动端 Mount 复制与用量', () => {
     expect(within(cardOf('deleted-train')).getByText('测量中')).toBeInTheDocument();
   });
 
-  it('tc_dc_13_mobile_cleaned_no_mount_no_sample', async () => {
+  it('tc_dc_13_mobile_cleaned_with_path_samples_and_no_mount_does_not', async () => {
     listDeletedContainers.mockResolvedValue(listResponse([
       record({ deleted_id: 6, container_name: 'row-cleaned', mount_cleaned: true }),
       record({ deleted_id: 7, container_name: 'row-no-mount', mount_path: '' }),
     ]));
+    getDeletedContainerMountUsage.mockResolvedValue({
+      success: 1,
+      usages: [usageSuccess(6, 2048)],
+    });
     setViewport(390);
     renderPage();
     await screen.findByText('row-cleaned');
 
-    expect(getDeletedContainerMountUsage).not.toHaveBeenCalled();
-    expect(within(cardOf('row-cleaned')).getAllByText('已清理').length).toBeGreaterThan(0);
+    await waitFor(() => expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1));
+    expect(getDeletedContainerMountUsage.mock.calls[0][0]).toEqual([6]);
+    expect(within(cardOf('row-cleaned')).getAllByText('可能存在残留').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-cleaned')).getByText('2 KiB')).toBeInTheDocument();
     expect(within(cardOf('row-no-mount')).getAllByText('无挂载').length).toBeGreaterThan(0);
   });
 });
 
 describe('DeletedContainers 移动端分页与统计上下文', () => {
+  it('tc_dc_13b_mobile_actual_state_does_not_mislabel_pending_or_node_failures', async () => {
+    listDeletedContainers.mockResolvedValue(listResponse([
+      record({ deleted_id: 1, container_name: 'row-residual', mount_cleaned: true }),
+      record({ deleted_id: 2, container_name: 'row-gone', cleaned_at: '2026-10-18T00:00:00' }),
+      record({ deleted_id: 3, container_name: 'row-denied', mount_cleaned: true }),
+      record({ deleted_id: 4, container_name: 'row-pending', mount_cleaned: true }),
+      record({ deleted_id: 5, container_name: 'row-offline', mount_cleaned: true }),
+      record({ deleted_id: 6, container_name: 'row-no-mount', mount_path: '' }),
+    ]));
+    getDeletedContainerMountUsage.mockResolvedValue({
+      success: 1,
+      usages: [
+        usageSuccess(1, 1024),
+        { deleted_id: 2, bytes: null, measured_at: null, pending: false, error: 'not_found' },
+        { deleted_id: 3, bytes: null, measured_at: null, pending: false, error: 'permission_denied' },
+        usagePending(4),
+        { deleted_id: 5, bytes: null, measured_at: null, pending: false, error: 'node_unavailable' },
+      ],
+    });
+    setViewport(390);
+    renderPage();
+    await screen.findByText('row-residual');
+
+    expect(within(cardOf('row-residual')).getAllByText('可能存在残留').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-gone')).getAllByText('目录不存在').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-denied')).getAllByText('无权限').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-pending')).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-pending')).getByText('测量中')).toBeInTheDocument();
+    expect(within(cardOf('row-offline')).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-offline')).getByText('机器离线/不可用')).toBeInTheDocument();
+    expect(within(cardOf('row-no-mount')).getAllByText('无挂载').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-pending')).queryByText('可能存在残留')).toBeNull();
+    expect(within(cardOf('row-offline')).queryByText('目录不存在')).toBeNull();
+    expect(getDeletedContainerMountUsage.mock.calls[0][0]).toEqual([1, 2, 3, 4, 5]);
+  });
+
   it('tc_dc_14_mobile_page_two_usage', async () => {
     const pageOne = record({ deleted_id: 1, container_name: 'page-one' });
     const pageTwo = record({ deleted_id: 22, container_name: 'page-two' });
@@ -412,7 +454,7 @@ describe('DeletedContainers 仅按当前页请求异步用量（移动端）', (
     expect(JSON.stringify(getDeletedContainerMountUsage.mock.calls[0][0])).not.toContain('/m/');
   });
 
-  it('tc_dc_21_usage_cleaned_no_mount_no_request', async () => {
+  it('tc_dc_21_usage_cleaned_with_path_samples_but_no_mount_does_not', async () => {
     listDeletedContainers.mockResolvedValue(listResponse([
       record({ deleted_id: 6, container_name: 'cleaned', mount_cleaned: true }),
       record({ deleted_id: 7, container_name: 'no-mount', mount_path: '' }),
@@ -421,7 +463,8 @@ describe('DeletedContainers 仅按当前页请求异步用量（移动端）', (
     renderPage();
     await screen.findByText('cleaned');
 
-    expect(getDeletedContainerMountUsage).not.toHaveBeenCalled();
+    await waitFor(() => expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1));
+    expect(getDeletedContainerMountUsage.mock.calls[0][0]).toEqual([6]);
     expect(screen.queryByText('0 B')).toBeNull();
   });
 });
