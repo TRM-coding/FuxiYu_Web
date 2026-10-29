@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { message } from 'antd';
 
 vi.mock('antd', async (importOriginal) => {
   const antd = await importOriginal();
@@ -81,6 +82,22 @@ const renderPage = (entry = '/admin/announcements/templates') =>
   );
 
 const cardFor = (name) => screen.getByText(name).closest('.ant-card');
+
+const categorySelectIn = (dialog) => dialog.querySelector('.ant-select');
+
+const openCategorySelect = (dialog) => {
+  fireEvent.mouseDown(categorySelectIn(dialog).querySelector('.ant-select-selector'));
+};
+
+const chooseCategory = async (text) => {
+  const option = await waitFor(() => {
+    const candidates = Array.from(document.querySelectorAll('.ant-select-item-option'))
+      .filter((element) => (element.textContent || '').includes(text));
+    if (!candidates.length) throw new Error(`未找到类别选项：${text}`);
+    return candidates[candidates.length - 1];
+  });
+  fireEvent.click(option);
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -288,5 +305,110 @@ describe('TemplateManager 模板错误调用口径（Q37）', () => {
     expect(call.message.error_reason).toBe('template_locked');
     expect(call.status).toBe(409);
     expect(call.route).toBe(DELETE_ROUTE);
+  });
+});
+
+describe('TemplateManager 系统模板类别保护（Q51）', () => {
+  it('test_q51_system_edit_disables_category_but_allows_content_edits', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText('系统模板')).toBeInTheDocument());
+
+    fireEvent.click(cardFor('系统模板').querySelector('.anticon-edit'));
+    const title = await screen.findByText('编辑模板 — 系统模板');
+    const dialog = title.closest('.ant-modal');
+    const categorySelect = categorySelectIn(dialog);
+
+    expect(categorySelect).toHaveClass('ant-select-disabled');
+    expect(categorySelect.querySelector('.ant-select-selection-item')?.textContent).toContain('系统');
+
+    const nameInput = screen.getByPlaceholderText('模板名称');
+    const descriptionInput = screen.getByPlaceholderText('模板描述（可选）');
+    const subjectInput = screen.getByPlaceholderText('邮件主题（纯文字）');
+    const bodyInput = screen.getByPlaceholderText('邮件正文（纯文字）');
+    expect(nameInput).not.toBeDisabled();
+    expect(descriptionInput).not.toBeDisabled();
+    expect(subjectInput).not.toBeDisabled();
+    expect(bodyInput).not.toBeDisabled();
+
+    fireEvent.change(nameInput, { target: { value: '新系统名' } });
+    fireEvent.change(descriptionInput, { target: { value: '新系统描述' } });
+    fireEvent.change(subjectInput, { target: { value: '新系统主题' } });
+    fireEvent.change(bodyInput, { target: { value: '新系统正文' } });
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(updateTemplate).toHaveBeenCalledWith(SYSTEM.id, {
+      name: '新系统名',
+      description: '新系统描述',
+      subject_template: '新系统主题',
+      body_template: '新系统正文',
+      category: 'system',
+    }));
+    expect(message.success).toHaveBeenCalledWith('模板已更新');
+    await waitFor(() => expect(listTemplates).toHaveBeenCalledTimes(2));
+  });
+
+  it('test_q51_create_template_keeps_category_selectable', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText('维护模板')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /新建模板/ }));
+    const title = await screen.findByText('新建模板', { selector: '.ant-modal-title' });
+    const dialog = title.closest('.ant-modal');
+    const categorySelect = categorySelectIn(dialog);
+
+    expect(categorySelect).not.toHaveClass('ant-select-disabled');
+    expect(categorySelect.querySelector('.ant-select-selection-item')?.textContent).toContain('自定义');
+
+    openCategorySelect(dialog);
+    await chooseCategory('系统');
+    await waitFor(() => {
+      expect(categorySelect.querySelector('.ant-select-selection-item')?.textContent).toContain('系统');
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('模板名称'), { target: { value: '新系统模板' } });
+    fireEvent.change(screen.getByPlaceholderText('模板描述（可选）'), { target: { value: '新建描述' } });
+    fireEvent.change(screen.getByPlaceholderText('邮件主题（纯文字）'), { target: { value: '新建主题' } });
+    fireEvent.change(screen.getByPlaceholderText('邮件正文（纯文字）'), { target: { value: '新建正文' } });
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(createTemplate).toHaveBeenCalledWith({
+      name: '新系统模板',
+      description: '新建描述',
+      subject_template: '新建主题',
+      body_template: '新建正文',
+      category: 'system',
+    }));
+    expect(message.success).toHaveBeenCalledWith('模板已创建');
+    await waitFor(() => expect(listTemplates).toHaveBeenCalledTimes(2));
+  });
+
+  it('test_q51_custom_template_can_become_system', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText('维护模板')).toBeInTheDocument());
+
+    fireEvent.click(cardFor('维护模板').querySelector('.anticon-edit'));
+    const title = await screen.findByText('编辑模板 — 维护模板');
+    const dialog = title.closest('.ant-modal');
+    const categorySelect = categorySelectIn(dialog);
+
+    expect(categorySelect).not.toHaveClass('ant-select-disabled');
+    expect(categorySelect.querySelector('.ant-select-selection-item')?.textContent).toContain('自定义');
+
+    openCategorySelect(dialog);
+    await chooseCategory('系统');
+    await waitFor(() => {
+      expect(categorySelect.querySelector('.ant-select-selection-item')?.textContent).toContain('系统');
+    });
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(updateTemplate).toHaveBeenCalledWith(CUSTOM.id, {
+      name: CUSTOM.name,
+      description: CUSTOM.description,
+      subject_template: CUSTOM.subject_template,
+      body_template: CUSTOM.body_template,
+      category: 'system',
+    }));
+    expect(message.success).toHaveBeenCalledWith('模板已更新');
+    await waitFor(() => expect(listTemplates).toHaveBeenCalledTimes(2));
   });
 });

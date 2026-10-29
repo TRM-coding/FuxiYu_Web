@@ -112,6 +112,8 @@ export default function TemplateManager() {
 
   useEffect(() => { loadTemplates(page); }, [loadTemplates, page]);
 
+  const isSystemEdit = editMode === 'edit' && editTarget?.category === 'system';
+
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
@@ -121,7 +123,7 @@ export default function TemplateManager() {
         subject_template: values.subject_template,
         body_template: values.body_template,
         description: values.description,
-        category: values.category,
+        category: isSystemEdit ? editTarget.category : values.category,
       };
 
       if (editMode === 'edit' && editTarget) {
@@ -280,7 +282,7 @@ export default function TemplateManager() {
             </Col>
             <Col span={8}>
               <Form.Item name="category" label="类别" initialValue="custom">
-                <Select>
+                <Select disabled={isSystemEdit}>
                   <Select.Option value="custom">自定义</Select.Option>
                   <Select.Option value="system">系统</Select.Option>
                 </Select>

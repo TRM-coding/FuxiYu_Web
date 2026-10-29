@@ -207,6 +207,7 @@ export const routeErrorMap = {
       missing_field: '缺少模板必填字段',
       not_found: '模板不存在',
       cannot_delete_system_template: '系统模板不可删除',
+      cannot_change_system_template_category: '系统模板类别不可修改',
     },
 
     // 镜像模板：五个入口各自只映射 Ctrl 已存在的 error_reason。

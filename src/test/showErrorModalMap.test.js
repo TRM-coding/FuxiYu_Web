@@ -32,7 +32,7 @@ const BACKEND_ERROR_REASONS = [
   // 恢复（复活软删容器）
   'data_not_recoverable',
   // 公告
-  'empty_targets', 'cannot_delete_system_template',
+  'empty_targets', 'cannot_delete_system_template', 'cannot_change_system_template_category',
   // 设置
   'invalid_setting',
   // 镜像
@@ -177,6 +177,27 @@ describe('Q37 真实弹窗按 route/reason 显示中文', () => {
     });
     await waitFor(() => expect(visibleDialogs().length).toBeGreaterThan(before));
     expect(dialogText()).toContain(text);
+    expect(dialogText()).not.toContain('未收录的错误原因');
+  });
+
+  it('test_q51_system_category_reason_maps_to_chinese', async () => {
+    expect(routeErrorMap['/announcements/templates']?.cannot_change_system_template_category)
+      .toBe('系统模板类别不可修改');
+
+    const before = visibleDialogs().length;
+    await act(async () => {
+      showErrorModal({
+        message: {
+          success: 0,
+          message: 'cannot change system template category',
+          error_reason: 'cannot_change_system_template_category',
+        },
+        status: 400,
+        route: 'https://ctrl/api/announcements/templates/6',
+      });
+    });
+    await waitFor(() => expect(visibleDialogs().length).toBeGreaterThan(before));
+    expect(dialogText()).toContain('系统模板类别不可修改');
     expect(dialogText()).not.toContain('未收录的错误原因');
   });
 
