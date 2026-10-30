@@ -93,10 +93,10 @@ export default function DeletedContainers() {
   const requestSeqRef = useRef(0);
   const {
     usageById,
-    budgetExhausted,
     start: startMountUsage,
     reset: resetMountUsage,
     invalidate: invalidateMountUsage,
+    resume: resumeMountUsage,
   } = useDeletedMountUsage();
 
   const canManageContainers = hasPermission('container:manage');
@@ -190,6 +190,7 @@ export default function DeletedContainers() {
         handleAuthError(err.status, navigate);
         return;
       }
+      resumeMountUsage();
       showErrorModal({
         title: '清理 mount 失败',
         message: err?.body?.message || err?.message || '无法清理 mount',
@@ -219,6 +220,7 @@ export default function DeletedContainers() {
     try {
       const res = await resurrectDeletedContainer(record.deleted_id, contentSource);
       if (res?.requires_choice) {
+        resumeMountUsage();
         // 后端没有恢复，交回两份内容等用户选。
         // 两份文本都在手里，差异在前端算——不再为它多要一个接口。
         setChosenSource('snapshot');
@@ -238,6 +240,7 @@ export default function DeletedContainers() {
         handleAuthError(err.status, navigate);
         return;
       }
+      resumeMountUsage();
       showErrorModal({
         title: '恢复容器失败',
         message: err?.message || '无法恢复容器',
@@ -478,16 +481,6 @@ export default function DeletedContainers() {
           刷新
         </Button>
       </div>
-
-      {budgetExhausted ? (
-        <Alert
-          className="deleted-usage-budget-alert"
-          type="warning"
-          showIcon
-          message="测量未完成"
-          description="多轮查询仍未完成，已停止自动刷新。可点击“刷新”重新开始一轮统计。"
-        />
-      ) : null}
 
       <Spin spinning={loading}>
         {/* 空页也保留 Table 与分页入口：total>0 时当前页可能暂时为空（刚清理/恢复最后一条），

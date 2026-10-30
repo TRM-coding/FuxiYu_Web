@@ -315,12 +315,12 @@ describe('DeletedContainers 首批统计与展示状态', () => {
 });
 
 describe('DeletedContainers 有界轮询与取消', () => {
-  it('pending 单计时器精确轮询 120 次后停止，提示测量未完成且不再请求', async () => {
+  it('pending 超过十分钟后继续轮询，离开页面时停止', async () => {
     vi.useFakeTimers();
     listDeletedContainers.mockResolvedValue(listResponse([record()]));
     getDeletedContainerMountUsage.mockResolvedValue({ success: 1, usages: [usagePending(7)] });
 
-    renderPage();
+    const view = renderPage();
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(screen.getByText('deleted-train')).toBeInTheDocument();
     expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1);
@@ -330,10 +330,26 @@ describe('DeletedContainers 有界轮询与取消', () => {
       expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1 + tick);
     }
 
-    expect(screen.getByText('测量未完成')).toBeInTheDocument();
-    expect(screen.getByText(/多轮查询仍未完成，已停止自动刷新/)).toBeInTheDocument();
+    expect(screen.queryByText('测量未完成')).not.toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
-    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(121);
+    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(133);
+    view.unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(133);
+  });
+
+  it('Node 查询超时后低频重试，并展示后续成功用量', async () => {
+    vi.useFakeTimers();
+    listDeletedContainers.mockResolvedValue(listResponse([record()]));
+    getDeletedContainerMountUsage
+      .mockResolvedValueOnce({ success: 1, usages: [{ deleted_id: 7, bytes: null, measured_at: null, pending: false, error: 'node_timeout' }] })
+      .mockResolvedValue({ success: 1, usages: [usageSuccess(7, 2048)] });
+    renderPage();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByText('统计超时')).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('2 KiB')).toBeInTheDocument();
   });
 
   it('上一批未返回不叠请求；返回后只轮询仍 pending 的行，收敛即停止', async () => {
@@ -548,12 +564,11 @@ describe('DeletedContainers 有界轮询与取消', () => {
     expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2);
   });
 
-  it('清理失败不把旧 bytes 贴回；该行保持统计不可用且无后续请求', async () => {
+  it('清理失败后丢弃旧统计并重新查询当前页', async () => {
     const user = userEvent.setup();
-    getDeletedContainerMountUsage.mockResolvedValue({
-      success: 1,
-      usages: [usageSuccess(7, 1024)],
-    });
+    getDeletedContainerMountUsage
+      .mockResolvedValueOnce({ success: 1, usages: [usageSuccess(7, 1024)] })
+      .mockResolvedValueOnce({ success: 1, usages: [usageSuccess(7, 2048)] });
     cleanDeletedContainerMount.mockRejectedValue({
       status: 500,
       body: { message: 'clean failed' },
@@ -568,8 +583,8 @@ describe('DeletedContainers 有界轮询与取消', () => {
 
     await waitFor(() => expect(showErrorModal).toHaveBeenCalled());
     expect(screen.queryByText('1 KiB')).toBeNull();
-    expect(within(rowOf('deleted-train')).getByText('统计不可用')).toBeInTheDocument();
-    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('2 KiB')).toBeInTheDocument();
+    expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2);
   });
 
   it('权限被收回时停止 pending 计时器，不再发起轮询', async () => {

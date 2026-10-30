@@ -1,7 +1,6 @@
-// 已删除容器的 mount 用量是「辅助信息」：5 秒一拍、单页最多 120 拍（约 10 分钟）。
-// 首批请求不计入预算；success/error 立即退出轮询，只有 pending 继续。
+// 已删除容器：pending 快速查询，其他状态低频复查，Node 缓存控制实际 du 频率。
 export const MOUNT_USAGE_POLL_INTERVAL_MS = 5000;
-export const MOUNT_USAGE_MAX_TICKS = 120;
+export const MOUNT_USAGE_RECHECK_INTERVAL_MS = 60000;
 
 const isBlankTime = value => value === null || value === undefined || value === '';
 

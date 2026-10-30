@@ -23,7 +23,7 @@
 ## Decisions
 
 1. **扩大可测记录范围，而不是增加专用请求。**
-   `isMeasurableDeletedRecord` 改为只要求正整数 `deleted_id` 与非空字符串 `mount_path`；已清理标记不再排除。这样 `useDeletedMountUsage` 的当前页采样、5 秒轮询、120 次预算、取消和旧响应失效全部原样复用，避免为“已清理记录”复制一套异步逻辑。替代方案是单独查询已清理记录，会新增请求路径并分裂状态来源，不采用。
+   `isMeasurableDeletedRecord` 改为只要求正整数 `deleted_id` 与非空字符串 `mount_path`；已清理标记不再排除。复用当前页采样、取消和旧响应失效逻辑；持续轮询调整见 `stabilize-deleted-mount-polling`，不为已清理记录复制异步逻辑。
 
 2. **派生状态集中在 `mountUsage` 的纯函数中。**
    新增状态派生函数，输入记录与当前 `usageById` 项，输出状态键与中文文案。优先级为：无路径 → 无挂载；成功且已清理 → 可能存在残留；`not_found` → 目录不存在；`permission_denied` → 无权限；有清理标记 → 已清理；升级清理 → 升级清理；否则 mount 保留。纯函数可被桌面状态列、移动卡片和单元测试复用，避免 JSX 内重复条件。只有成功与两个明确错误码会覆盖列表事实；loading/pending/unavailable/其他错误都回退到列表事实，满足“不能误称”。

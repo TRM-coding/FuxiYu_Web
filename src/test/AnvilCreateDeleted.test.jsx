@@ -866,7 +866,7 @@ describe('AnvilCreateDeleted mappings', () => {
     await waitFor(() => expect(listDeletedContainers.mock.calls.at(-1)[0].page_number).toBe(2));
   });
 
-  it('test_deleted_poll_budget_exhausted_manual_refresh', async () => {
+  it('test_deleted_long_poll_manual_refresh', async () => {
     vi.useFakeTimers();
     listDeletedContainers.mockResolvedValue(listResponse([record()]));
     getDeletedContainerMountUsage.mockResolvedValue({ success: 1, usages: [usagePending(7)] });
@@ -878,7 +878,7 @@ describe('AnvilCreateDeleted mappings', () => {
         await vi.advanceTimersByTimeAsync(5000);
       }
     });
-    expect(screen.getByText('测量未完成')).toBeInTheDocument();
+    expect(screen.queryByText('测量未完成')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /刷新/ }));
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(listDeletedContainers).toHaveBeenCalledTimes(2);
