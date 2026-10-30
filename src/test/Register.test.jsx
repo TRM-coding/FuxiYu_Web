@@ -169,3 +169,67 @@ describe('Register Q37 注册与验证码错误映射', () => {
     expect(args.route).toBe(error.route);
   });
 });
+
+
+
+describe('verification cooldown', () => {
+  it('uses the requested email and restores its countdown when switching back', async () => {
+    requestRegisterCode.mockResolvedValue({ success: 1, retry_after_seconds: 42 });
+    renderRegister(); fillEmail(); sendCode();
+    const button = await screen.findByRole('button', { name: /\u79d2\u540e\u53ef\u91cd\u53d1/ });
+    expect(button).toBeDisabled();
+    fillEmail('other@bjtu.edu.cn');
+    expect(await screen.findByRole('button', { name: /\u53d1\u9001\u9a8c\u8bc1\u7801/ })).toBeEnabled();
+    fillEmail();
+    expect(await screen.findByRole('button', { name: /\u79d2\u540e\u53ef\u91cd\u53d1/ })).toBeDisabled();
+    expect(requestRegisterCode).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts on rate limited but not on ordinary failure', async () => {
+    const error = apiError('/request_register_code', 'rate_limited', 429);
+    error.body.retry_after_seconds = 20;
+    requestRegisterCode.mockRejectedValueOnce(error);
+    renderRegister(); fillEmail(); sendCode();
+    expect(await screen.findByRole('button', { name: /\u79d2\u540e\u53ef\u91cd\u53d1/ })).toBeDisabled();
+    fillEmail('other@bjtu.edu.cn');
+    requestRegisterCode.mockRejectedValueOnce(apiError('/request_register_code', 'mail_send_failed', 500));
+    sendCode();
+    await waitFor(() => expect(requestRegisterCode).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: /\u53d1\u9001\u9a8c\u8bc1\u7801/ })).toBeEnabled());
+  });
+});
+
+
+it('counts down to zero and re-enables the button', async () => {
+  requestRegisterCode.mockResolvedValue({ success: 1, retry_after_seconds: 1 });
+  renderRegister(); fillEmail(); sendCode();
+  expect(await screen.findByRole('button', { name: /\u79d2\u540e\u53ef\u91cd\u53d1/ })).toBeDisabled();
+  expect(await screen.findByRole('button', { name: /\u53d1\u9001\u9a8c\u8bc1\u7801/ }, { timeout: 4000 })).toBeEnabled();
+});
+
+it('binds a late response to the email that initiated it', async () => {
+  let finish;
+  requestRegisterCode.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  renderRegister(); fillEmail(); sendCode();
+  await waitFor(() => expect(requestRegisterCode).toHaveBeenCalledTimes(1));
+  fillEmail('other@bjtu.edu.cn');
+  finish({ success: 1, retry_after_seconds: 30 });
+  await waitFor(() => expect(screen.getByRole('button', { name: /\u53d1\u9001\u9a8c\u8bc1\u7801/ })).toBeEnabled());
+  fillEmail();
+  expect(await screen.findByRole('button', { name: /\u79d2\u540e\u53ef\u91cd\u53d1/ })).toBeDisabled();
+});
+
+
+it('rebuilds cooldown from a rate-limited response after remount', async () => {
+  requestRegisterCode.mockResolvedValueOnce({ success: 1, retry_after_seconds: 30 });
+  const page = renderRegister(); fillEmail(); sendCode();
+  expect(await screen.findByRole('button', { name: /\u79d2\u540e\u53ef\u91cd\u53d1/ })).toBeDisabled();
+  page.unmount();
+  const error = apiError('/request_register_code', 'rate_limited', 429);
+  error.body.retry_after_seconds = 12;
+  requestRegisterCode.mockRejectedValueOnce(error);
+  renderRegister(); fillEmail(); sendCode();
+  const button = await screen.findByRole('button', { name: /\u79d2\u540e\u53ef\u91cd\u53d1/ });
+  expect(button.textContent).toMatch(/1[12]/);
+  expect(button).toBeDisabled();
+});

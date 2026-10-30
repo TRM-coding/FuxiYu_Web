@@ -94,6 +94,8 @@ export const routeErrorMap = {
     },
     '/request_register_code': {
       missing_email: '请输入邮箱',
+      email_exists: '该邮箱已注册，请直接登录',
+      rate_limited: '验证码发送过于频繁，请稍后重试',
       email_domain_not_allowed: '该邮箱域名不允许注册',
       mail_send_failed: '验证邮件发送失败',
       code_creation_failed: '验证码生成失败，请稍后重试',

@@ -55,8 +55,10 @@ const SPEC_ROUTE_REASON_TABLE = [
   { route: '/register', reason: 'registration_code_invalid', text: '注册验证码无效或已过期' },
   { route: '/register', reason: 'mail_send_failed', text: '验证邮件发送失败' },
   { route: '/register', reason: 'email_domain_not_allowed', text: '该邮箱域名不允许注册' },
-  // Register：/request_register_code 4 项
+  // Register：/request_register_code
   { route: '/request_register_code', reason: 'missing_email', text: '请输入邮箱' },
+  { route: '/request_register_code', reason: 'email_exists', text: '该邮箱已注册，请直接登录' },
+  { route: '/request_register_code', reason: 'rate_limited', text: '验证码发送过于频繁，请稍后重试' },
   { route: '/request_register_code', reason: 'email_domain_not_allowed', text: '该邮箱域名不允许注册' },
   { route: '/request_register_code', reason: 'mail_send_failed', text: '验证邮件发送失败' },
   { route: '/request_register_code', reason: 'code_creation_failed', text: '验证码生成失败，请稍后重试' },
