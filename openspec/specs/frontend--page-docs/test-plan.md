@@ -89,8 +89,8 @@ Spec: [spec.md](spec.md)
 
 - Test/check:
   - [X] `scripts/tests/docs-cleanup.integration.mjs::test_q36_docs_guide_bytes_are_source_faithful`
-- Assertion scope: Web 内副本为 6052 字节、SHA256 `4C2DEA950538717E5608A654692B6CC8A0B61DA18F84578A6EA9735893D2BF34`，并满足 CRLF 一致且大于 0。
-- Coverage note: 当前 Global 工作副本中未找到该原稿文件，测试校验的是 Web 副本对规格记录值的保真，不是本次跨仓库逐字节比较；不在计划里伪造 Global 对比结果。若 Global 原稿恢复，跨仓库人工检查按“长度 6052、SHA256 相同、逐字节相等”三项执行；该检查当前不可复现，不写成已覆盖。
+- Assertion scope: Web 内指南为 6055 字节、SHA256 `B0F3730F6A288B0DC54B332A35C033603CBD2370D56C3A5225BDB98855BD4839`，并满足 CRLF 一致且大于 0。
+- Coverage note: 测试校验 Web 指南相对已确认版本的字节保真，不执行跨仓库比较；后续有意修改指南时须同步更新该基线。
 
 #### Scenario: 换行被 Git 改写
 

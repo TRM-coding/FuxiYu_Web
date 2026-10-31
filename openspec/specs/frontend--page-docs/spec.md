@@ -85,13 +85,13 @@ Docs 页面 SHALL 删除旧硬编码正文与 `src/pages/DocsJourney.css`，并�
 
 ### Requirement: Docs Markdown 正文字节保真
 
-`src/content/USER_GUIDE_v1.md` SHALL 是 Global 原稿的逐字节副本（6052 字节、SHA256 `4C2DEA950538717E5608A654692B6CC8A0B61DA18F84578A6EA9735893D2BF34`），不得改动原稿词句或换行。为满足字节保真，本 change 选择对这一个内容文件设置 `-text`；该属性只关闭换行转换，是实现选择而非原稿要求。`.gitattributes` MUST 仅针对该内容文件关闭文本换行转换。
+`src/content/USER_GUIDE_v1.md` SHALL 以已确认的 Web 版本为内容基线（6055 字节、SHA256 `B0F3730F6A288B0DC54B332A35C033603CBD2370D56C3A5225BDB98855BD4839`），保留 CRLF 换行；经确认的指南内容调整 SHALL 同步更新保真基线。该版本由此前导入的 Global 原稿调整而来，不宣称与 Global 当前副本逐字节一致。为满足字节保真，该内容文件设置 `-text`，只关闭 Git 换行转换。`.gitattributes` MUST 仅针对该内容文件关闭文本换行转换。
 
 #### Scenario: 字节与哈希一致
 
-- **GIVEN** Global 原稿和 Web 内副本同时存在
-- **WHEN** 比较字节长度、SHA256 与逐字节内容
-- **THEN** 长度均为 6052 字节、SHA256 相同且字节数组完全相等
+- **GIVEN** Web 中的已确认指南版本
+- **WHEN** 检查字节长度、SHA256 与换行
+- **THEN** 长度为 6055 字节、SHA256 与记录的内容基线相同，且换行为 CRLF
 
 #### Scenario: 换行被 Git 改写
 

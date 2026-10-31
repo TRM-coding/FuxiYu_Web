@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const GUIDE_REL = 'src/content/USER_GUIDE_v1.md'
-const GUIDE_SHA256 = '4C2DEA950538717E5608A654692B6CC8A0B61DA18F84578A6EA9735893D2BF34'
-const GUIDE_BYTES = 6052
+const GUIDE_SHA256 = 'B0F3730F6A288B0DC54B332A35C033603CBD2370D56C3A5225BDB98855BD4839'
+const GUIDE_BYTES = 6055
 
 const REMOVED_DOCS_FILES = [
   'src/pages/Docs.css',
@@ -77,10 +77,10 @@ test('test_q36_docs_guide_bytes_are_source_faithful', () => {
     }
   }
 
-  assert.equal(bytes.length, GUIDE_BYTES, '指南副本必须保持原稿 6052 字节')
-  assert.equal(hash, GUIDE_SHA256, '指南副本 SHA256 必须与 Global 原稿一致')
-  assert.equal(crlf, lf, '指南副本不得出现孤立 LF，必须保持原稿 CRLF')
-  assert.ok(crlf > 0, '指南副本必须保留 CRLF 换行')
+  assert.equal(bytes.length, GUIDE_BYTES, '指南须与已确认版本的字节长度一致')
+  assert.equal(hash, GUIDE_SHA256, '指南须与已确认版本的 SHA256 一致')
+  assert.equal(crlf, lf, '指南不得出现孤立 LF，须保持 CRLF')
+  assert.ok(crlf > 0, '指南必须保留 CRLF 换行')
 })
 
 test('test_q36_docs_gitattributes_preserve_guide_bytes', () => {
