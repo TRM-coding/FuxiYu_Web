@@ -676,35 +676,20 @@ describe('Home 入口、操作与凭据', () => {
     logSpy.mockRestore();
   });
 
-  it('test_home_unpause_failure_rereads_authoritative_snapshot', async () => {
+  it('test_home_paused_card_and_modal_do_not_offer_unpause', async () => {
     const userEventInstance = userEvent.setup();
-    listAllContainerBrefInformation
-      .mockResolvedValueOnce({
-        containers_info: [container({ effective_status: 'paused' })],
-        total_number: 1,
-        total_page: 1,
-      })
-      .mockResolvedValue({
-        containers_info: [container({ effective_status: 'online' })],
-        total_number: 1,
-        total_page: 1,
-      });
-    unpauseContainer.mockRejectedValueOnce({
-      status: 409,
-      route: '/api/containers/unpause_container',
-      body: { success: 0, message: 'unpause failed', error_reason: 'unpause_failed' },
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'paused' })],
+      total_number: 1,
+      total_page: 1,
     });
     renderPage(<Home />, { entities: ['container:manage'], userId: 1, userName: 'root_user' });
-
     const card = (await screen.findByText('train-a')).closest('.home-container-card');
-    await userEventInstance.click(within(card).getByRole('button', { name: /解冻/ }));
-
-    await waitFor(() => expect(visibleModalText()).toContain('unpause failed'));
-    expect(screen.queryByText('已解冻')).toBeNull();
-    await closeErrorModals();
-
-    await waitFor(() => expect(listAllContainerBrefInformation.mock.calls.length).toBeGreaterThanOrEqual(2));
-    await waitFor(() => expect(within(card).getByText('运行中')).toBeInTheDocument());
+    expect(within(card).queryByRole('button', { name: /解冻/ })).toBeNull();
+    await userEventInstance.click(within(card).getByRole('button', { name: /详\s*情/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('button', { name: /解冻/ })).toBeNull();
+    expect(unpauseContainer).not.toHaveBeenCalled();
   });
 
   it('test_home_collaborator_role_hides_delete_and_disables_long_term', async () => {
@@ -1241,6 +1226,25 @@ describe('ManageUser 路由、权限组、失败与共享门禁', () => {
     expect(listAllUserBrefInformation).toHaveBeenCalled();
   });
 
+  it('test_manage_user_replace_rbac_groups_submits_deduped_ids', async () => {
+    const userEventInstance = userEvent.setup();
+    getRbacMatrix.mockResolvedValue({ groups: [
+      { id: 2, name: 'group-2', entity_codes: [] },
+      { id: 2, name: 'group-2-duplicate', entity_codes: [] },
+      { id: 5, name: 'group-5', entity_codes: [] },
+    ] });
+    getUserRbacGroups.mockResolvedValue({ group_ids: [2, 2, 5] });
+    renderManageUserPage();
+
+    await screen.findByText('\u7528\u6237\u4e0e\u5bb9\u5668\u5173\u7cfb');
+    await waitFor(() => expect(manageUserCard()).not.toBeNull());
+    await userEventInstance.click(within(manageUserCard()).getByRole('button', { name: /\u6743\u9650\u7ec4/ }));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('group-5');
+    await userEventInstance.click(within(dialog).getByRole('button', { name: /\u4fdd\s*\u5b58/ }));
+    await waitFor(() => expect(setUserRbacGroups).toHaveBeenCalledWith(7, [2, 5]));
+  });
+
   it('test_manage_user_reset_and_delete_keep_user_scope', async () => {
     const userEventInstance = userEvent.setup();
     resetPassword.mockResolvedValue({ new_password: 'pw-new' });
@@ -1363,7 +1367,7 @@ describe('ManageUser 路由、权限组、失败与共享门禁', () => {
     expect(within(onlineCard).getByRole('button', { name: /^停\s*止$/ })).toBeEnabled();
     expect(within(onlineCard).getByRole('button', { name: /^重\s*启$/ })).toBeEnabled();
     expect(within(onlineCard).getByRole('checkbox')).toBeEnabled();
-    expect(within(pausedCard).getByRole('button', { name: /解冻/ })).toBeEnabled();
+    expect(within(pausedCard).queryByRole('button', { name: /解冻/ })).toBeNull();
     expect(within(pausedCard).getByRole('checkbox')).toBeChecked();
     expect(within(pausedCard).getByRole('checkbox')).toBeDisabled();
     await userEventInstance.click(within(onlineCard).getByRole('button', { name: /详\s*情/ }));

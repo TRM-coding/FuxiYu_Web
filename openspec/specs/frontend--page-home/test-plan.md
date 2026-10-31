@@ -169,8 +169,8 @@ Spec: [spec.md](spec.md)
   - [X] src/test/AnvilManagePages.test.jsx::test_home_card_and_detail_modal_share_action_resolution
   - [X] src/test/AnvilManagePages.test.jsx::test_home_collaborator_role_hides_delete_and_disables_long_term
   - [ ] src/test/AnvilManagePages.test.jsx::test_home_paused_detail_exposes_same_unpause_action_as_card
-- Assertion scope: `HomeEligibility` 的同名用例实际把容器账号设为 `user_id:9` 的 ROOT、当前 `userId` 为 1，覆盖的是“当前账号在 accounts 中缺失角色”，不是 COLLABORATOR；它断言卡片长期勾选禁用、弹窗无删除/解除关联，但没有断言 `deleteContainer` 未调用。starting 用例断言弹窗删除可见但禁用并显示「容器正在处理中，暂不可操作」；共享矩阵断言 online/offline/paused/failed 的删除/启停/解冻结论。现有 `test_home_card_and_detail_modal_share_action_resolution` 只覆盖 online ROOT 可观察部分：卡片 start 禁用、stop/restart 启用、long-term 启用，详情 delete/close 可用且没有 start/stop/restart/long-term 按钮；该 `[X]` 不宣称 paused 或整个 Scenario 覆盖。未来 `test_home_paused_detail_exposes_same_unpause_action_as_card` 覆盖 paused + root/manage：卡片「解冻」enabled，详情「解冻容器」enabled 且同源；当前 Home 未传 `onUnpause`，实际失败，Q85 未创建。不得把失败改成“期望详情按钮缺失”，也不发明详情不存在的按钮；真实 COLLABORATOR 由已核实 locator 覆盖删除/长期门禁与 `deleteContainer` 未调用。
-- Coverage note: 现有 `[X]` 只作“缺失账号角色”证据，不得用作 COLLABORATOR 已覆盖；真实 COLLABORATOR 与 `deleteContainer` 未调用由已核实的 `test_home_collaborator_role_hides_delete_and_disables_long_term` 覆盖。online 同源 `[X]` 与 Q85 paused 详情 `[ ]` 分列；主规格 Scenario THEN 不变，但因 Q85 尚未创建，本场景不宣称全覆盖。Q85 红证据保存在外部 `Q85-paused-detail-current-failing.test.jsx.txt` 与 `Q85-paused-detail.raw.log`；已按批准方案从当前 online 函数移出 paused 红片段，Q85 future 仍未创建。
+- Assertion scope: online 场景核对首页共享动作与弹窗；冻结场景核对首页卡片及弹窗均无解冻入口。详情页解冻权限由其独立测试覆盖。
+- Coverage note: 首页移除解冻入口的规格调整见 `remove-home-unpause`；独立详情页解冻权限不在此首页测试范围内。
 
 #### Scenario: 长期超限或冻结残留
 
@@ -205,7 +205,6 @@ Spec: [spec.md](spec.md)
 #### Scenario: 解冻失败不伪造终态
 
 - Test/check:
-  - [X] src/test/HomeEligibility.test.jsx::解冻受理只说指令已发送并保持 pending；失败不写 paused 假终态且按钮恢复
-  - [X] src/test/AnvilManagePages.test.jsx::test_home_unpause_failure_rereads_authoritative_snapshot
-- Assertion scope: 解冻受理只提示「解冻指令已发送」并进入「解冻中」，不显示「已解冻」；失败经 `showErrorModal` 显示具体错误，卡片回到「已冻结」，清除「解冻中」并恢复按钮，不写 `online`/`paused` 猜测终态。缺口 locator 断言失败后确实重读权威列表，并以随后返回的 `online` 结束 pending。
-- Coverage note: 受理/失败 UI 与 pending 清除已确证；失败后的权威重读由本 locator 覆盖，checkbox 已核实为 `[X]`。
+  - [ ] 首页解冻失败测试已移除，等待 `remove-home-unpause` 同步主规格。
+- Assertion scope: 首页已移除解冻入口；原首页解冻请求失败场景的规格调整见 `remove-home-unpause`。
+- Coverage note: 独立详情页解冻失败由 `ContainerDetailEligibility.test.jsx` 覆盖。

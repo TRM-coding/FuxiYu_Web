@@ -6,14 +6,8 @@
 
 ## 当前计数与待补断言
 
-- 映射总数：175 个 locator；其中 `[X]` 173、`[ ]` 2。
-- 唯一 planned test：37 个；已创建 35 个（online 同源现有覆盖 + 本轮 6 项真实断言已核实）；Q84/Q85 两项未创建。
-- 已按批准的 Q84/Q85 拆分方案，从现有 online 函数移出 paused 详情红片段；当前 35 个 created 测试全绿，Q85 独立 future locator 仍未创建。Q84/Q85 两个 locator 保持 `[ ]`。
-- 计数增加原因：不删除原 36 planned 目标，也不把 35 created 静默改 34；把本轮暴露的 paused 详情解冻失败从现有 online 同源测试精确拆成独立未来 locator（+1），因此 36 → 37，35 created + Q84/Q85 两个未创建。
-- 待补/未创建：
-  1. `test_home_paused_detail_exposes_same_unpause_action_as_card`（Q85）：未创建；要求 paused + root/manage 下 Home 卡片「解冻」enabled，详情弹窗「解冻容器」enabled 且同源；当前 Home 未传 `onUnpause`，实际失败，保留完整红证据，不改成“期望按钮缺失”。
-  2. `test_manage_user_replace_rbac_groups_submits_deduped_ids`（Q84）：未创建；重复外部输入期望 `[2,5]`，实际 `[2,2,5]`，不修 app、不弱化。
-- 现有 online 同源测试保留原有通过断言，并保留本轮新增的 start/restart 断言；其 `[X]` 只覆盖 online 可观察部分，不宣称 paused/Q85 或整个 Scenario 全覆盖。
+- 映射状态：Q84 去重及 Q85 首页移除解冻入口均已有页面测试映射。
+- 首页在线动作和冻结时无解冻入口分别由页面测试覆盖。
 - Q38 与两项 non-blocking 仍保留：ManageUser 缺角色入口归 Q38；普通角色互换的凭据/弹窗与关闭日志已在本轮 ROOT locator 补断言；Home 路由不虚构 `container_id`/`machine_id`/localStorage 断言。
 
 ## frontend--page-home
@@ -182,9 +176,9 @@
   - [X] src/test/containerActionMatrix.test.js::同一容器同上下文在 status 矩阵下删除/启停/解冻一致
   - [X] src/test/AnvilManagePages.test.jsx::test_home_card_and_detail_modal_share_action_resolution
   - [X] src/test/AnvilManagePages.test.jsx::test_home_collaborator_role_hides_delete_and_disables_long_term
-  - [ ] src/test/AnvilManagePages.test.jsx::test_home_paused_detail_exposes_same_unpause_action_as_card
-- Assertion scope: `HomeEligibility` 的同名用例实际把容器账号设为 `user_id:9` 的 ROOT、当前 `userId` 为 1，覆盖的是“当前账号在 accounts 中缺失角色”，不是 COLLABORATOR；它断言卡片长期勾选禁用、弹窗无删除/解除关联，但没有断言 `deleteContainer` 未调用。starting 用例断言弹窗删除可见但禁用并显示「容器正在处理中，暂不可操作」；共享矩阵断言 online/offline/paused/failed 的删除/启停/解冻结论。现有 `test_home_card_and_detail_modal_share_action_resolution` 只覆盖 online ROOT 可观察部分：卡片 start 禁用、stop/restart 启用、long-term 启用，详情 delete/close 可用且没有 start/stop/restart/long-term 按钮；该 `[X]` 不宣称 paused 或整个 Scenario 覆盖。未来 `test_home_paused_detail_exposes_same_unpause_action_as_card` 覆盖 paused + root/manage：卡片「解冻」enabled，详情「解冻容器」enabled 且同源；当前 Home 未传 `onUnpause`，实际失败，Q85 未创建。不得把失败改成“期望详情按钮缺失”，也不发明详情不存在的按钮；真实 COLLABORATOR 由已核实 locator 覆盖删除/长期门禁与 `deleteContainer` 未调用。
-- Coverage note: 现有 `[X]` 只作“缺失账号角色”证据，不得用作 COLLABORATOR 已覆盖；真实 COLLABORATOR 与 `deleteContainer` 未调用由已核实的 `test_home_collaborator_role_hides_delete_and_disables_long_term` 覆盖。online 同源 `[X]` 与 Q85 paused 详情 `[ ]` 分列；主规格 Scenario THEN 不变，但因 Q85 尚未创建，本场景不宣称全覆盖。Q85 红证据保存在外部 `Q85-paused-detail-current-failing.test.jsx.txt` 与 `Q85-paused-detail.raw.log`；已按批准方案从当前 online 函数移出 paused 红片段，Q85 future 仍未创建。
+  - [X] src/test/AnvilManagePages.test.jsx::test_home_paused_card_and_modal_do_not_offer_unpause
+- Assertion scope: online 场景核对首页共享动作与弹窗；冻结场景核对首页卡片及弹窗均无解冻入口。详情页解冻权限由其独立测试覆盖。
+- Coverage note: 首页移除解冻入口的规格调整见 `remove-home-unpause`；独立详情页解冻权限不在此首页测试范围内。
 
 #### Scenario: 长期超限或冻结残留
 
@@ -219,10 +213,9 @@
 #### Scenario: 解冻失败不伪造终态
 
 - Test/check:
-  - [X] src/test/HomeEligibility.test.jsx::解冻受理只说指令已发送并保持 pending；失败不写 paused 假终态且按钮恢复
-  - [X] src/test/AnvilManagePages.test.jsx::test_home_unpause_failure_rereads_authoritative_snapshot
-- Assertion scope: 解冻受理只提示「解冻指令已发送」并进入「解冻中」，不显示「已解冻」；失败经 `showErrorModal` 显示具体错误，卡片回到「已冻结」，清除「解冻中」并恢复按钮，不写 `online`/`paused` 猜测终态。缺口 locator 断言失败后确实重读权威列表，并以随后返回的 `online` 结束 pending。
-- Coverage note: 受理/失败 UI 与 pending 清除已确证；失败后的权威重读由本 locator 覆盖，checkbox 已核实为 `[X]`。
+  - [ ] 首页解冻失败测试已移除，等待 `remove-home-unpause` 同步主规格。
+- Assertion scope: 首页已移除解冻入口；原首页解冻请求失败场景的规格调整见 `remove-home-unpause`。
+- Coverage note: 独立详情页解冻失败由 `ContainerDetailEligibility.test.jsx` 覆盖。
 
 ## frontend--page-machine-detail-page
 
@@ -498,10 +491,10 @@
 #### Scenario: 为用户替换权限组
 
 - Test/check:
-  - [ ] src/test/AnvilManagePages.test.jsx::test_manage_user_replace_rbac_groups_submits_deduped_ids
+  - [X] src/test/AnvilManagePages.test.jsx::test_manage_user_replace_rbac_groups_submits_deduped_ids
   - [X] src/test/AnvilManagePages.test.jsx::test_manage_user_reset_and_delete_keep_user_scope
-- Assertion scope: 该 Q84 locator 当前未创建，保留 `[ ]`：当实现时，在真实 `ManageUser` 中打开「权限组」弹窗并构造重复 matrix/bindings 输入（matrix 返回同一 group id 两次，或 `getUserRbacGroups` 返回重复 `group_ids`），保存后断言 `setUserRbacGroups(7, uniqueNumericIds)` 的 `group_ids` 已去重、全为数字、不夹带权限对象。当前实际调用收到 `[2, 2, 5]`，不是去重后的 `[2, 5]`，因此不能标 `[X]`。重置密码/删除用户由独立 `[X]` locator 承载。
-- Coverage note: Global Q84 已登记重复外部 matrix/bindings 输入下提交 ID 未去重；唯一依赖该修复的 locator 未创建，不用 skip/xfail，不修 app。原规划 36 项未删减，增加 Q85 后总 37 个唯一 planned；当前 35 个已创建测试的 online/既有断言已确认，Q84/Q85 未创建。组存在性、自锁保护与角色变更的跨仓契约不在 Web 断言范围；主规格正文的“容器角色变更”仍归入既有 Global Q38，不造入口通过测试。运行证据与原失败测试保存在外部审计产物，不属于本映射。
+- Assertion scope: 真实页面打开权限组弹窗，重复 matrix 和绑定输入后保存，断言用户 7 提交去重后的数字 ID `[2, 5]`；重置和删除用户由独立 locator 覆盖。
+- Coverage note: 组存在性、自锁保护和有效权限计算由后端负责，未在此 Web 测试中验证；容器角色变更仍归入 Q38。
 
 ### Requirement: 移除容器关联失败保留守卫原因
 

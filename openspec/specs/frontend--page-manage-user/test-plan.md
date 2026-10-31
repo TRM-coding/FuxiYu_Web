@@ -21,10 +21,10 @@ Spec: [spec.md](spec.md)
 #### Scenario: 为用户替换权限组
 
 - Test/check:
-  - [ ] src/test/AnvilManagePages.test.jsx::test_manage_user_replace_rbac_groups_submits_deduped_ids
+  - [X] src/test/AnvilManagePages.test.jsx::test_manage_user_replace_rbac_groups_submits_deduped_ids
   - [X] src/test/AnvilManagePages.test.jsx::test_manage_user_reset_and_delete_keep_user_scope
-- Assertion scope: 该 Q84 locator 当前未创建，保留 `[ ]`：当实现时，在真实 `ManageUser` 中打开「权限组」弹窗并构造重复 matrix/bindings 输入（matrix 返回同一 group id 两次，或 `getUserRbacGroups` 返回重复 `group_ids`），保存后断言 `setUserRbacGroups(7, uniqueNumericIds)` 的 `group_ids` 已去重、全为数字、不夹带权限对象。当前实际调用收到 `[2, 2, 5]`，不是去重后的 `[2, 5]`，因此不能标 `[X]`。重置密码/删除用户由独立 `[X]` locator 承载。
-- Coverage note: Global Q84 已登记重复外部 matrix/bindings 输入下提交 ID 未去重；唯一依赖该修复的 locator 未创建，不用 skip/xfail，不修 app。原规划 36 项未删减，增加 Q85 后总 37 个唯一 planned；当前 35 个已创建测试的 online/既有断言已确认，Q84/Q85 未创建。组存在性、自锁保护与角色变更的跨仓契约不在 Web 断言范围；主规格正文的“容器角色变更”仍归入既有 Global Q38，不造入口通过测试。运行证据与原失败测试保存在外部审计产物，不属于本映射。
+- Assertion scope: 真实页面打开权限组弹窗，重复 matrix 和绑定输入后保存，断言用户 7 提交去重后的数字 ID `[2, 5]`；重置和删除用户由独立 locator 覆盖。
+- Coverage note: 组存在性、自锁保护和有效权限计算由后端负责，未在此 Web 测试中验证；容器角色变更仍归入 Q38。
 
 ### Requirement: 移除容器关联失败保留守卫原因
 

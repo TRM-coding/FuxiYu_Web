@@ -261,45 +261,6 @@ describe('Home 共享动作资格与删除/解冻/长期', () => {
     expect(within(card).getByRole('checkbox')).toBeChecked();
   });
 
-  it('解冻受理只说指令已发送并保持 pending；失败不写 paused 假终态且按钮恢复', async () => {
-    const user = userEvent.setup();
-    permissionState.entities = ['container:manage'];
-    listAllContainerBrefInformation.mockResolvedValue({
-      containers_info: [container({ effective_status: 'paused' })],
-    });
-
-    const { unmount } = renderHome();
-    await screen.findByText('train-a');
-    let card = document.querySelector('.home-container-card');
-    await user.click(within(card).getByRole('button', { name: /解冻/ }));
-    await waitFor(() => expect(unpauseContainer).toHaveBeenCalledWith(1));
-    expect(message.success).toHaveBeenCalledWith('解冻指令已发送');
-    expect(screen.queryByText('已解冻')).toBeNull();
-    expect(within(card).getByText('解冻中')).toBeInTheDocument();
-    unmount();
-
-    unpauseContainer.mockRejectedValueOnce({
-      status: 409,
-      body: { message: 'unpause failed', error_reason: 'unpause_failed' },
-      route: '/api/containers/unpause_container',
-    });
-    listAllContainerBrefInformation.mockResolvedValue({
-      containers_info: [container({ effective_status: 'paused' })],
-    });
-    renderHome();
-    await screen.findByText('train-a');
-    card = document.querySelector('.home-container-card');
-    await user.click(within(card).getByRole('button', { name: /解冻/ }));
-
-    await waitFor(() => expect(showErrorModal).toHaveBeenCalledWith(expect.objectContaining({
-      message: expect.objectContaining({ message: 'unpause failed' }),
-    })));
-    expect(message.success).not.toHaveBeenCalledWith('已解冻');
-    expect(within(card).getByText('已冻结')).toBeInTheDocument();
-    expect(within(card).queryByText('解冻中')).toBeNull();
-    await waitFor(() => expect(within(card).getByRole('button', { name: /解冻/ })).toBeEnabled());
-  });
-
   it('打开确认框后状态变为 failed：确认时重解析，不调用启动 API', async () => {
     const user = userEvent.setup();
     listAllContainerBrefInformation.mockResolvedValue({

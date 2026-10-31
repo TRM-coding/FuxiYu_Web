@@ -558,7 +558,7 @@ const ManageUser = () => {
     if (!user) return;
     setUserGroupModal(prev => ({ ...prev, saving: true }));
     try {
-      await setUserRbacGroups(Number(user.key), selectedIds);
+      await setUserRbacGroups(Number(user.key), [...new Set(selectedIds)]);
       message.success(`已更新用户 ${user.username || ('#' + user.key)} 的权限组`);
       setUserGroupModal(prev => ({ ...prev, visible: false, user: null, saving: false }));
     } catch (err) {

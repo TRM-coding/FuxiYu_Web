@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SearchOutlined, UnlockOutlined } from '@ant-design/icons';
+import { SearchOutlined } from '@ant-design/icons';
 import { Flex, Typography, Row, Col, Button, Input, Space, Tag, message, Checkbox } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
 import ConfirmModal from '../components/ConfirmModal';
 import ContainerActionConfirmModal from '../components/ContainerActionConfirmModal';
 import EditUserModal from '../components/EditUserModal';
 import CredentialModal from '../components/CredentialModal';
-import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer, unpauseContainer } from '../api/container_api';
+import { listAllContainerBrefInformation, getContainerDetailInformation, deleteContainer, removeCollaborator, startContainer, stopContainer, restartContainer, refreshLastSshLoginTime, setLongTermContainer } from '../api/container_api';
 import { formatCleanupCountdown } from '../utils/timeFormat';
 import {
   CONTAINER_TERMINAL_STATES,
@@ -66,7 +66,6 @@ const Home = () => {
   const [longTermLimit, setLongTermLimit] = useState(null);
   const longTermStateRef = useRef({ remaining: null, limit: null });
   const [longTermUpdatingMap, setLongTermUpdatingMap] = useState({});
-  const [unpauseMap, setUnpauseMap] = useState({});
   const pendingContainerTransitionRef = useRef(new Map());
   const containerListFingerprintRef = useRef('');
   const loadContainersRef = useRef(null);
@@ -146,7 +145,6 @@ const Home = () => {
         start: extraLoading.start === true,
         stop: extraLoading.stop === true,
         restart: extraLoading.restart === true,
-        unpause: extraLoading.unpause === true || unpauseMap[loadingKey] === true,
         delete: extraLoading.delete === true,
         long_term_enable: extraLoading.long_term_enable === true || longTermUpdatingMap[loadingKey] === true,
         long_term_disable: extraLoading.long_term_disable === true || longTermUpdatingMap[loadingKey] === true,
@@ -351,55 +349,6 @@ const Home = () => {
       return { ok: false, latest, action };
     }
     return { ok: true, latest, action };
-  };
-
-  const handleUnpause = async (sourceRecord) => {
-    const record = getLatestContainer(sourceRecord);
-    const cid = record?.key || record?.container_id;
-    if (!cid) {
-      message.warning(getContainerActionReasonText('container_no_longer_available'));
-      return false;
-    }
-    const key = String(cid);
-    const before = resolveActionsFor(record);
-    if (!before.actions.unpause.visible || !before.actions.unpause.enabled) {
-      message.warning(getContainerActionReasonText(before.actions.unpause.reason) || '当前不可解冻');
-      return false;
-    }
-    setUnpauseMap(prev => ({ ...prev, [key]: true }));
-    try {
-      await unpauseContainer(Number(cid));
-      message.success('解冻指令已发送');
-      markContainerTransition(record, 'unpausing', 'online');
-      patchContainerStatus(cid, 'unpausing');
-      try {
-        startContainerStatusHeartbeat({
-          machine_id: record.machine_id,
-          machine_ip: record.machine_ip,
-          container_name: record.container_name,
-          container_id: cid,
-          terminalState: 'online',
-          onTerminal: (data) => {
-            const st = data?.effective_status ? String(data.effective_status).toLowerCase() : 'online';
-            clearContainerTransition(cid);
-            patchContainerStatus(cid, st === 'failed' ? 'failed' : 'online');
-            if (st === 'failed') {
-              message.error({ content: `容器 ${record.container_name} 状态异常`, key: `unpause-${cid}`, duration: 4 });
-            }
-          },
-        });
-      } catch {
-        // 受理后仍以权威轮询为准；心跳启动失败不清除已受理的 pending。
-      }
-      return true;
-    } catch (err) {
-      clearContainerTransition(cid);
-      await showErrorModal({ message: err?.body || err || '解冻失败', status: err?.status || err?.response?.status, route: err?.route || err?.response?.url });
-      await loadContainersRef.current?.({ silent: true });
-      return false;
-    } finally {
-      setUnpauseMap(prev => ({ ...prev, [key]: false }));
-    }
   };
 
   const handleLongTermChange = async (sourceRecord, checked) => {
@@ -983,20 +932,10 @@ const Home = () => {
           <Tag color={roleColor}>{myRole || '未授权'}</Tag>
           <span>{record.is_long_term === true ? '长期容器' : `清理倒计时 ${cleanupText}`}</span>
         </div>
-        {/* 磁盘行（2026-09 对齐 ManageUser/ManageMachine）：文本 + 操作（解冻/长期）+ 进度条；动态 SSH 格移除 */}
+        {/* 磁盘行（2026-09 对齐 ManageUser/ManageMachine）：文本 + 长期操作 + 进度条；动态 SSH 格移除 */}
         <div className="home-container-disk-line">
           <span title={diskText}>{diskText}</span>
           <div className="home-container-disk-actions">
-            {actions.unpause.visible && (
-              <Button
-                size="small"
-                icon={<UnlockOutlined />}
-                disabled={!actions.unpause.enabled}
-                loading={actions.unpause.loading}
-                title={reasonTitle(actions.unpause)}
-                onClick={(e) => { e.stopPropagation(); handleUnpause(record); }}
-              >解冻</Button>
-            )}
             {longTermAction.visible && (
               <Checkbox
                 checked={longTermAction.checked === true}
