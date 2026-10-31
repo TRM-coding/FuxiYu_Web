@@ -5,7 +5,7 @@ import { createController, unregisterController, abortAll } from '../utils/reque
 const createTimeoutController = (timeout) => {
   const controller = createController();
   const timer = setTimeout(() => {
-    try { controller.abort(); } catch (e) {}
+    controller.abort();
   }, timeout || REQUEST_TIMEOUT);
   return { controller, timer };
 };
@@ -15,7 +15,7 @@ const ensureOk = async (res, action) => {
     let body = null;
     try {
       body = await res.json();
-    } catch (e) {
+    } catch {
       body = await res.text().catch(() => null);
     }
     const text = body && typeof body === 'string' ? body : (body ? JSON.stringify(body) : null);
@@ -23,16 +23,12 @@ const ensureOk = async (res, action) => {
     err.status = res.status;
     err.route = res.url;
     err.body = body;
-    if (res.status === 401 || res.status === 403) {
-      try { abortAll('auth'); } catch (e) {}
-      if (typeof window !== 'undefined' && res.status === 401) {
-        try {
-          localStorage.removeItem('currentUserId');
-          localStorage.removeItem('currentUserName');
-          document.cookie = 'auth_token=; Max-Age=0; path=/';
-        } catch (e) {}
-        try { window.location.href = '/'; } catch (e) {}
-      }
+    if (res.status === 401) {
+      // 只有认证失效（401）**在这里发一个信号**，由 App 级监听器统一处置（清权限快照 + 客户端跳登录页）。
+      // 这里不再碰 localStorage（本地身份已废除）、不碰 cookie（HttpOnly，前端删不掉）、
+      // 也不做 window.location 硬跳（那会把页面推来推去，2026-09 实测成 12 次/秒的风暴）。
+      // 403 是「登录着但没这个权限」的一般拒绝：保留会话与在途请求，只把错误交给调用方展示。
+      abortAll('auth');
     }
     throw err;
   }
@@ -56,9 +52,33 @@ export const loginUser = async ({ username, password, remember }, timeout = null
     return result;
   } catch (err) {
     clearTimeout(timer);
-    try { unregisterController(controller); } catch (e) {}
+    unregisterController(controller);
     if (err.name === 'AbortError') {
       throw new Error('Login request timed out');
+    }
+    throw err;
+  }
+};
+
+export const logoutUser = async (timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL(API_ROUTES.LOGOUT, BACKEND_ORIGIN).toString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      credentials: CREDENTIALS
+    });
+    clearTimeout(timer);
+    const result = await ensureOk(res, 'Logout');
+    unregisterController(controller);
+    return result;
+  } catch (err) {
+    clearTimeout(timer);
+    unregisterController(controller);
+    if (err.name === 'AbortError') {
+      throw new Error('Logout request timed out');
     }
     throw err;
   }
@@ -81,7 +101,7 @@ export const requestRegisterCode = async ({ email }, timeout = null) => {
     return result;
   } catch (err) {
     clearTimeout(timer);
-    try { unregisterController(controller); } catch (e) {}
+    unregisterController(controller);
     if (err.name === 'AbortError') throw new Error('Request register code timed out');
     throw err;
   }
@@ -104,7 +124,7 @@ export const registerUser = async ({ username, email, password, graduation_year 
     return result;
   } catch (err) {
     clearTimeout(timer);
-    try { unregisterController(controller); } catch (e) {}
+    unregisterController(controller);
     if (err.name === 'AbortError') {
       throw new Error('Register request timed out');
     }
@@ -132,7 +152,7 @@ export const changePasswordUser = async ({ user_id, old_password, new_password }
     return result;
   } catch (err) {
     clearTimeout(timer);
-    try { unregisterController(controller); } catch (e) {}
+    unregisterController(controller);
     if (err.name === 'AbortError') throw new Error('Change password request timed out');
     throw err;
   }
@@ -158,7 +178,7 @@ export const updateUser = async ({ user_id, fields } = {}, timeout = null) => {
     return result;
   } catch (err) {
     clearTimeout(timer);
-    try { unregisterController(controller); } catch (e) {}
+    unregisterController(controller);
     if (err.name === 'AbortError') throw new Error('Update user request timed out');
     throw err;
   }
@@ -184,7 +204,7 @@ export const resetPassword = async ({ user_id } = {}, timeout = null) => {
     return result;
   } catch (err) {
     clearTimeout(timer);
-    try { unregisterController(controller); } catch (e) {}
+    unregisterController(controller);
     if (err.name === 'AbortError') throw new Error('Reset password request timed out');
     throw err;
   }
@@ -210,7 +230,7 @@ export const deleteUser = async (user_id = 0, timeout = null) => {
     return result;
   } catch (err) {
     clearTimeout(timer);
-    try { unregisterController(controller); } catch (e) {}
+    unregisterController(controller);
     if (err.name === 'AbortError') throw new Error('Delete user request timed out');
     throw err;
   }
@@ -235,18 +255,20 @@ export const getUserDetailInformation = async (user_id = 0, timeout = null) => {
     return result;
   } catch (err) {
     clearTimeout(timer);
-    try { unregisterController(controller); } catch (e) {}
+    unregisterController(controller);
     if (err.name === 'AbortError') throw new Error('Get user detail request timed out');
     throw err;
   }
 };
 
-export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 10 } = {}, timeout = null) => {
+export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 10, user_search = '' } = {}, timeout = null) => {
   const { controller, timer } = createTimeoutController(timeout);
   try {
     const url = new URL(API_ROUTES.USERS_LIST, BACKEND_ORIGIN);
     url.searchParams.set('page_number', String(page_number));
     url.searchParams.set('page_size', String(page_size));
+    const userSearch = String(user_search || '').trim();
+    if (userSearch) url.searchParams.set('user_search', userSearch);
     const res = await fetch(url.toString(), {
       method: 'GET',
       headers: {
@@ -261,7 +283,7 @@ export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 
     return result;
   } catch (err) {
     clearTimeout(timer);
-    try { unregisterController(controller); } catch (e) {}
+    unregisterController(controller);
     if (err.name === 'AbortError') throw new Error('List users request timed out');
     throw err;
   }
@@ -269,9 +291,42 @@ export const listAllUserBrefInformation = async ({ page_number = 1, page_size = 
 
 export default {
   loginUser,
+  logoutUser,
   registerUser,
   changePasswordUser,
   deleteUser,
   getUserDetailInformation,
   listAllUserBrefInformation,
+};
+
+export const getUserPermissions = async (timeout = null) => {
+  const { controller, timer } = createTimeoutController(timeout);
+  try {
+    const url = new URL('/api/users/me/permissions', BACKEND_ORIGIN);
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {},
+      signal: controller.signal,
+      credentials: CREDENTIALS,
+    });
+    if (!res.ok) throw Object.assign(new Error('failed to load permissions'), { status: res.status });
+    const data = await res.json().catch(() => null);
+    // 一次请求交付四样：认证信号（200/401）、授权数据（entities）、身份（user_id/username）、
+    // 资源级通配的真实判定（image_resource_unrestricted）。
+    // 身份必须从这里来——cookie 是 HttpOnly，前端读不到它（2026-09 决策）。
+    // 资源位缺字段（旧后端）一律折成 false：**不得**从 entities 派生集反推资源能力。
+    return {
+      entities: (data && data.entities) || [],
+      imageResourceUnrestricted: (data && data.image_resource_unrestricted) === true,
+      containerResourceUnrestricted: (data && data.container_resource_unrestricted) === true,
+      userId: (data && data.user_id) ?? null,
+      userName: (data && data.username) || '',
+    };
+  } finally {
+    // 成功、401 与异常都走同一释放路径：计时器必须清，控制器必须从全局集合注销。
+    // 这里不调用 abortAll，避免把其他页面/认证请求一并取消（abortAll 的身份语义不变）。
+    clearTimeout(timer);
+    // unregisterController 本身幂等且内部吞掉异常，重复注销不会抛。
+    unregisterController(controller);
+  }
 };

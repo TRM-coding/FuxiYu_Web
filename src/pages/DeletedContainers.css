@@ -1,0 +1,179 @@
+.deleted-containers-page {
+  min-width: 0;
+  color: #102033;
+}
+
+.deleted-containers-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.deleted-containers-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px !important;
+}
+
+.deleted-container-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deleted-container-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.deleted-usage-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deleted-usage-progress {
+  margin-top: 2px;
+}
+
+.deleted-usage-track-indeterminate {
+  /* 已测量但没有可比上限：整条轨道用斜纹表达成功，不给出任何比例。 */
+  background: repeating-linear-gradient(135deg, #e5eaf1 0 6px, #d8f3e9 6px 12px);
+}
+
+.deleted-usage-meta {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.deleted-mount-chip {
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.app-table-mobile-item .deleted-mount-chip {
+  width: 100%;
+}
+
+.deleted-usage-loading {
+  color: #6b7a90;
+  font-size: 13px;
+}
+
+.deleted-usage-budget-alert {
+  margin-bottom: 16px;
+}
+
+.deleted-container-detail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 8px 4px;
+}
+
+.deleted-container-detail div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.deleted-container-detail span {
+  color: #6b7a90;
+  font-size: 12px;
+}
+
+.deleted-container-detail strong {
+  color: #102033;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.deleted-containers-denied {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ff4d4f;
+  font-size: 16px;
+}
+
+@media (max-width: 900px) {
+  .deleted-containers-toolbar {
+    flex-direction: column;
+  }
+
+  .deleted-container-detail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .deleted-container-detail {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── 二选一弹窗里的逐行差异窗格 ──────────────────────────────────────
+   刻意**不出现滚动条**（"简单一点嵌在里面"）：未变动的长段已在
+   utils/dockerfileDiff 里折叠掉，剩下的行一屏放得下；真放不下时也只换行，
+   不让弹窗里多出一块可滚区域。 */
+.dc-diff {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: hidden;
+}
+
+.dc-diff-row {
+  display: flex;
+  gap: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dc-diff-mark {
+  flex: 0 0 10px;
+  color: #9ca3af;
+  user-select: none;
+}
+
+.dc-diff-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dc-diff-del {
+  background: #fff1f0;
+}
+
+.dc-diff-del .dc-diff-mark,
+.dc-diff-del .dc-diff-text {
+  color: #a8071a;
+}
+
+.dc-diff-add {
+  background: #f6ffed;
+}
+
+.dc-diff-add .dc-diff-mark,
+.dc-diff-add .dc-diff-text {
+  color: #135200;
+}
+
+.dc-diff-skip {
+  color: #9ca3af;
+  font-style: italic;
+}

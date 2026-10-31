@@ -11,8 +11,8 @@ const items = [
     icon: <HomeOutlined />,
   },
   {
-    label: '容器申请',
-    key: '/index/apply',
+    label: '创建容器',
+    key: '/index/create',
     icon: <FormOutlined />,
   },
   // {

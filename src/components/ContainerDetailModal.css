@@ -42,12 +42,144 @@
   font-size: 14px;
 }
 
+.cdm-resources-card {
+  background: #fff;
+  padding: 18px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #e8eef6;
+}
+
+.cdm-admin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(220px, 0.55fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.cdm-personnel-card,
+.cdm-port-card {
+  padding: 16px;
+  border: 1px solid #e1e8f2;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.cdm-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.cdm-section-head .ant-btn {
+  flex: 0 0 auto;
+}
+
+.cdm-port-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #edf2f8;
+}
+
+.cdm-port-tag {
+  margin-inline-end: 0;
+  font-size: 15px;
+}
+
+.cdm-diagnostic-card {
+  background: #fff7f7;
+  padding: 14px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #ffd4d4;
+}
+
+.cdm-diagnostic-detail {
+  margin: 10px 0 0 !important;
+  padding: 10px 12px;
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 6px;
+  color: #8c1d1d;
+}
+
+.cdm-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.cdm-metric-card,
+.cdm-gpu-card {
+  padding: 16px;
+  border: 1px solid #e1e8f2;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.cdm-runtime-card {
+  grid-column: 1 / -1;
+}
+
+.cdm-metric-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: #1f3552;
+}
+
+.cdm-subline {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.cdm-gpu-card {
+  margin-bottom: 20px;
+}
+
+.cdm-gpu-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cdm-gpu-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #edf2f8;
+}
+
+.cdm-gpu-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cdm-roles-wrap {
   margin-bottom: 24px;
 }
 
 .cdm-roles-title {
-  margin-bottom: 16px !important;
+  margin: 0 !important;
 }
 
 .cdm-roles-icon {
@@ -55,7 +187,11 @@
 }
 
 .cdm-role-group {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
+}
+
+.cdm-role-group:last-child {
+  margin-bottom: 0;
 }
 
 .cdm-role-header {
@@ -94,15 +230,52 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
 }
 
 .cdm-account-username {
   display: block;
 }
 
+.cdm-account-id {
+  margin-inline-end: 0;
+  color: #53657d;
+  background: #eef3fa;
+  border: none;
+}
+
+.cdm-empty-text {
+  display: block;
+  padding: 12px;
+  border: 1px dashed #d7e2ef;
+  border-radius: 6px;
+  text-align: center;
+}
+
 @media (max-width: 768px) {
   .cdm-summary-card {
     padding: 12px;
+  }
+
+  .cdm-resources-card,
+  .cdm-personnel-card,
+  .cdm-port-card,
+  .cdm-metric-card,
+  .cdm-gpu-card {
+    padding: 12px;
+  }
+
+  .cdm-admin-row,
+  .cdm-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cdm-gpu-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .cdm-gpu-row > span:nth-last-child(-n + 2) {
+    grid-column: 1 / -1;
   }
 
   .cdm-role-header,

@@ -1,0 +1,295 @@
+import React from 'react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { vi } from 'vitest';
+
+import ContainerDetailModal from '../components/ContainerDetailModal';
+import { resolveContainerActions } from '../utils/containerActions';
+
+const actionsFor = (container, {
+  role = 'ROOT',
+  permissions = ['container:operation', 'container:manage'],
+  readOnly = false,
+} = {}) => resolveContainerActions({
+  container,
+  context: { permissions, containerRole: role, readOnly },
+}).actions;
+
+describe('ContainerDetailModal', () => {
+  it('展示详情接口已有的运行态、诊断、磁盘和清退信息', () => {
+    render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        currentUserId={1}
+        container={{
+          key: 9,
+          container_id: 9,
+          container_name: 'train-a',
+          image_name: 'fuxi/image-1:20260829',
+          machine_ip: '127.0.0.1',
+          effective_status: 'failed',
+          failed_reason: 'create_failed',
+          failed_detail: 'could not select device driver nvidia',
+          cpu_number: 2,
+          gpu_number: 1,
+          memory_gb: 4,
+          shared_gb: 1,
+          port: 1024,
+          last_ssh_login_time: '2026-08-29T17:20:54',
+          seconds_until_cleanup: 7200,
+          disk_usage: {
+            total_gb: 12.5,
+            limit_gb: 100,
+            usage_percent: 12.5,
+          },
+          runtime_metrics: {
+            cpu_usage_percent: 18.5,
+            memory_usage_percent: 40,
+            memory_usage_mb: 409.6,
+            memory_limit_mb: 1024,
+            network_rx_mb: 2,
+            network_tx_mb: 3,
+            block_read_mb: 4,
+            block_write_mb: 5,
+            gpu: {
+              devices: [{
+                vendor: 'nvidia',
+                index: 0,
+                name: 'RTX 4060',
+                utilization_gpu_percent: 39,
+                memory_used_mb: 586,
+                memory_total_mb: 8188,
+              }],
+            },
+          },
+          freeze_state: {
+            is_frozen: true,
+            days_frozen: 2,
+            grace_until: '2026-08-31T00:00:00',
+          },
+          accounts: [
+            { user_id: 1, username: 'root_user', role: 'ROOT' },
+            { user_id: 2, username: 'admin_user', role: 'ADMIN' },
+            { user_id: 3, username: 'collab_user', role: 'COLLABORATOR' },
+          ],
+        }}
+        onEdit={() => {}}
+        canManagePeople
+        usersList={[
+          { id: 1, name: 'root_user', username: 'root_user' },
+          { id: 2, name: 'admin_user', username: 'admin_user' },
+          { id: 3, name: 'collab_user', username: 'collab_user' },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('人员管理 (3人)')).toBeInTheDocument();
+    expect(screen.getByText('超级管理员')).toBeInTheDocument();
+    expect(screen.getByText('管理员')).toBeInTheDocument();
+    expect(screen.getByText('协作者')).toBeInTheDocument();
+    expect(screen.getByText('@root_user')).toBeInTheDocument();
+    expect(screen.getByText('ID 1')).toBeInTheDocument();
+    expect(screen.getByText('端口管理')).toBeInTheDocument();
+    expect(screen.getByText('失败诊断')).toBeInTheDocument();
+    expect(screen.getByText('create_failed')).toBeInTheDocument();
+    expect(screen.getByText(/could not select device driver nvidia/)).toBeInTheDocument();
+    expect(screen.getByText('运行摘要')).toBeInTheDocument();
+    expect(screen.getByText('清理与磁盘')).toBeInTheDocument();
+    expect(screen.getByText('GPU 运行情况')).toBeInTheDocument();
+    expect(screen.getByText('RTX 4060')).toBeInTheDocument();
+    expect(screen.getByText('读 4 MB / 写 5 MB')).toBeInTheDocument();
+    expect(screen.getByText('冻结 2 天')).toBeInTheDocument();
+  });
+
+  it('在线容器的 ROOT 用户可以从人员管理区域进入编辑', () => {
+    render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        currentUserId={1}
+        onEdit={() => {}}
+        canManagePeople
+        container={{
+          key: 10,
+          container_id: 10,
+          container_name: 'train-b',
+          image_name: 'fuxi/image-1:20260829',
+          machine_ip: '127.0.0.1',
+          effective_status: 'online',
+          port: 1025,
+          accounts: [
+            { user_id: 1, username: 'root_user', role: 'ROOT' },
+          ],
+        }}
+        usersList={[
+          { id: 1, name: 'root_user', username: 'root_user' },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('人员管理 (1人)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /管理人员/ })).toBeInTheDocument();
+  });
+
+  it('日志页场景：可以关掉「运行摘要」，只留「清理与磁盘」', () => {
+    const container = {
+      key: 11,
+      container_id: 11,
+      container_name: 'log-target',
+      image_name: 'Ubuntu 24.04 · 基础',
+      machine_ip: '10.0.0.9',
+      effective_status: 'online',
+      cpu_number: 1,
+      gpu_number: 0,
+      memory_gb: 2,
+      shared_gb: 0,
+      accounts: [],
+      // 日志页只带这一段：清理与磁盘
+      is_long_term: false,
+      last_ssh_login_time: '2026-09-01T10:00:00',
+      seconds_until_cleanup: 86400,
+      disk_usage: { total_gb: 5, limit_gb: 20, usage_percent: 25 },
+    };
+
+    render(
+      <ContainerDetailModal visible onClose={() => {}} readOnly showRuntimeSummary={false} container={container} />
+    );
+
+    // Antd Modal 走 portal，挂在 document.body 上，所以用 screen 查
+    expect(screen.queryByText('运行摘要')).toBeNull();
+    expect(screen.queryByText('块 IO')).toBeNull();
+    expect(screen.getByText('清理与磁盘')).toBeTruthy();
+    expect(screen.getByText('25%')).toBeTruthy();      // 磁盘用量真的渲染出来了，不是 "-"
+  });
+
+  it('删除只消费父级 action：failed 可删，starting 禁用并显示原因', () => {
+    const failed = {
+      key: 21, container_id: 21, container_name: 'failed-one', effective_status: 'failed',
+      accounts: [{ user_id: 1, username: 'root_user', role: 'ROOT' }],
+      is_long_term: false, long_term_container_can_enable: true,
+    };
+    const { unmount } = render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={failed}
+        actions={actionsFor(failed)}
+        onDelete={() => {}}
+      />
+    );
+    expect(screen.getByRole('button', { name: /删除容器/ })).toBeEnabled();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    unmount();
+
+    const starting = { ...failed, key: 22, container_id: 22, effective_status: 'starting' };
+    render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={starting}
+        actions={actionsFor(starting)}
+        onDelete={() => {}}
+      />
+    );
+    const deleteButton = screen.getByRole('button', { name: /删除容器/ });
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton).toHaveAttribute('title', '容器正在处理中，暂不可操作');
+  });
+
+  it('COLLABORATOR 不出现可执行删除，解除关联独立存在', () => {
+    const container = {
+      key: 23, container_id: 23, container_name: 'collab-one', effective_status: 'online',
+      accounts: [{ user_id: 2, username: 'collab_user', role: 'COLLABORATOR' }],
+      is_long_term: false,
+    };
+    render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={container}
+        actions={actionsFor(container, { role: 'COLLABORATOR', permissions: ['container:operation'] })}
+        canLeave
+        onDelete={() => {}}
+        onLeave={() => {}}
+      />
+    );
+    expect(screen.queryByRole('button', { name: /删除容器/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /解除关联/ })).toBeEnabled();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('ADMIN 使用父级 action 可删；显式人员管理能力不打开删除', () => {
+    const container = {
+      key: 25, container_id: 25, container_name: 'admin-one', effective_status: 'online',
+      accounts: [{ user_id: 2, username: 'admin_user', role: 'ADMIN' }],
+      is_long_term: false,
+    };
+    const { unmount } = render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={container}
+        actions={actionsFor(container, { role: 'ADMIN', permissions: ['container:operation'] })}
+        onDelete={() => {}}
+      />
+    );
+    expect(screen.getByRole('button', { name: /删除容器/ })).toBeEnabled();
+    unmount();
+
+    render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={container}
+        actions={actionsFor(container, { role: 'COLLABORATOR', permissions: ['container:operation'] })}
+        onDelete={() => {}}
+        onEdit={() => {}}
+        canManagePeople
+      />
+    );
+    expect(screen.queryByRole('button', { name: /删除容器/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /管理人员/ })).toBeInTheDocument();
+  });
+
+  it('只读模式不渲染删除/解冻/长期控件，解冻只走父级 action', async () => {
+    const user = userEvent.setup();
+    const paused = {
+      key: 24, container_id: 24, container_name: 'paused-one', effective_status: 'paused',
+      accounts: [],
+      is_long_term: true,
+    };
+    const onUnpause = vi.fn();
+    const { unmount } = render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={paused}
+        actions={actionsFor(paused)}
+        onUnpause={onUnpause}
+        onDelete={() => {}}
+        readOnly
+      />
+    );
+    expect(screen.queryByRole('button', { name: /解冻容器/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /删除容器/ })).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    unmount();
+
+    render(
+      <ContainerDetailModal
+        visible
+        onClose={() => {}}
+        container={paused}
+        actions={actionsFor(paused, { permissions: ['container:manage'] })}
+        onUnpause={onUnpause}
+        onDelete={() => {}}
+      />
+    );
+    const unpause = screen.getByRole('button', { name: /解冻容器/ });
+    expect(unpause).toBeEnabled();
+    await user.click(unpause);
+    expect(onUnpause).toHaveBeenCalledWith(paused);
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+});

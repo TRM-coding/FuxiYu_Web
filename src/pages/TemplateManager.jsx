@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Typography, Row, Col, Button, Card, Input, Space, Tag, Modal,
-  Form, Select, message, Empty, Popconfirm, Divider
+  Form, Select, message, Empty, Popconfirm, Divider, Pagination
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ArrowLeftOutlined,
@@ -17,12 +17,19 @@ import './TemplateManager.css';
 const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;
 
+const TEMPLATE_PAGE_SIZE = 200;
+
 export default function TemplateManager() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const deepLinkId = searchParams.get('template_id');
 
   // ── 列表状态 ──────────────────────────────────────────────────────
   const [templates, setTemplates] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [deepLinkError, setDeepLinkError] = useState(null);
 
   // ── 编辑弹窗状态 ──────────────────────────────────────────────────
   const [editVisible, setEditVisible] = useState(false);
@@ -30,24 +37,7 @@ export default function TemplateManager() {
   const [editTarget, setEditTarget] = useState(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
-
-  // ══════════════════════════════════════════════════════════════════
-  // 数据加载
-  // ══════════════════════════════════════════════════════════════════
-
-  const loadTemplates = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await listTemplates({ limit: 200 });
-      setTemplates(res?.templates || []);
-    } catch (e) {
-      console.error('loadTemplates', e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadTemplates(); }, [loadTemplates]);
+  const deepLinkHandledRef = useRef(null);
 
   // ══════════════════════════════════════════════════════════════════
   // 编辑/新建
@@ -61,7 +51,7 @@ export default function TemplateManager() {
     setEditVisible(true);
   };
 
-  const openEdit = async (template) => {
+  const openEdit = useCallback((template) => {
     setEditMode('edit');
     setEditTarget(template);
     form.setFieldsValue({
@@ -72,7 +62,57 @@ export default function TemplateManager() {
       category: template.category,
     });
     setEditVisible(true);
-  };
+  }, [form]);
+
+  // ══════════════════════════════════════════════════════════════════
+  // 数据加载：按 200/页取服务端列表；深链目标不在当前页时用 getTemplate 定位。
+  // ══════════════════════════════════════════════════════════════════
+
+  const loadTemplates = useCallback(async (targetPage) => {
+    setLoading(true);
+    try {
+      const offset = targetPage * TEMPLATE_PAGE_SIZE;
+      const res = await listTemplates({ limit: TEMPLATE_PAGE_SIZE, offset });
+      const items = res?.templates || [];
+      setTemplates(items);
+      setTotal(Number(res?.total) || items.length);
+
+      if (!deepLinkId || deepLinkHandledRef.current === deepLinkId) return;
+      deepLinkHandledRef.current = deepLinkId;
+      setDeepLinkError(null);
+
+      const target = items.find(tp => String(tp.id) === String(deepLinkId));
+      if (target) {
+        openEdit(target);
+        return;
+      }
+
+      const numericId = Number(deepLinkId);
+      if (!Number.isInteger(numericId) || numericId <= 0) {
+        setDeepLinkError('模板不存在');
+        return;
+      }
+      try {
+        const detail = await getTemplate(numericId);
+        const targetTemplate = detail?.template || detail;
+        if (targetTemplate && targetTemplate.id != null) {
+          openEdit(targetTemplate);
+        } else {
+          setDeepLinkError('模板不存在');
+        }
+      } catch {
+        setDeepLinkError('模板不存在');
+      }
+    } catch (e) {
+      console.error('loadTemplates', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [deepLinkId, openEdit]);
+
+  useEffect(() => { loadTemplates(page); }, [loadTemplates, page]);
+
+  const isSystemEdit = editMode === 'edit' && editTarget?.category === 'system';
 
   const handleSave = async () => {
     try {
@@ -83,7 +123,7 @@ export default function TemplateManager() {
         subject_template: values.subject_template,
         body_template: values.body_template,
         description: values.description,
-        category: values.category,
+        category: isSystemEdit ? editTarget.category : values.category,
       };
 
       if (editMode === 'edit' && editTarget) {
@@ -94,11 +134,15 @@ export default function TemplateManager() {
         message.success('模板已创建');
       }
       setEditVisible(false);
-      loadTemplates();
+      loadTemplates(page);
     } catch (err) {
-      if (err?.body) {
-        await showErrorModal({ message: err.body.message || '保存失败', status: err.status });
-      }
+      // 表单校验失败不是接口错误，不弹错误弹窗；接口错误统一传结构化 body + route/status。
+      if (err?.errorFields) return;
+      await showErrorModal({
+        message: err?.body || err,
+        status: err?.status,
+        route: err?.route,
+      });
     } finally {
       setSaving(false);
     }
@@ -108,9 +152,13 @@ export default function TemplateManager() {
     try {
       await deleteTemplate(template.id);
       message.success('模板已删除');
-      loadTemplates();
+      loadTemplates(page);
     } catch (err) {
-      await showErrorModal({ message: err?.body?.message || '删除失败', status: err?.status });
+      await showErrorModal({
+        message: err?.body || err,
+        status: err?.status,
+        route: err?.route,
+      });
     }
   };
 
@@ -136,6 +184,12 @@ export default function TemplateManager() {
       </Row>
 
       <Divider style={{ margin: '12px 0' }} />
+
+      {deepLinkError ? (
+        <div className="tm-deep-link-error">
+          <Text type="danger">{deepLinkError}</Text>
+        </div>
+      ) : null}
 
       {/* ── 模板列表 ─────────────────────────────────────────────── */}
       <Row gutter={[16, 16]}>
@@ -192,6 +246,18 @@ export default function TemplateManager() {
         )}
       </Row>
 
+      {total > TEMPLATE_PAGE_SIZE ? (
+        <div className="tm-pagination">
+          <Pagination
+            current={page + 1}
+            pageSize={TEMPLATE_PAGE_SIZE}
+            total={total}
+            showSizeChanger={false}
+            onChange={(nextPage) => setPage(nextPage - 1)}
+          />
+        </div>
+      ) : null}
+
       {/* ── 新建/编辑模板弹窗 ─────────────────────────────────────── */}
       <Modal
         open={editVisible}
@@ -216,7 +282,7 @@ export default function TemplateManager() {
             </Col>
             <Col span={8}>
               <Form.Item name="category" label="类别" initialValue="custom">
-                <Select>
+                <Select disabled={isSystemEdit}>
                   <Select.Option value="custom">自定义</Select.Option>
                   <Select.Option value="system">系统</Select.Option>
                 </Select>

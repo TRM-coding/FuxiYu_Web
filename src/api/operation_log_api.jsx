@@ -1,13 +1,35 @@
 import { BACKEND_ORIGIN, API_ROUTES, REQUEST_TIMEOUT, CREDENTIALS } from '../configs/backend_config';
-import { createController, unregisterController } from '../utils/requestManager';
+// 与其它 API 包装器同源：401 走全局认证失效信号（abortAll → 'auth:expired'），
+// 由 App 级监听器统一清权限快照并回登录页；403 是一般权限拒绝，不在此处处理。
+import { createController, unregisterController, abortAll } from '../utils/requestManager';
 
 
 const createTimeoutController = (timeout) => {
 	const controller = createController();
 	const timer = setTimeout(() => {
-		try { controller.abort(); } catch (e) {}
+		controller.abort();
 	}, timeout || REQUEST_TIMEOUT);
 	return { controller, timer };
+};
+
+/**
+ * 写入查询参数：数组按重复参数逐项 append，标量保持 set。
+ * 这样 target_type 多选仍走 Ctrl 既有的重复参数契约，单值调用行为不变。
+ */
+const appendQueryParams = (url, params = {}) => {
+	Object.entries(params || {}).forEach(([key, value]) => {
+		if (Array.isArray(value)) {
+			value.forEach((item) => {
+				if (item !== undefined && item !== null && item !== '') {
+					url.searchParams.append(key, String(item));
+				}
+			});
+			return;
+		}
+		if (value !== undefined && value !== null && value !== '') {
+			url.searchParams.set(key, String(value));
+		}
+	});
 };
 
 const ensureOk = async (res, action) => {
@@ -15,7 +37,7 @@ const ensureOk = async (res, action) => {
 		let body = null;
 		try {
 			body = await res.json();
-		} catch (e) {
+		} catch {
 			body = await res.text().catch(() => null);
 		}
 		const text = body && typeof body === 'string' ? body : (body ? JSON.stringify(body) : null);
@@ -23,6 +45,10 @@ const ensureOk = async (res, action) => {
 		err.status = res.status;
 		err.route = res.url;
 		err.body = body;
+		if (res.status === 401) {
+			// 唯一信号：不在包装器里碰 localStorage / cookie / window.location。
+			abortAll('auth');
+		}
 		throw err;
 	}
 	return res.json();
@@ -33,9 +59,7 @@ export const listOperationLogs = async (params = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const url = new URL(API_ROUTES.ADMIN_OPERATION_LOGS, BACKEND_ORIGIN);
-		Object.entries(params || {}).forEach(([k, v]) => {
-			if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
-		});
+		appendQueryParams(url, params);
 		const res = await fetch(url.toString(), {
 			method: 'GET',
 			signal: controller.signal,
@@ -57,9 +81,7 @@ export const getOperationLogStats = async (params = {}, timeout = null) => {
 	const { controller, timer } = createTimeoutController(timeout);
 	try {
 		const url = new URL(API_ROUTES.ADMIN_OPERATION_LOGS_STATS, BACKEND_ORIGIN);
-		Object.entries(params || {}).forEach(([k, v]) => {
-			if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
-		});
+		appendQueryParams(url, params);
 		const res = await fetch(url.toString(), {
 			method: 'GET',
 			signal: controller.signal,
