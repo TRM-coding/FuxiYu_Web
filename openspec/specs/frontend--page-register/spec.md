@@ -104,6 +104,49 @@
 - **WHEN** 调用 `showErrorModal`
 - **THEN** 调用参数保留对象、状态与路由，使路由映射可命中，而不是只传 `err.message` 字符串
 
+### Requirement: 注册验证码请求拒绝提示
+
+页面 SHALL 对 `email_exists` 提示邮箱已注册并可登录，对 `rate_limited` 提示发送过于频繁并稍后重试。
+
+#### Scenario: 邮箱已注册
+
+- **WHEN** 验证码接口返回 `email_exists`
+- **THEN** 提示该邮箱已注册并引导登录
+
+#### Scenario: 发送冷却
+
+- **WHEN** 验证码接口返回 `rate_limited`
+- **THEN** 提示发送过于频繁、稍后重试
+
+### Requirement: 按邮箱展示注册验证码冷却倒计时
+
+页面 SHALL 仅使用发送成功或 `rate_limited` 响应中的 `retry_after_seconds` 建立或更新发起请求邮箱的倒计时；倒计时基于收到响应时的时间和剩余秒数独立计算。该邮箱倒计时未结束时 SHALL 在发送按钮展示剩余时间并禁止再次发送；到期后恢复发送。页面 MUST NOT 自行设定与后端无关的冷却期限，也 MUST NOT 在普通失败、网络错误或超时后推算或启动新倒计时。服务端节流是唯一权威来源。
+
+#### Scenario: 发送成功或触发节流
+
+- **WHEN** 当前邮箱的请求成功，或收到带剩余秒数的 `rate_limited` 响应
+- **THEN** 根据响应中的最新剩余时间显示倒计时，未到期时禁用该邮箱的发送按钮，不再主动请求更新时间
+
+#### Scenario: 切换邮箱和迟到响应
+
+- **WHEN** 用户更换邮箱，或原邮箱请求的响应在切换后到达
+- **THEN** 倒计时与发起请求的邮箱关联，当前邮箱只显示自身倒计时；切回原邮箱时展示其尚未到期的剩余时间
+
+#### Scenario: 刷新后恢复
+
+- **WHEN** 页面刷新导致本地倒计时丢失，用户再次请求仍处于冷却期的邮箱
+- **THEN** 页面根据 `rate_limited` 响应返回的最新剩余秒数重新开始显示
+
+#### Scenario: 其他失败或超时
+
+- **WHEN** 请求失败且原因不是 `rate_limited`，或请求超时、响应丢失
+- **THEN** 显示原有错误提示，不凭空开始倒计时；后续请求仍由服务端判断是否处于冷却期
+
+#### Scenario: 浏览器计时延迟
+
+- **WHEN** 浏览器切到后台或定时器被延迟
+- **THEN** 再次渲染时依据本地截止时间与当前时间计算剩余时间，不因延迟逐次减一而延长倒计时
+
 ## Source references
 
 - [src/pages/Register.jsx](../../../src/pages/Register.jsx)；[src/routes/index.jsx](../../../src/routes/index.jsx)。
