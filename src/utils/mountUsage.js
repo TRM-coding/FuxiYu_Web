@@ -90,8 +90,8 @@ export const describeMountUsageError = error => (
 
 /**
  * 仅凭列表事实与当前页已有的路径用量结果派生挂载实际状态。
- * 只有“已清理 + 成功样本”和两个明确错误码会覆盖列表事实；
- * pending、加载中、缺项、Node 不可用等其他失败一律回退，避免误称目录不存在或残留。
+ * 优先级：无挂载、可能存在残留、已清理、目录不存在或无权限、其他列表事实。
+ * 已清理记录仍采样；用量列独立显示采集结果。
  */
 export const deriveDeletedMountState = (record, usage) => {
   if (!record?.mount_path) return { key: 'no_mount', label: '无挂载' };
@@ -99,13 +99,13 @@ export const deriveDeletedMountState = (record, usage) => {
   if (usage?.status === 'success' && cleaned) {
     return { key: 'residual', label: '可能存在残留' };
   }
+  if (cleaned) return { key: 'cleaned', label: '已清理' };
   if (usage?.status === 'error' && usage.reason === 'not_found') {
     return { key: 'not_found', label: '目录不存在' };
   }
   if (usage?.status === 'error' && usage.reason === 'permission_denied') {
     return { key: 'permission_denied', label: '无权限' };
   }
-  if (cleaned) return { key: 'cleaned', label: '已清理' };
   if (record.cleanup_escalation) return { key: 'escalation', label: '升级清理' };
   return { key: 'retained', label: 'mount 保留' };
 };

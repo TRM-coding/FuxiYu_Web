@@ -83,54 +83,86 @@ describe('已删除容器可测记录派生', () => {
 });
 
 describe('挂载实际状态派生', () => {
-  it('已清理且路径成功采集到用量时显示可能存在残留', () => {
-    expect(deriveDeletedMountState(
-      record({ mount_cleaned: true }),
-      { status: 'success', bytes: 1024, measuredAt: '2026-10-18T03:04:05Z' },
-    )).toEqual({ key: 'residual', label: '可能存在残留' });
-    expect(deriveDeletedMountState(
-      record({ cleaned_at: '2026-10-18T00:00:00' }),
-      { status: 'success', bytes: 0, measuredAt: '2026-10-18T03:04:05Z' },
-    )).toEqual({ key: 'residual', label: '可能存在残留' });
+  const successUsage = (bytes) => ({
+    status: 'success',
+    bytes,
+    measuredAt: '2026-10-18T03:04:05Z',
   });
 
-  it('not_found 与 permission_denied 使用明确文案', () => {
-    expect(deriveDeletedMountState(
+  it('无挂载优先级最高：即使已清理且有成功（含 0 B）/错误用量也不改写', () => {
+    const cases = [
+      [record({ mount_path: '', mount_cleaned: true }), successUsage(0)],
+      [record({ mount_path: '', cleaned_at: '2026-10-18T00:00:00' }), {
+        status: 'error', reason: 'not_found', message: '统计不可用（目录不存在）',
+      }],
+      [record({ mount_path: null }), {
+        status: 'error', reason: 'permission_denied', message: '统计不可用（无权限读取目录）',
+      }],
+      [record({ mount_path: '' }), undefined],
+    ];
+    for (const [rec, usage] of cases) {
+      expect(deriveDeletedMountState(rec, usage)).toEqual({ key: 'no_mount', label: '无挂载' });
+    }
+  });
+
+  it('已清理且成功采集（含 0 B）显示可能存在残留', () => {
+    const cleanedRecords = [
       record({ mount_cleaned: true }),
-      { status: 'error', reason: 'not_found', message: '目录不存在' },
+      record({ cleaned_at: '2026-10-18T00:00:00' }),
+    ];
+    for (const rec of cleanedRecords) {
+      for (const bytes of [1024, 0]) {
+        expect(deriveDeletedMountState(rec, successUsage(bytes)))
+          .toEqual({ key: 'residual', label: '可能存在残留' });
+      }
+    }
+  });
+
+  it('已清理优先于 not_found、permission_denied、pending 与其他失败', () => {
+    const cleanedRecords = [
+      record({ mount_cleaned: true }),
+      record({ cleaned_at: '2026-10-18T00:00:00' }),
+    ];
+    const fallbackUsages = [
+      { status: 'error', reason: 'not_found', message: '统计不可用（目录不存在）' },
+      { status: 'error', reason: 'permission_denied', message: '统计不可用（无权限读取目录）' },
+      { status: 'pending' },
+      { status: 'unavailable', message: '统计不可用' },
+      { status: 'error', reason: 'node_unavailable', message: '机器离线/不可用' },
+      undefined,
+    ];
+    for (const rec of cleanedRecords) {
+      for (const usage of fallbackUsages) {
+        expect(deriveDeletedMountState(rec, usage))
+          .toEqual({ key: 'cleaned', label: '已清理' });
+      }
+    }
+  });
+
+  it('未清理时仍保留 not_found/permission_denied 的明确文案', () => {
+    expect(deriveDeletedMountState(
+      record(),
+      { status: 'error', reason: 'not_found', message: '统计不可用（目录不存在）' },
     )).toEqual({ key: 'not_found', label: '目录不存在' });
     expect(deriveDeletedMountState(
       record(),
-      { status: 'error', reason: 'permission_denied', message: '无权限' },
+      { status: 'error', reason: 'permission_denied', message: '统计不可用（无权限读取目录）' },
     )).toEqual({ key: 'permission_denied', label: '无权限' });
   });
 
-  it('pending、其他失败、Node 不可用与缺项回退列表事实，不误称', () => {
-    expect(deriveDeletedMountState(record({ mount_cleaned: true }), { status: 'pending' }))
-      .toEqual({ key: 'cleaned', label: '已清理' });
+  it('成功采集只把已清理记录提升为残留，未清理仍回退列表事实', () => {
+    for (const bytes of [1024, 0]) {
+      expect(deriveDeletedMountState(record(), successUsage(bytes)))
+        .toEqual({ key: 'retained', label: 'mount 保留' });
+    }
     expect(deriveDeletedMountState(record(), { status: 'pending' }))
       .toEqual({ key: 'retained', label: 'mount 保留' });
-    expect(deriveDeletedMountState(
-      record({ mount_cleaned: true }),
-      { status: 'error', reason: 'node_unavailable', message: '机器离线/不可用' },
-    )).toEqual({ key: 'cleaned', label: '已清理' });
     expect(deriveDeletedMountState(
       record(),
       { status: 'error', reason: 'node_timeout', message: '统计超时' },
     )).toEqual({ key: 'retained', label: 'mount 保留' });
-    expect(deriveDeletedMountState(record({ mount_cleaned: true }), undefined))
-      .toEqual({ key: 'cleaned', label: '已清理' });
-  });
-
-  it('无路径始终无挂载，即使有成功/错误用量', () => {
-    expect(deriveDeletedMountState(
-      record({ mount_path: '' }),
-      { status: 'success', bytes: 1024, measuredAt: '2026-10-18T03:04:05Z' },
-    )).toEqual({ key: 'no_mount', label: '无挂载' });
-    expect(deriveDeletedMountState(
-      record({ mount_path: null }),
-      { status: 'error', reason: 'not_found', message: '目录不存在' },
-    )).toEqual({ key: 'no_mount', label: '无挂载' });
+    expect(deriveDeletedMountState(record(), undefined))
+      .toEqual({ key: 'retained', label: 'mount 保留' });
   });
 });
 

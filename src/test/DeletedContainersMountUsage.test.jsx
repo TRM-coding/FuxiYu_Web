@@ -158,7 +158,83 @@ describe('DeletedContainers 首批统计与展示状态', () => {
     expect(await screen.findByText('1.5 KiB')).toBeInTheDocument();
     expect(within(rowOf('row-11')).getByText('0 B')).toBeInTheDocument();
     expect(within(rowOf('row-8')).getAllByText('可能存在残留').length).toBeGreaterThan(0);
-    expect(within(rowOf('row-9')).getAllByText('目录不存在').length).toBeGreaterThan(0);
+    expect(within(rowOf('row-9')).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(rowOf('row-9')).getByText('统计不可用（目录不存在）')).toBeInTheDocument();
+    expect(within(rowOf('row-9')).queryByText('目录不存在')).toBeNull();
+    expect(within(rowOf('row-11')).getAllByText('mount 保留').length).toBeGreaterThan(0);
+    expect(within(rowOf('row-11')).queryByText('可能存在残留')).toBeNull();
+  });
+
+  it('状态优先级：无挂载 > 已清理成功（含 0）残留 > 已清理 > not_found/permission_denied', async () => {
+    listDeletedContainers.mockResolvedValue(listResponse([
+      record({ deleted_id: 1, container_name: 'row-no-mount', mount_path: '', mount_cleaned: true }),
+      record({ deleted_id: 2, container_name: 'row-cleaned-zero', mount_path: '/m/2', mount_cleaned: true }),
+      record({ deleted_id: 3, container_name: 'row-cleaned-positive', mount_path: '/m/3', cleaned_at: '2026-10-18T00:00:00' }),
+      record({ deleted_id: 4, container_name: 'row-cleaned-not-found', mount_path: '/m/4', mount_cleaned: true }),
+      record({ deleted_id: 5, container_name: 'row-cleaned-denied', mount_path: '/m/5', cleaned_at: '2026-10-18T00:00:00' }),
+      record({ deleted_id: 6, container_name: 'row-unclean-not-found', mount_path: '/m/6' }),
+      record({ deleted_id: 7, container_name: 'row-unclean-denied', mount_path: '/m/7' }),
+      record({ deleted_id: 8, container_name: 'row-unclean-zero', mount_path: '/m/8' }),
+    ]));
+    getDeletedContainerMountUsage.mockResolvedValue({
+      success: 1,
+      usages: [
+        // 1 无挂载不请求；即使响应携带也不能把它改写为残留。
+        usageSuccess(1, 0),
+        usageSuccess(2, 0),
+        usageSuccess(3, 2048),
+        { deleted_id: 4, bytes: null, measured_at: null, pending: false, error: 'not_found' },
+        { deleted_id: 5, bytes: null, measured_at: null, pending: false, error: 'permission_denied' },
+        { deleted_id: 6, bytes: null, measured_at: null, pending: false, error: 'not_found' },
+        { deleted_id: 7, bytes: null, measured_at: null, pending: false, error: 'permission_denied' },
+        usageSuccess(8, 0),
+      ],
+    });
+
+    renderPage();
+    expect(await screen.findByText('2 KiB')).toBeInTheDocument();
+    expect(screen.getAllByText('0 B')).toHaveLength(2);
+
+    const noMountRow = rowOf('row-no-mount');
+    expect(within(noMountRow).getAllByText('无挂载').length).toBeGreaterThan(0);
+    expect(within(noMountRow).queryByText('可能存在残留')).toBeNull();
+    expect(within(noMountRow).queryByText('已清理')).toBeNull();
+
+    const cleanedZero = rowOf('row-cleaned-zero');
+    expect(within(cleanedZero).getAllByText('可能存在残留').length).toBeGreaterThan(0);
+    expect(within(cleanedZero).getByText('0 B')).toBeInTheDocument();
+    expect(within(cleanedZero).getByRole('progressbar')).toBeInTheDocument();
+    expect(within(cleanedZero).queryByText('已清理')).toBeNull();
+
+    const cleanedPositive = rowOf('row-cleaned-positive');
+    expect(within(cleanedPositive).getAllByText('可能存在残留').length).toBeGreaterThan(0);
+    expect(within(cleanedPositive).getByText('2 KiB')).toBeInTheDocument();
+
+    const cleanedNotFound = rowOf('row-cleaned-not-found');
+    expect(within(cleanedNotFound).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(cleanedNotFound).getByText('统计不可用（目录不存在）')).toBeInTheDocument();
+    expect(within(cleanedNotFound).queryByText('目录不存在')).toBeNull();
+    expect(within(cleanedNotFound).queryByText('可能存在残留')).toBeNull();
+
+    const cleanedDenied = rowOf('row-cleaned-denied');
+    expect(within(cleanedDenied).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(cleanedDenied).getByText('统计不可用（无权限读取目录）')).toBeInTheDocument();
+    expect(within(cleanedDenied).queryByText('无权限')).toBeNull();
+
+    const uncleanNotFound = rowOf('row-unclean-not-found');
+    expect(within(uncleanNotFound).getAllByText('目录不存在').length).toBeGreaterThan(0);
+    expect(within(uncleanNotFound).getByText('统计不可用（目录不存在）')).toBeInTheDocument();
+
+    const uncleanDenied = rowOf('row-unclean-denied');
+    expect(within(uncleanDenied).getAllByText('无权限').length).toBeGreaterThan(0);
+    expect(within(uncleanDenied).getByText('统计不可用（无权限读取目录）')).toBeInTheDocument();
+
+    const uncleanZero = rowOf('row-unclean-zero');
+    expect(within(uncleanZero).getAllByText('mount 保留').length).toBeGreaterThan(0);
+    expect(within(uncleanZero).queryByText('可能存在残留')).toBeNull();
+    expect(within(uncleanZero).getByRole('progressbar')).toBeInTheDocument();
+
+    expect(getDeletedContainerMountUsage.mock.calls[0][0]).toEqual([2, 3, 4, 5, 6, 7, 8]);
   });
 
   it('成功非零/成功 0/旧测量时间/pending/错误/缺项/畸形项按行呈现且绝不把 null 当 0', async () => {
@@ -507,7 +583,9 @@ describe('DeletedContainers 有界轮询与取消', () => {
     expect(signal.aborted).toBe(true);
     await waitFor(() => expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2));
     expect(getDeletedContainerMountUsage.mock.calls[1][0]).toEqual([7]);
-    expect((await screen.findAllByText('目录不存在')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('已清理')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('统计不可用（目录不存在）')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('目录不存在')).toBeNull();
 
     await act(async () => {
       usage.resolve({ success: 1, usages: [usageSuccess(7, 10 * 1024 * 1024)] });
@@ -515,6 +593,8 @@ describe('DeletedContainers 有界轮询与取消', () => {
     });
     expect(screen.queryByText('10 MiB')).toBeNull();
     expect(screen.queryByText('测量中')).toBeNull();
+    expect(screen.queryByText('可能存在残留')).toBeNull();
+    expect(screen.getByText('统计不可用（目录不存在）')).toBeInTheDocument();
     expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2);
   });
 
@@ -553,7 +633,9 @@ describe('DeletedContainers 有界轮询与取消', () => {
     expect(signal.aborted).toBe(true);
     await waitFor(() => expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2));
     expect(getDeletedContainerMountUsage.mock.calls[1][0]).toEqual([7]);
-    expect((await screen.findAllByText('无权限')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('已清理')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('统计不可用（无权限读取目录）')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('无权限')).toBeNull();
 
     await act(async () => {
       usage.resolve({ success: 1, usages: [usageSuccess(7, 10 * 1024 * 1024)] });
@@ -561,6 +643,8 @@ describe('DeletedContainers 有界轮询与取消', () => {
     });
     expect(screen.queryByText('10 MiB')).toBeNull();
     expect(screen.queryByText('测量中')).toBeNull();
+    expect(screen.queryByText('可能存在残留')).toBeNull();
+    expect(screen.getByText('统计不可用（无权限读取目录）')).toBeInTheDocument();
     expect(getDeletedContainerMountUsage).toHaveBeenCalledTimes(2);
   });
 

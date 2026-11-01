@@ -183,6 +183,8 @@ describe('DeletedContainers 逻辑用量展示', () => {
     expect(progress).toHaveAttribute('aria-valuetext', '已测量，未提供可比上限');
     expect(within(row).queryByText('统计不可用')).toBeNull();
     expect(within(row).getByText(`测量 ${shortMeasureTime(measuredAt)}`)).toBeInTheDocument();
+    expect(within(row).getAllByText('mount 保留').length).toBeGreaterThan(0);
+    expect(within(row).queryByText('可能存在残留')).toBeNull();
   });
 
   it('test_positive_limit_is_determinate_and_missing_limit_is_indeterminate', async () => {
@@ -284,14 +286,16 @@ describe('DeletedContainers 逻辑用量展示', () => {
     expect(screen.queryByText(/^测量 /)).toBeNull();
   });
 
-  it('test_cleaned_records_use_actual_usage_state_without_mislabeling', async () => {
+  it('test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states', async () => {
     listDeletedContainers.mockResolvedValue(listResponse([
       record({ deleted_id: 1, container_name: 'row-residual', mount_path: '/m/1', mount_cleaned: true }),
-      record({ deleted_id: 2, container_name: 'row-gone', mount_path: '/m/2', cleaned_at: '2026-10-18T00:00:00' }),
-      record({ deleted_id: 3, container_name: 'row-denied', mount_path: '/m/3', mount_cleaned: true }),
+      record({ deleted_id: 2, container_name: 'row-gone-cleaned', mount_path: '/m/2', cleaned_at: '2026-10-18T00:00:00' }),
+      record({ deleted_id: 3, container_name: 'row-denied-cleaned', mount_path: '/m/3', mount_cleaned: true }),
       record({ deleted_id: 4, container_name: 'row-pending', mount_path: '/m/4', mount_cleaned: true }),
       record({ deleted_id: 5, container_name: 'row-offline', mount_path: '/m/5', mount_cleaned: true }),
       record({ deleted_id: 6, container_name: 'row-no-mount', mount_path: '', mount_cleaned: true }),
+      record({ deleted_id: 7, container_name: 'row-gone-unclean', mount_path: '/m/7' }),
+      record({ deleted_id: 8, container_name: 'row-denied-unclean', mount_path: '/m/8' }),
     ]));
     getDeletedContainerMountUsage.mockResolvedValue({
       success: 1,
@@ -301,26 +305,72 @@ describe('DeletedContainers 逻辑用量展示', () => {
         { deleted_id: 3, bytes: null, measured_at: null, pending: false, error: 'permission_denied' },
         usagePending(4),
         { deleted_id: 5, bytes: null, measured_at: null, pending: false, error: 'node_unavailable' },
+        { deleted_id: 7, bytes: null, measured_at: null, pending: false, error: 'not_found' },
+        { deleted_id: 8, bytes: null, measured_at: null, pending: false, error: 'permission_denied' },
       ],
     });
 
     renderPage();
     expect(await screen.findByText('2 KiB')).toBeInTheDocument();
 
-    expect(within(rowOf('row-residual')).getAllByText('可能存在残留').length).toBeGreaterThan(0);
-    expect(within(rowOf('row-gone')).getAllByText('目录不存在').length).toBeGreaterThan(0);
-    expect(within(rowOf('row-denied')).getAllByText('无权限').length).toBeGreaterThan(0);
-    expect(within(rowOf('row-pending')).getAllByText('已清理').length).toBeGreaterThan(0);
-    expect(within(rowOf('row-pending')).getByText('测量中')).toBeInTheDocument();
-    expect(within(rowOf('row-offline')).getAllByText('已清理').length).toBeGreaterThan(0);
-    expect(within(rowOf('row-offline')).getByText('机器离线/不可用')).toBeInTheDocument();
-    expect(within(rowOf('row-no-mount')).getAllByText('无挂载').length).toBeGreaterThan(0);
+    const residual = rowOf('row-residual');
+    expect(within(residual).getAllByText('可能存在残留').length).toBeGreaterThan(0);
 
-    expect(within(rowOf('row-pending')).queryByText('可能存在残留')).toBeNull();
-    expect(within(rowOf('row-offline')).queryByText('可能存在残留')).toBeNull();
-    expect(within(rowOf('row-offline')).queryByText('目录不存在')).toBeNull();
-    expect(within(rowOf('row-gone')).getByRole('button', { name: /清理 mount/ })).toBeDisabled();
-    expect(getDeletedContainerMountUsage.mock.calls[0][0]).toEqual([1, 2, 3, 4, 5]);
+    const goneCleaned = rowOf('row-gone-cleaned');
+    expect(within(goneCleaned).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(goneCleaned).getByText('统计不可用（目录不存在）')).toBeInTheDocument();
+    expect(within(goneCleaned).queryByText('目录不存在')).toBeNull();
+    expect(within(goneCleaned).getByRole('button', { name: /清理 mount/ })).toBeDisabled();
+
+    const deniedCleaned = rowOf('row-denied-cleaned');
+    expect(within(deniedCleaned).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(deniedCleaned).getByText('统计不可用（无权限读取目录）')).toBeInTheDocument();
+    expect(within(deniedCleaned).queryByText('无权限')).toBeNull();
+
+    const pending = rowOf('row-pending');
+    expect(within(pending).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(pending).getByText('测量中')).toBeInTheDocument();
+    expect(within(pending).queryByText('可能存在残留')).toBeNull();
+
+    const offline = rowOf('row-offline');
+    expect(within(offline).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(offline).getByText('机器离线/不可用')).toBeInTheDocument();
+    expect(within(offline).queryByText('可能存在残留')).toBeNull();
+    expect(within(offline).queryByText('目录不存在')).toBeNull();
+
+    const noMount = rowOf('row-no-mount');
+    expect(within(noMount).getAllByText('无挂载').length).toBeGreaterThan(0);
+    expect(within(noMount).queryByText('已清理')).toBeNull();
+
+    const goneUnclean = rowOf('row-gone-unclean');
+    expect(within(goneUnclean).getAllByText('目录不存在').length).toBeGreaterThan(0);
+    expect(within(goneUnclean).getByText('统计不可用（目录不存在）')).toBeInTheDocument();
+
+    const deniedUnclean = rowOf('row-denied-unclean');
+    expect(within(deniedUnclean).getAllByText('无权限').length).toBeGreaterThan(0);
+    expect(within(deniedUnclean).getByText('统计不可用（无权限读取目录）')).toBeInTheDocument();
+
+    expect(getDeletedContainerMountUsage.mock.calls[0][0]).toEqual([1, 2, 3, 4, 5, 7, 8]);
+  });
+
+  it('test_cleaned_zero_byte_sample_is_residual_not_cleaned', async () => {
+    listDeletedContainers.mockResolvedValue(listResponse([
+      record({ deleted_id: 7, mount_cleaned: true }),
+    ]));
+    getDeletedContainerMountUsage.mockResolvedValue({
+      success: 1,
+      usages: [usageSuccess(7, 0)],
+    });
+
+    renderPage();
+    expect(await screen.findByText('0 B')).toBeInTheDocument();
+
+    const row = rowOf('deleted-train');
+    expect(within(row).getAllByText('可能存在残留').length).toBeGreaterThan(0);
+    expect(within(row).getByRole('progressbar')).toHaveAttribute('aria-valuetext', '已测量，未提供可比上限');
+    expect(within(row).queryByText('已清理')).toBeNull();
+    expect(within(row).queryByText('目录不存在')).toBeNull();
+    expect(getDeletedContainerMountUsage.mock.calls[0][0]).toEqual([7]);
   });
 });
 

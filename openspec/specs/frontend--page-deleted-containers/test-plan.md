@@ -124,7 +124,7 @@ Spec: [spec.md](spec.md)
 #### Scenario: 列表先出现、统计后到达
 
 - Test/check:
-  - [X] src/test/DeletedContainersMountUsage.test.jsx::列表与分页先出现，异步只请求当前页可测 ID；mount_cleaned=true 即使 cleaned_at 空也不请求
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::列表与分页先出现，异步只请求当前页有路径的正整数 ID；已清理但保留路径也请求
   - [X] src/test/DeletedContainersDisplay.test.jsx::test_loading_and_pending_keep_existing_text_without_progress
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_19_usage_list_first_stats_later
   - [X] src/test/AnvilCreateDeleted.test.jsx::test_deleted_actions_do_not_wait_for_pending_usage
@@ -134,21 +134,21 @@ Spec: [spec.md](spec.md)
 #### Scenario: 仅请求当前页可测记录
 
 - Test/check:
-  - [X] src/test/DeletedContainersMountUsage.test.jsx::列表与分页先出现，异步只请求当前页可测 ID；mount_cleaned=true 即使 cleaned_at 空也不请求
-  - [X] src/test/mountUsage.test.js::只派生当前页可测 ID，去重且不携带路径
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::列表与分页先出现，异步只请求当前页有路径的正整数 ID；已清理但保留路径也请求
+  - [X] src/test/mountUsage.test.js::只派生当前页可测 ID，去重且不携带路径；已清理但有路径也包含
   - [X] src/test/containerMountUsageApi.test.js::POST 固定路由，只发送去重正整数 deleted_ids，带 credentials
   - [X] src/test/containerMountUsageApi.test.js::去重后恰好 100 个允许发送；空数组不发请求
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_20_usage_only_current_page_ids
-- Assertion scope: 只发送当前页中 `mount_path` 非空、`mount_cleaned !== true`、`cleaned_at` 为空且 `deleted_id` 为正整数的 ID；请求体只有去重 `deleted_ids`，单次不超过 100，不含宿主路径、`machine_id` 或其他字段。
+- Assertion scope: 只发送当前页中 `mount_path` 非空且 `deleted_id` 为正整数的 ID，已清理但有历史路径的记录也参与采样；请求体只有去重 `deleted_ids`，单次不超过 100，不含宿主路径、`machine_id` 或其他字段。
 
 #### Scenario: 无挂载、mount_cleaned=true 或 cleaned_at 非空不扫描
 
 - Test/check:
-  - [X] src/test/mountUsage.test.js::mount_cleaned=true 即使 cleaned_at 为空也算已清理
-  - [X] src/test/mountUsage.test.js::cleaned_at 非空、无 mount、非法 ID 均不请求
+  - [X] src/test/mountUsage.test.js::mount_cleaned=true 即使 cleaned_at 为空仍算已清理，但保留路径时仍可采样
+  - [X] src/test/mountUsage.test.js::无 mount、非法 ID 不请求
   - [X] src/test/DeletedContainersDisplay.test.jsx::test_empty_mount_has_no_copy_control_and_empty_image_is_unknown
-  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13_mobile_cleaned_no_mount_no_sample
-- Assertion scope: 无挂载显示“无挂载”，`mount_cleaned=true`（即使 `cleaned_at` 空）或 `cleaned_at` 非空显示“已清理”；这些记录的 ID 不进入统计请求，不触发目录扫描。
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13_mobile_cleaned_with_path_samples_and_no_mount_does_not
+- Assertion scope: 无挂载或没有有效 ID 的记录不进入统计请求；已清理但保留历史路径的记录仍进入采样。
 
 ### Requirement: DeletedContainers 如实展示逻辑大小与测量时间
 
@@ -156,7 +156,7 @@ Spec: [spec.md](spec.md)
 
 - Test/check:
   - [X] src/test/DeletedContainersDisplay.test.jsx::test_zero_byte_success_renders_success_progress_not_unknown
-  - [X] src/test/DeletedContainersMountUsage.test.jsx::列表与分页先出现，异步只请求当前页可测 ID；mount_cleaned=true 即使 cleaned_at 空也不请求
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::列表与分页先出现，异步只请求当前页有路径的正整数 ID；已清理但保留路径也请求
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_11_mobile_390_usage_states
   - [X] src/test/AnvilCreateDeleted.test.jsx::test_deleted_mobile_390_usage_success_values_and_non_success_reverse
 - Assertion scope: 既有 locator 断言桌面零字节行显示“0 B”、成功进度条与无比例轨道，不显示“统计不可用”；移动端 `tc_dc_11` 只断言零字节行显示“0 B”。该 locator 在 390px 断言零字节成功行的无比例成功轨道/`aria-valuetext`，并反向断言非成功行不显示 0 B 或进度条。
@@ -215,10 +215,10 @@ Spec: [spec.md](spec.md)
 #### Scenario: 清理或恢复后不保留旧用量
 
 - Test/check:
-  - [X] src/test/DeletedContainersMountUsage.test.jsx::清理开始时旧统计失效；成功后重载只显示已清理，迟到响应不贴回旧值且不再扫描
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::清理开始时旧统计失效；成功后重载按历史路径重采样，迟到响应不贴回旧值
   - [X] src/test/DeletedContainersMountUsage.test.jsx::恢复开始时旧统计失效；成功后迟到响应不贴回旧值且不再扫描
   - [X] src/test/DeletedContainersMountUsage.test.jsx::清理失败不把旧 bytes 贴回；该行保持统计不可用且无后续请求
-- Assertion scope: 清理/恢复开始即失效旧统计与计时器；成功后重载只显示已清理，迟到响应不贴回旧 bytes；清理失败也不贴回旧值，保持不可用且无后续轮询。
+- Assertion scope: 清理/恢复开始即失效旧统计与计时器；成功后按历史路径重采样，迟到响应不贴回旧 bytes；清理失败也不贴回旧值。
 
 #### Scenario: 单页预算耗尽
 
@@ -389,9 +389,76 @@ Spec: [spec.md](spec.md)
 #### Scenario: 已清理与无挂载不采样
 
 - Test/check:
-  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13_mobile_cleaned_no_mount_no_sample
-  - [X] src/test/DeletedContainersMountUsage.test.jsx::列表与分页先出现，异步只请求当前页可测 ID；mount_cleaned=true 即使 cleaned_at 空也不请求
-- Assertion scope: `mount_cleaned=true`、`cleaned_at` 非空或 `mount_path` 为空时，这些 `deleted_id` 不出现在采样请求中；卡片分别显示“已清理”或“无挂载”，不扫描目录、不请求统计。
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13_mobile_cleaned_with_path_samples_and_no_mount_does_not
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::列表与分页先出现，异步只请求当前页有路径的正整数 ID；已清理但保留路径也请求
+- Assertion scope: 已清理但保留路径的记录参与采样，成功结果显示“可能存在残留”；无挂载记录不进入请求并显示“无挂载”。
+
+#### Scenario: 已清理状态优先于采集错误
+
+- Test/check:
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13b_mobile_actual_state_does_not_mislabel_pending_or_node_failures
+- Assertion scope: 移动端已清理记录遇目录不存在或无权限时状态仍显示已清理，用量列分别显示采集错误；等待和节点不可用不误报残留。
+
+### Requirement: DeletedContainers 按用量结果派生挂载实际状态
+
+#### Scenario: 无挂载仍显示无挂载
+
+- Test/check:
+  - [X] src/test/mountUsage.test.js::无挂载优先级最高：即使已清理且有成功（含 0 B）/错误用量也不改写
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::状态优先级：无挂载 > 已清理成功（含 0）残留 > 已清理 > not_found/permission_denied
+- Assertion scope: 无路径时状态为无挂载，不被成功或错误样本覆盖；页面不请求该记录。
+
+#### Scenario: 已清理且路径成功采集到用量
+
+- Test/check:
+  - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
+  - [X] src/test/mountUsage.test.js::已清理且成功采集（含 0 B）显示可能存在残留
+- Assertion scope: 已清理记录采集成功时显示可能存在残留与实际用量。
+
+#### Scenario: 已清理且成功采集为 0 B
+
+- Test/check:
+  - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_zero_byte_sample_is_residual_not_cleaned
+- Assertion scope: 已清理记录成功采集 0 B 时显示残留和成功用量。
+
+#### Scenario: 已清理且采集目录不存在
+
+- Test/check:
+  - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13b_mobile_actual_state_does_not_mislabel_pending_or_node_failures
+- Assertion scope: 已清理优先于目录不存在，采集列保留错误说明，桌面及移动端一致。
+
+#### Scenario: 已清理且采集无权限
+
+- Test/check:
+  - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13b_mobile_actual_state_does_not_mislabel_pending_or_node_failures
+- Assertion scope: 已清理优先于无权限，采集列保留错误说明，桌面及移动端一致。
+
+#### Scenario: 未完成、其他失败或 Node 不可用
+
+- Test/check:
+  - [X] src/test/mountUsage.test.js::已清理优先于 not_found、permission_denied、pending 与其他失败
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13b_mobile_actual_state_does_not_mislabel_pending_or_node_failures
+- Assertion scope: 已清理记录遇等待或节点不可用仍显示已清理，不伪称残留或不存在。
+
+#### Scenario: 目录不存在
+
+- Test/check:
+  - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
+- Assertion scope: 未清理且目录不存在时展示相应状态与错误说明。
+
+#### Scenario: 无权限读取目录
+
+- Test/check:
+  - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
+- Assertion scope: 未清理且无权限时展示相应状态与错误说明。
+
+#### Scenario: 未清理且未完成或其他失败
+
+- Test/check:
+  - [X] src/test/mountUsage.test.js::成功采集只把已清理记录提升为残留，未清理仍回退列表事实
+- Assertion scope: 未清理记录等待或超时时保留列表状态，不误报残留。
 
 ### Requirement: DeletedContainers 移动端分页、确认流程与轮询语义不变
 

@@ -388,8 +388,10 @@ describe('DeletedContainers 移动端分页与统计上下文', () => {
     await screen.findByText('row-residual');
 
     expect(within(cardOf('row-residual')).getAllByText('可能存在残留').length).toBeGreaterThan(0);
-    expect(within(cardOf('row-gone')).getAllByText('目录不存在').length).toBeGreaterThan(0);
-    expect(within(cardOf('row-denied')).getAllByText('无权限').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-gone')).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-gone')).getByText('统计不可用（目录不存在）')).toBeInTheDocument();
+    expect(within(cardOf('row-denied')).getAllByText('已清理').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-denied')).getByText('统计不可用（无权限读取目录）')).toBeInTheDocument();
     expect(within(cardOf('row-pending')).getAllByText('已清理').length).toBeGreaterThan(0);
     expect(within(cardOf('row-pending')).getByText('测量中')).toBeInTheDocument();
     expect(within(cardOf('row-offline')).getAllByText('已清理').length).toBeGreaterThan(0);
