@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button, Form, Input, InputNumber, Space } from 'antd';
 import { isValidName } from '../utils/validateCmdArg';
 import { useNavigate } from 'react-router-dom';
@@ -12,17 +12,6 @@ const layout = {
   wrapperCol: { span: 16 },
 };
 
-const validateMessages = {
-  required: '${label}是必填项!',
-  types: {
-    email: '${label}不是有效的邮箱地址!',
-    number: '${label}不是有效的数字!',
-  },
-  number: {
-    range: '${label}必须在${min}和${max}之间',
-  },
-};
-
 const ALLOWED_EMAIL_HINT = '仅支持 bjtu.edu.cn / tsinghua.edu.cn / bupt.edu.cn / mails.tsinghua.edu.cn / mail.tsinghua.edu.cn';
 
 const RegisterBlock = () => {
@@ -33,6 +22,26 @@ const RegisterBlock = () => {
   const [confirmContent, setConfirmContent] = useState(null);
   const [requestingCode, setRequestingCode] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [deadlines, setDeadlines] = useState({});
+  const [now, setNow] = useState(Date.now());
+  const emailValue = Form.useWatch('email', form) || '';
+  const emailKey = value => String(value || '').trim().toLowerCase();
+  const remaining = Math.max(0, Math.ceil(((deadlines[emailKey(emailValue)] || 0) - now) / 1000));
+
+  useEffect(() => { setNow(Date.now()); }, [emailValue]);
+
+  useEffect(() => {
+    if (!remaining) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [remaining > 0]);
+
+  const applyCooldown = (email, seconds) => {
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return;
+    const currentTime = Date.now();
+    setDeadlines(previous => ({ ...previous, [emailKey(email)]: currentTime + seconds * 1000 }));
+    setNow(currentTime);
+  };
   const navigate = useNavigate();
 
   const getEmailDomain = (email = '') => {
@@ -46,21 +55,34 @@ const RegisterBlock = () => {
   };
 
   const handleSendCode = async () => {
+    let requestedEmail;
     try {
       const { email } = await form.validateFields(['email']);
       if (!isAllowedEmail(email)) {
         await showErrorModal({ title: '邮箱不符合要求', message: ALLOWED_EMAIL_HINT });
         return;
       }
+      if ((deadlines[emailKey(email)] || 0) > Date.now()) return;
+      requestedEmail = email;
       setRequestingCode(true);
       const res = await requestRegisterCode({ email });
+      applyCooldown(email, res?.retry_after_seconds);
       setConfirmTitle('验证码已发送');
       setConfirmMessage(res?.message || '验证码已发送，请查看邮箱。');
       setConfirmContent(<div>邮箱：{email}</div>);
       setConfirmVisible(true);
     } catch (err) {
       if (err?.errorFields) return;
-      await showErrorModal({ title: '发送验证码失败', message: err?.message || '发送失败' });
+      if (err?.body?.error_reason === 'rate_limited') {
+        applyCooldown(requestedEmail, err.body.retry_after_seconds);
+      }
+      await showErrorModal({
+        title: '发送验证码失败',
+        // 保留后端 error_reason 所在的 body，路由映射才能命中；不把对象降成字符串。
+        message: err?.body || err || '发送失败',
+        status: err?.status || err?.response?.status,
+        route: err?.route || err?.response?.url,
+      });
     } finally {
       setRequestingCode(false);
     }
@@ -71,7 +93,7 @@ const RegisterBlock = () => {
     const email = values.email || '';
     const password = values.password || '';
     const registration_code = values.registration_code || '';
-    const isAscii = s => /^[\x00-\x7F]*$/.test(String(s || ''));
+    const isAscii = s => Array.from(String(s || '')).every(ch => ch.charCodeAt(0) <= 0x7F);
 
     if (!isValidName(username)) {
       await showErrorModal({ title: '注册出错', message: '用户名仅允许英文、数字和下划线' });
@@ -106,7 +128,12 @@ const RegisterBlock = () => {
       );
       setConfirmVisible(true);
     } catch (err) {
-      await showErrorModal({ title: '注册出错', message: err?.message || '注册失败', status: err?.status });
+      await showErrorModal({
+        title: '注册出错',
+        message: err?.body || err || '注册失败',
+        status: err?.status || err?.response?.status,
+        route: err?.route || err?.response?.url,
+      });
     } finally {
       setRegistering(false);
     }
@@ -125,7 +152,6 @@ const RegisterBlock = () => {
         name="register"
         onFinish={onFinish}
         className="register-form"
-        validateMessages={validateMessages}
       >
         <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
           <Input placeholder="请输入用户名（最多75字符）" maxLength={75} />
@@ -144,8 +170,8 @@ const RegisterBlock = () => {
             >
               <Input placeholder="输入邮箱验证码" maxLength={6} />
             </Form.Item>
-            <Button onClick={handleSendCode} loading={requestingCode}>
-              发送验证码
+            <Button onClick={handleSendCode} loading={requestingCode} disabled={remaining > 0}>
+              {remaining > 0 ? `${remaining} 秒后可重发` : '发送验证码'}
             </Button>
           </Space.Compact>
         </Form.Item>

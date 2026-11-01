@@ -22,3 +22,26 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     disconnect() {}
   };
 }
+
+// jsdom 未实现 Range 的布局矩形；CodeMirror 的异步测量会调用它们。
+// 只补空矩形，不替代编辑器状态、选区或按键行为。
+if (typeof Range !== 'undefined') {
+  const emptyRect = () => ({
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: 0,
+    height: 0,
+    toJSON: () => ({}),
+  });
+
+  if (typeof Range.prototype.getClientRects !== 'function') {
+    Range.prototype.getClientRects = () => Object.assign([], { item: () => null });
+  }
+  if (typeof Range.prototype.getBoundingClientRect !== 'function') {
+    Range.prototype.getBoundingClientRect = emptyRect;
+  }
+}

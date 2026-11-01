@@ -15,7 +15,7 @@ export function createController() {
   const cleanup = () => controllers.delete(ac);
   try {
     ac.signal.addEventListener('abort', cleanup, { once: true });
-  } catch (e) {
+  } catch {
     // some environments may not support addEventListener on signal
   }
   // attach cleanup for explicit unregister
@@ -27,7 +27,7 @@ export function unregisterController(ac) {
   if (!ac) return;
   try {
     if (typeof ac._rm === 'function') ac._rm();
-  } catch (e) {
+  } catch {
     // ignore
   }
   controllers.delete(ac);
@@ -38,7 +38,7 @@ export function abortAll(reason = 'aborted') {
   for (const ac of Array.from(controllers)) {
     try {
       ac.abort();
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -53,7 +53,7 @@ export function abortAll(reason = 'aborted') {
         window.dispatchEvent(new CustomEvent('auth:expired', { detail: { reason } }));
       }
     }
-  } catch (e) {
+  } catch {
     // ignore
   }
 }

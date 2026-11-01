@@ -2,7 +2,7 @@ import React from 'react';
 import { Table, Empty, Spin, Pagination } from 'antd';
 import './TableComponent.css';
 
-const TableComponent = ({ className = '', children, ...props }) => {
+const TableComponent = ({ className = '', children, columns: columnsProp, ...props }) => {
   const [isMobile, setIsMobile] = React.useState(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
     return window.matchMedia('(max-width: 768px)').matches;
@@ -29,7 +29,9 @@ const TableComponent = ({ className = '', children, ...props }) => {
     return record[dataIndex];
   }, []);
 
+  const hasColumnsProp = Array.isArray(columnsProp) && columnsProp.length > 0;
   const columns = React.useMemo(() => {
+    if (hasColumnsProp) return columnsProp;
     return React.Children.toArray(children)
       .filter((child) => React.isValidElement(child) && child.props)
       .map((child) => ({
@@ -38,14 +40,26 @@ const TableComponent = ({ className = '', children, ...props }) => {
         dataIndex: child.props.dataIndex,
         render: child.props.render,
       }));
-  }, [children]);
+  }, [children, columnsProp, hasColumnsProp]);
 
   const dataSource = Array.isArray(props.dataSource) ? props.dataSource : [];
   const rowKey = props.rowKey || 'key';
   const loading = !!props.loading;
   const pagination = props.pagination;
   const expandable = props.expandable;
-  const expandedRowKeys = Array.isArray(expandable?.expandedRowKeys) ? expandable.expandedRowKeys : [];
+  const controlledExpandedKeys = Array.isArray(expandable?.expandedRowKeys)
+    ? expandable.expandedRowKeys
+    : null;
+  const [innerExpandedKeys, setInnerExpandedKeys] = React.useState([]);
+  const expandedRowKeys = controlledExpandedKeys === null ? innerExpandedKeys : controlledExpandedKeys;
+  const hasExpandedContent = typeof expandable?.expandedRowRender === 'function';
+  const canShowExpandToggle = hasExpandedContent
+    && expandable?.showExpandColumn !== false
+    && (controlledExpandedKeys === null || typeof expandable?.onExpandedRowsChange === 'function');
+  const isRowExpandable = (record) => {
+    if (typeof expandable?.rowExpandable !== 'function') return true;
+    return expandable.rowExpandable(record) !== false;
+  };
 
   const paginationConfig = React.useMemo(() => {
     if (pagination === false) return null;
@@ -79,6 +93,29 @@ const TableComponent = ({ className = '', children, ...props }) => {
     return record?.[rowKey] ?? index;
   }, [rowKey]);
 
+  const isExpanded = (record, index) => (
+    hasExpandedContent
+    && isRowExpandable(record)
+    && expandedRowKeys.some(key => String(key) === String(getRowKey(record, index)))
+  );
+
+  const toggleExpanded = (record, index, event) => {
+    event?.stopPropagation?.();
+    if (!canShowExpandToggle || !isRowExpandable(record)) return;
+    const key = getRowKey(record, index);
+    const currentlyExpanded = expandedRowKeys.some(item => String(item) === String(key));
+    const nextKeys = currentlyExpanded
+      ? expandedRowKeys.filter(item => String(item) !== String(key))
+      : [...expandedRowKeys, key];
+    if (controlledExpandedKeys === null) setInnerExpandedKeys(nextKeys);
+    if (typeof expandable?.onExpandedRowsChange === 'function') {
+      expandable.onExpandedRowsChange(nextKeys);
+    }
+    if (typeof expandable?.onExpand === 'function') {
+      expandable.onExpand(!currentlyExpanded, record);
+    }
+  };
+
   const totalForPagination = (paginationConfig && typeof paginationConfig.total === 'number')
     ? paginationConfig.total
     : dataSource.length;
@@ -97,13 +134,19 @@ const TableComponent = ({ className = '', children, ...props }) => {
     }
   };
 
+  const emptyText = props.locale?.emptyText;
+
   if (isMobile) {
     return (
       <div className={`app-table-mobile ${className}`.trim()}>
         <Spin spinning={loading}>
           {mobileDataSource.length === 0 ? (
             <div className="app-table-mobile-empty">
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              {emptyText
+                ? (React.isValidElement(emptyText)
+                  ? emptyText
+                  : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />)
+                : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />}
             </div>
           ) : (
             <div className="app-table-mobile-list">
@@ -128,10 +171,10 @@ const TableComponent = ({ className = '', children, ...props }) => {
                       const keyText = String(col.key || '');
                       const isAction = /操作|action/i.test(titleText) || /action/i.test(keyText);
                       const isStats = /统计|stats/i.test(titleText) || /stats/i.test(keyText);
-                      const plainValue = rawValue == null ? '' : String(rawValue);
                       // consider rendered content too: allow compact when render returns short primitive
                       const renderedStr = (content === null || content === undefined) ? '' : String(content);
-                      const isShortPrimitive = ((typeof content === 'string' || typeof content === 'number') && renderedStr.length > 0 && renderedStr.length <= 18) || ((typeof rawValue === 'string' || typeof rawValue === 'number') && plainValue.length > 0 && plainValue.length <= 18);
+                      const isShortPrimitive = (typeof content === 'string' || typeof content === 'number')
+                        && renderedStr.length > 0 && renderedStr.length <= 18;
                       // allow slightly longer titles (e.g. 最大共享(GB)) to be considered short
                       const shortTitle = titleText.length > 0 && titleText.length <= 12;
                       // allow compact layout even if column has a render function, as long as rendered content is short
@@ -145,7 +188,18 @@ const TableComponent = ({ className = '', children, ...props }) => {
                       );
                     })}
 
-                    {expandedRowKeys.some((k) => String(k) === String(cardKey)) && typeof expandable?.expandedRowRender === 'function' ? (
+                    {canShowExpandToggle && isRowExpandable(record) ? (
+                      <button
+                        type="button"
+                        className="app-table-mobile-expand-toggle"
+                        aria-expanded={isExpanded(record, index)}
+                        onClick={event => toggleExpanded(record, index, event)}
+                      >
+                        {isExpanded(record, index) ? '收起详情' : '展开详情'}
+                      </button>
+                    ) : null}
+
+                    {isExpanded(record, index) ? (
                       <div className="app-table-mobile-expanded">
                         {expandable.expandedRowRender(record, index)}
                       </div>
@@ -170,6 +224,12 @@ const TableComponent = ({ className = '', children, ...props }) => {
           </div>
         ) : null}
       </div>
+    );
+  }
+
+  if (hasColumnsProp) {
+    return (
+      <Table className={`app-table ${className}`} {...props} columns={columnsProp} />
     );
   }
 

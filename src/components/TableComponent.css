@@ -45,6 +45,7 @@
 	display: block;
 	line-height: 1.45;
 	word-break: break-word;
+	overflow-wrap: anywhere;
 }
 
 .app-table-mobile-item.is-action {
@@ -79,11 +80,31 @@
 	text-overflow: ellipsis;
 }
 
+.app-table-mobile-expand-toggle {
+	width: 100%;
+	margin-top: 8px;
+	padding: 8px 0 0;
+	border: 0;
+	border-top: 1px solid #f0f0f0;
+	background: transparent;
+	color: #1677ff;
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.app-table-mobile-expand-toggle:hover {
+	color: #0958d9;
+}
+
 .app-table-mobile-expanded {
 	width: 100%;
+	min-width: 0;
 	margin-top: 8px;
 	padding-top: 8px;
 	border-top: 1px solid #f0f0f0;
+	overflow-wrap: anywhere;
 }
 
 .app-table-mobile-card.manage-user-selected-row,
@@ -96,8 +117,11 @@
 }
 
 .app-table-mobile-pagination {
+	max-width: 100%;
 	padding: 0 12px 12px;
 	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
 	justify-content: flex-end;
 }
 
