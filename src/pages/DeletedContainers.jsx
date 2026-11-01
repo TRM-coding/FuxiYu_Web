@@ -15,7 +15,14 @@ import '../components/NestedEntityGrid.css';
 import { usePermission } from '../contexts/PermissionContext';
 import { handleAuthError } from '../utils/authHelpers';
 import { dockerfileDiff } from '../utils/dockerfileDiff';
-import { deriveDeletedMountState, formatLogicalBytes, isDeletedMountCleaned, isMeasurableDeletedRecord } from '../utils/mountUsage';
+import {
+  deriveDeletedContainerActionState,
+  deriveDeletedMountState,
+  formatLogicalBytes,
+  isDeletedMountCleaned,
+  isDeletedMountUsageNotFound,
+  isMeasurableDeletedRecord,
+} from '../utils/mountUsage';
 import { useDeletedMountUsage } from '../utils/useDeletedMountUsage';
 import showErrorModal from '../utils/showErrorModal';
 import './DeletedContainers.css';
@@ -53,6 +60,7 @@ const STATUS_TAG_COLORS = {
   cleaned: 'red',
   escalation: 'orange',
   retained: 'green',
+  restored: 'green',
 };
 
 // 状态列使用列表事实 + 当前页已返回的路径用量派生；pending/其他失败回退列表事实，
@@ -98,6 +106,17 @@ export default function DeletedContainers() {
     invalidate: invalidateMountUsage,
     resume: resumeMountUsage,
   } = useDeletedMountUsage();
+  // 按钮 disabled 是渲染期的门禁；Popconfirm 打开后样本仍可能更新，确认/提交回调
+  // 必须在动作发生时复检最新样本，避免用旧闭包继续发起写请求。
+  const usageByIdRef = useRef({});
+  useEffect(() => {
+    usageByIdRef.current = usageById;
+  }, [usageById]);
+
+  const isActionBlockedNow = (record) => (
+    record?.original_container_is_valid === true
+    || isDeletedMountUsageNotFound(usageByIdRef.current[record?.deleted_id])
+  );
 
   const canManageContainers = hasPermission('container:manage');
 
@@ -178,6 +197,7 @@ export default function DeletedContainers() {
 
   const cleanMount = async (record) => {
     if (!record?.mount_cleanup_id) return;
+    if (isActionBlockedNow(record)) return;
     // 清理一开始就丢弃该页旧统计与在途响应；失败后也不把旧 bytes 贴回来。
     invalidateMountUsage();
     setCleaningId(record.mount_cleanup_id);
@@ -214,6 +234,7 @@ export default function DeletedContainers() {
    */
   const resurrectContainer = async (record, contentSource = null) => {
     if (!record?.deleted_id || String(record.deleted_id).startsWith('mount-')) return;
+    if (isActionBlockedNow(record)) return;
     // 恢复同样让旧统计立即失效；成功后重载列表，已清理/已恢复行不再扫描。
     invalidateMountUsage();
     setResurrectingId(record.deleted_id);
@@ -379,11 +400,14 @@ export default function DeletedContainers() {
       key: 'actions',
       width: 230,
       render: (_, record) => {
-        const cleanDisabled = !record.mount_cleanup_id || Boolean(record.cleaned_at);
-        const restoreDisabled = !record.data_recoverable || !record.snapshot || String(record.deleted_id).startsWith('mount-');
-        // 灰按钮原因提示：无挂载/已清理的行 hover 时不至于一脸懵
-        const restoreTitle = restoreDisabled ? (record.cleaned_at ? 'mount 已清理，数据不可恢复' : '无可用 mount/快照数据，无法恢复') : undefined;
-        const cleanTitle = cleanDisabled ? (record.cleaned_at ? 'mount 已清理' : '该容器无 mount 清理记录') : undefined;
+        // 用量只在此处作为附加门禁：Ctrl 明确报告目录不存在时，恢复与清理都无对象，
+        // 按钮禁用并复用稳定错误原因；pending、缺项及其他错误不改变原有列表门禁。
+        const {
+          restoreDisabled,
+          cleanDisabled,
+          restoreReason: restoreTitle,
+          cleanReason: cleanTitle,
+        } = deriveDeletedContainerActionState(record, usageById[record.deleted_id]);
         return (
           <div className="deleted-container-actions">
             <Popconfirm

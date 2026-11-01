@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   MOUNT_USAGE_ERROR_CODES,
+  deriveDeletedContainerActionState,
   deriveDeletedMountState,
   deriveMeasurableDeletedIds,
   describeMountUsageError,
   formatLogicalBytes,
   isDeletedMountCleaned,
+  isDeletedMountUsageNotFound,
   isMeasurableDeletedRecord,
   isStableMountUsageError,
   isValidUtcTimestamp,
@@ -105,10 +107,10 @@ describe('挂载实际状态派生', () => {
     }
   });
 
-  it('已清理且成功采集（含 0 B）显示可能存在残留', () => {
+  it('已清理且成功采集时，原容器仍无效才显示可能存在残留', () => {
     const cleanedRecords = [
-      record({ mount_cleaned: true }),
-      record({ cleaned_at: '2026-10-18T00:00:00' }),
+      record({ mount_cleaned: true, original_container_is_valid: false }),
+      record({ cleaned_at: '2026-10-18T00:00:00', original_container_is_valid: false }),
     ];
     for (const rec of cleanedRecords) {
       for (const bytes of [1024, 0]) {
@@ -116,6 +118,50 @@ describe('挂载实际状态派生', () => {
           .toEqual({ key: 'residual', label: '可能存在残留' });
       }
     }
+  });
+
+  it('已清理且成功采集时，原容器有效显示已恢复', () => {
+    const cleanedRecords = [
+      record({ mount_cleaned: true, original_container_is_valid: true }),
+      record({ cleaned_at: '2026-10-18T00:00:00', original_container_is_valid: true }),
+    ];
+    for (const rec of cleanedRecords) {
+      for (const bytes of [1024, 0]) {
+        expect(deriveDeletedMountState(rec, successUsage(bytes)))
+          .toEqual({ key: 'restored', label: '已恢复' });
+      }
+    }
+  });
+
+  it('已清理且成功采集但原容器有效性未知时保持已清理，不误判', () => {
+    const cleanedRecords = [
+      record({ mount_cleaned: true }),
+      record({ mount_cleaned: true, original_container_is_valid: null }),
+      record({ cleaned_at: '2026-10-18T00:00:00', original_container_is_valid: undefined }),
+      record({ mount_cleaned: true, original_container_is_valid: 'true' }),
+      record({ mount_cleaned: true, original_container_is_valid: 1 }),
+    ];
+    for (const rec of cleanedRecords) {
+      for (const bytes of [1024, 0]) {
+        expect(deriveDeletedMountState(rec, successUsage(bytes)))
+          .toEqual({ key: 'cleaned', label: '已清理' });
+      }
+    }
+  });
+
+  it('已恢复/残留状态只在已清理且成功采集时生效', () => {
+    expect(deriveDeletedMountState(
+      record({ original_container_is_valid: true }),
+      successUsage(1024),
+    )).toEqual({ key: 'retained', label: 'mount 保留' });
+    expect(deriveDeletedMountState(
+      record({ original_container_is_valid: false }),
+      successUsage(1024),
+    )).toEqual({ key: 'retained', label: 'mount 保留' });
+    expect(deriveDeletedMountState(
+      record({ mount_cleaned: true, original_container_is_valid: true }),
+      { status: 'pending' },
+    )).toEqual({ key: 'cleaned', label: '已清理' });
   });
 
   it('已清理优先于 not_found、permission_denied、pending 与其他失败', () => {
@@ -150,7 +196,7 @@ describe('挂载实际状态派生', () => {
     )).toEqual({ key: 'permission_denied', label: '无权限' });
   });
 
-  it('成功采集只把已清理记录提升为残留，未清理仍回退列表事实', () => {
+  it('成功采集不会把未清理记录提升为已恢复或残留，未清理仍回退列表事实', () => {
     for (const bytes of [1024, 0]) {
       expect(deriveDeletedMountState(record(), successUsage(bytes)))
         .toEqual({ key: 'retained', label: 'mount 保留' });
@@ -163,6 +209,130 @@ describe('挂载实际状态派生', () => {
     )).toEqual({ key: 'retained', label: 'mount 保留' });
     expect(deriveDeletedMountState(record(), undefined))
       .toEqual({ key: 'retained', label: 'mount 保留' });
+  });
+});
+
+describe('已删除容器恢复与清理门禁', () => {
+  const operableRecord = (overrides = {}) => record({
+    data_recoverable: true,
+    snapshot: { accounts: [] },
+    mount_cleanup_id: 11,
+    ...overrides,
+  });
+  const notFoundUsage = {
+    status: 'error',
+    reason: 'not_found',
+    message: '统计不可用（目录不存在）',
+  };
+
+  it('用量明确目录不存在时同时禁用恢复与清理，并给出稳定原因', () => {
+    expect(isDeletedMountUsageNotFound(notFoundUsage)).toBe(true);
+    expect(deriveDeletedContainerActionState(operableRecord(), notFoundUsage)).toEqual({
+      restoreDisabled: true,
+      cleanDisabled: true,
+      restoreReason: '挂载目录不存在，无法恢复',
+      cleanReason: '挂载目录不存在，无需清理',
+    });
+  });
+
+  it('原容器仍有效时禁用恢复与清理：目录可能是恢复后活容器的挂载', () => {
+    const gate = deriveDeletedContainerActionState(
+      operableRecord({ original_container_is_valid: true }),
+      { status: 'success', bytes: 1024, measuredAt: '2026-10-18T03:04:05Z' },
+    );
+    expect(gate).toEqual({
+      restoreDisabled: true,
+      cleanDisabled: true,
+      restoreReason: '已恢复',
+      cleanReason: '已恢复，无法清理',
+    });
+  });
+
+  it('原容器有效的禁用优先于目录不存在提示，且严格 true 才生效', () => {
+    expect(deriveDeletedContainerActionState(
+      operableRecord({ original_container_is_valid: true }),
+      notFoundUsage,
+    )).toMatchObject({
+      restoreDisabled: true,
+      cleanDisabled: true,
+      restoreReason: '已恢复',
+    });
+
+    for (const value of [false, null, undefined, 'true', 1]) {
+      const gate = deriveDeletedContainerActionState(
+        operableRecord({ original_container_is_valid: value }),
+        undefined,
+      );
+      expect(gate.restoreDisabled, String(value)).toBe(false);
+      expect(gate.cleanDisabled, String(value)).toBe(false);
+    }
+  });
+
+  it('目录不存在的原因优先于既有灰按钮原因，但既有门禁仍保持禁用', () => {
+    const alreadyBlocked = operableRecord({
+      cleaned_at: '2026-10-18T00:00:00',
+      data_recoverable: false,
+    });
+    const gate = deriveDeletedContainerActionState(alreadyBlocked, notFoundUsage);
+    expect(gate.restoreDisabled).toBe(true);
+    expect(gate.cleanDisabled).toBe(true);
+    expect(gate.restoreReason).toBe('挂载目录不存在，无法恢复');
+    expect(gate.cleanReason).toBe('挂载目录不存在，无需清理');
+  });
+
+  it('pending、成功、缺项与其他错误都不改变恢复与清理门禁', () => {
+    const usages = [
+      { status: 'pending' },
+      { status: 'success', bytes: 0, measuredAt: '2026-10-18T03:04:05Z' },
+      { status: 'unavailable', message: '统计不可用' },
+      { status: 'error', reason: 'permission_denied', message: '统计不可用（无权限读取目录）' },
+      { status: 'error', reason: 'node_timeout', message: '统计超时' },
+      { status: 'error', reason: 'node_unavailable', message: '机器离线/不可用' },
+      undefined,
+    ];
+    for (const usage of usages) {
+      expect(isDeletedMountUsageNotFound(usage), JSON.stringify(usage)).toBe(false);
+      const gate = deriveDeletedContainerActionState(operableRecord(), usage);
+      expect(gate.restoreDisabled).toBe(false);
+      expect(gate.cleanDisabled).toBe(false);
+      expect(gate.restoreReason).toBeUndefined();
+      expect(gate.cleanReason).toBeUndefined();
+    }
+  });
+
+  it('其他既有门禁保持不变：无快照/不可恢复/挂载清理记录/已清理', () => {
+    const noSnapshot = operableRecord({ snapshot: null });
+    expect(deriveDeletedContainerActionState(noSnapshot, undefined)).toMatchObject({
+      restoreDisabled: true,
+      cleanDisabled: false,
+      restoreReason: '无可用 mount/快照数据，无法恢复',
+    });
+
+    const notRecoverable = operableRecord({ data_recoverable: false });
+    expect(deriveDeletedContainerActionState(notRecoverable, undefined)).toMatchObject({
+      restoreDisabled: true,
+      restoreReason: '无可用 mount/快照数据，无法恢复',
+    });
+
+    const mountPlaceholder = operableRecord({ deleted_id: 'mount-3' });
+    expect(deriveDeletedContainerActionState(mountPlaceholder, undefined).restoreDisabled).toBe(true);
+
+    const noCleanup = operableRecord({ mount_cleanup_id: null });
+    expect(deriveDeletedContainerActionState(noCleanup, undefined)).toMatchObject({
+      cleanDisabled: true,
+      cleanReason: '该容器无 mount 清理记录',
+    });
+
+    const cleaned = operableRecord({
+      cleaned_at: '2026-10-18T00:00:00',
+      data_recoverable: false,
+    });
+    expect(deriveDeletedContainerActionState(cleaned, undefined)).toMatchObject({
+      restoreDisabled: true,
+      cleanDisabled: true,
+      restoreReason: 'mount 已清理，数据不可恢复',
+      cleanReason: 'mount 已清理',
+    });
   });
 });
 

@@ -923,7 +923,7 @@ describe('AnvilCreateDeleted mappings', () => {
     const batch = deferred();
     listDeletedContainers.mockResolvedValue(listResponse([
       record({ deleted_id: 1, container_name: 'measurable', mount_path: '/m/1' }),
-      record({ deleted_id: 2, container_name: 'cleaned', mount_path: '/m/2', mount_cleaned: true }),
+      record({ deleted_id: 2, container_name: 'cleaned', mount_path: '/m/2', mount_cleaned: true, original_container_is_valid: false }),
       record({ deleted_id: 3, container_name: 'no-mount', mount_path: '' }),
     ]));
     getDeletedContainerMountUsage.mockReturnValue(batch.promise);

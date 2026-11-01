@@ -288,7 +288,7 @@ describe('DeletedContainers 逻辑用量展示', () => {
 
   it('test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states', async () => {
     listDeletedContainers.mockResolvedValue(listResponse([
-      record({ deleted_id: 1, container_name: 'row-residual', mount_path: '/m/1', mount_cleaned: true }),
+      record({ deleted_id: 1, container_name: 'row-residual', mount_path: '/m/1', mount_cleaned: true, original_container_is_valid: false }),
       record({ deleted_id: 2, container_name: 'row-gone-cleaned', mount_path: '/m/2', cleaned_at: '2026-10-18T00:00:00' }),
       record({ deleted_id: 3, container_name: 'row-denied-cleaned', mount_path: '/m/3', mount_cleaned: true }),
       record({ deleted_id: 4, container_name: 'row-pending', mount_path: '/m/4', mount_cleaned: true }),
@@ -355,7 +355,7 @@ describe('DeletedContainers 逻辑用量展示', () => {
 
   it('test_cleaned_zero_byte_sample_is_residual_not_cleaned', async () => {
     listDeletedContainers.mockResolvedValue(listResponse([
-      record({ deleted_id: 7, mount_cleaned: true }),
+      record({ deleted_id: 7, mount_cleaned: true, original_container_is_valid: false }),
     ]));
     getDeletedContainerMountUsage.mockResolvedValue({
       success: 1,
@@ -491,6 +491,7 @@ describe('DeletedContainers 表格层级与 Mount 复制', () => {
             mount_cleanup_id: 11,
             mount_cleaned: true,
             cleaned_at: null,
+            original_container_is_valid: false,
           })
           : pageOneBeforeClean[0],
         pageOneBeforeClean[1],

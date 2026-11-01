@@ -90,14 +90,24 @@ export const describeMountUsageError = error => (
 
 /**
  * 仅凭列表事实与当前页已有的路径用量结果派生挂载实际状态。
- * 优先级：无挂载、可能存在残留、已清理、目录不存在或无权限、其他列表事实。
+ * 优先级：无挂载、已恢复、可能存在残留、已清理、目录不存在或无权限、其他列表事实。
  * 已清理记录仍采样；用量列独立显示采集结果。
+ *
+ * 已清理且成功采集只认 `original_container_is_valid` 的严格布尔值：
+ * true 表示原容器行当前有效（已恢复），false 表示容器仍无效（目录可达，可能残留）。
+ * null/undefined 或其他值都表示无法确认，继续显示“已清理”，不得猜测为已恢复或残留。
  */
 export const deriveDeletedMountState = (record, usage) => {
   if (!record?.mount_path) return { key: 'no_mount', label: '无挂载' };
   const cleaned = isDeletedMountCleaned(record);
   if (usage?.status === 'success' && cleaned) {
-    return { key: 'residual', label: '可能存在残留' };
+    if (record.original_container_is_valid === true) {
+      return { key: 'restored', label: '已恢复' };
+    }
+    if (record.original_container_is_valid === false) {
+      return { key: 'residual', label: '可能存在残留' };
+    }
+    return { key: 'cleaned', label: '已清理' };
   }
   if (cleaned) return { key: 'cleaned', label: '已清理' };
   if (usage?.status === 'error' && usage.reason === 'not_found') {
@@ -108,6 +118,54 @@ export const deriveDeletedMountState = (record, usage) => {
   }
   if (record.cleanup_escalation) return { key: 'escalation', label: '升级清理' };
   return { key: 'retained', label: 'mount 保留' };
+};
+
+/**
+ * 用量项明确报告目录不存在时才额外锁死恢复与清理：此时既没有可复用的目录，
+ * 也没有可清理的目录。pending、缺项以及 node_timeout/permission_denied 等
+ * 其他稳定错误都只是“暂时未知”，不得改变既有按钮门禁。
+ */
+export const isDeletedMountUsageNotFound = usage => (
+  usage?.status === 'error' && usage.reason === 'not_found'
+);
+
+/**
+ * 恢复/清理按钮的 disabled 与灰按钮原因。
+ *
+ * 原容器行仍然有效（`original_container_is_valid === true`）时，该历史记录对应的
+ * 目录可能已是恢复后活容器的挂载：不允许再次恢复，也不允许清理这个目录。
+ * 其余门禁保持原有列表字段规则：
+ * - 恢复：data_recoverable、snapshot、非 mount- 占位 ID；
+ * - 清理：mount_cleanup_id 存在且 cleaned_at 为空。
+ * 目录不存在（not_found）也只追加禁用，已有门禁本身不被移除。
+ */
+export const deriveDeletedContainerActionState = (record, usage) => {
+  const restored = record?.original_container_is_valid === true;
+  const notFound = isDeletedMountUsageNotFound(usage);
+  const restoreBlocked = !record?.data_recoverable
+    || !record?.snapshot
+    || String(record?.deleted_id ?? '').startsWith('mount-');
+  const cleanBlocked = !record?.mount_cleanup_id || Boolean(record?.cleaned_at);
+  const restoreReason = restored
+    ? '已恢复'
+    : notFound
+      ? '挂载目录不存在，无法恢复'
+      : restoreBlocked
+        ? (record?.cleaned_at ? 'mount 已清理，数据不可恢复' : '无可用 mount/快照数据，无法恢复')
+        : undefined;
+  const cleanReason = restored
+    ? '已恢复，无法清理'
+    : notFound
+      ? '挂载目录不存在，无需清理'
+      : cleanBlocked
+        ? (record?.cleaned_at ? 'mount 已清理' : '该容器无 mount 清理记录')
+        : undefined;
+  return {
+    restoreDisabled: restored || restoreBlocked || notFound,
+    cleanDisabled: restored || cleanBlocked || notFound,
+    restoreReason,
+    cleanReason,
+  };
 };
 
 const UTC_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|\+00:00)$/;

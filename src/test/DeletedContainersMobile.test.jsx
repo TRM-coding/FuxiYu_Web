@@ -344,7 +344,7 @@ describe('DeletedContainers 移动端 Mount 复制与用量', () => {
 
   it('tc_dc_13_mobile_cleaned_with_path_samples_and_no_mount_does_not', async () => {
     listDeletedContainers.mockResolvedValue(listResponse([
-      record({ deleted_id: 6, container_name: 'row-cleaned', mount_cleaned: true }),
+      record({ deleted_id: 6, container_name: 'row-cleaned', mount_cleaned: true, original_container_is_valid: false }),
       record({ deleted_id: 7, container_name: 'row-no-mount', mount_path: '' }),
     ]));
     getDeletedContainerMountUsage.mockResolvedValue({
@@ -366,7 +366,7 @@ describe('DeletedContainers 移动端 Mount 复制与用量', () => {
 describe('DeletedContainers 移动端分页与统计上下文', () => {
   it('tc_dc_13b_mobile_actual_state_does_not_mislabel_pending_or_node_failures', async () => {
     listDeletedContainers.mockResolvedValue(listResponse([
-      record({ deleted_id: 1, container_name: 'row-residual', mount_cleaned: true }),
+      record({ deleted_id: 1, container_name: 'row-residual', mount_cleaned: true, original_container_is_valid: false }),
       record({ deleted_id: 2, container_name: 'row-gone', cleaned_at: '2026-10-18T00:00:00' }),
       record({ deleted_id: 3, container_name: 'row-denied', mount_cleaned: true }),
       record({ deleted_id: 4, container_name: 'row-pending', mount_cleaned: true }),
@@ -400,6 +400,62 @@ describe('DeletedContainers 移动端分页与统计上下文', () => {
     expect(within(cardOf('row-pending')).queryByText('可能存在残留')).toBeNull();
     expect(within(cardOf('row-offline')).queryByText('目录不存在')).toBeNull();
     expect(getDeletedContainerMountUsage.mock.calls[0][0]).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('tc_dc_13c_mobile_original_validity_states_and_not_found_action_gate', async () => {
+    listDeletedContainers.mockResolvedValue(listResponse([
+      record({ deleted_id: 1, container_name: 'row-restored', mount_path: '/m/1', mount_cleaned: true, original_container_is_valid: true }),
+      record({ deleted_id: 2, container_name: 'row-residual', mount_path: '/m/2', mount_cleaned: true, original_container_is_valid: false }),
+      record({ deleted_id: 3, container_name: 'row-unknown-null', mount_path: '/m/3', mount_cleaned: true, original_container_is_valid: null }),
+      record({ deleted_id: 4, container_name: 'row-unknown-missing', mount_path: '/m/4', mount_cleaned: true }),
+      record({ deleted_id: 5, container_name: 'row-not-found', mount_path: '/m/5' }),
+      record({ deleted_id: 6, container_name: 'row-success', mount_path: '/m/6' }),
+      record({ deleted_id: 7, container_name: 'row-denied', mount_path: '/m/7' }),
+    ]));
+    getDeletedContainerMountUsage.mockResolvedValue({
+      success: 1,
+      usages: [
+        usageSuccess(1, 1024),
+        usageSuccess(2, 2048),
+        usageSuccess(3, 1024),
+        usageSuccess(4, 1024),
+        { deleted_id: 5, bytes: null, measured_at: null, pending: false, error: 'not_found' },
+        usageSuccess(6, 1024),
+        { deleted_id: 7, bytes: null, measured_at: null, pending: false, error: 'permission_denied' },
+      ],
+    });
+    setViewport(390);
+    renderPage();
+    expect(await screen.findByText('row-restored')).toBeInTheDocument();
+
+    expect(within(cardOf('row-restored')).getAllByText('已恢复').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-restored')).queryByText('可能存在残留')).toBeNull();
+    const restoredRestore = within(cardOf('row-restored')).getByRole('button', { name: /恢复/ });
+    const restoredClean = within(cardOf('row-restored')).getByRole('button', { name: /清理 mount/ });
+    expect(restoredRestore).toBeDisabled();
+    expect(restoredClean).toBeDisabled();
+    expect(restoredRestore).toHaveAttribute('title', '已恢复');
+    expect(restoredClean).toHaveAttribute('title', '已恢复，无法清理');
+    expect(within(cardOf('row-residual')).getAllByText('可能存在残留').length).toBeGreaterThan(0);
+    expect(within(cardOf('row-residual')).queryByText('已恢复')).toBeNull();
+    for (const name of ['row-unknown-null', 'row-unknown-missing']) {
+      expect(within(cardOf(name)).getAllByText('已清理').length, name).toBeGreaterThan(0);
+      expect(within(cardOf(name)).queryByText('已恢复'), name).toBeNull();
+      expect(within(cardOf(name)).queryByText('可能存在残留'), name).toBeNull();
+    }
+
+    const notFound = cardOf('row-not-found');
+    const notFoundRestore = within(notFound).getByRole('button', { name: /恢复/ });
+    const notFoundClean = within(notFound).getByRole('button', { name: /清理 mount/ });
+    expect(notFoundRestore).toBeDisabled();
+    expect(notFoundClean).toBeDisabled();
+    expect(notFoundRestore).toHaveAttribute('title', '挂载目录不存在，无法恢复');
+    expect(notFoundClean).toHaveAttribute('title', '挂载目录不存在，无需清理');
+
+    expect(within(cardOf('row-success')).getByRole('button', { name: /恢复/ })).toBeEnabled();
+    expect(within(cardOf('row-success')).getByRole('button', { name: /清理 mount/ })).toBeEnabled();
+    expect(within(cardOf('row-denied')).getByRole('button', { name: /恢复/ })).toBeEnabled();
+    expect(within(cardOf('row-denied')).getByRole('button', { name: /清理 mount/ })).toBeEnabled();
   });
 
   it('tc_dc_14_mobile_page_two_usage', async () => {

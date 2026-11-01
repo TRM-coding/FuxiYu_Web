@@ -150,6 +150,13 @@ Spec: [spec.md](spec.md)
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13_mobile_cleaned_with_path_samples_and_no_mount_does_not
 - Assertion scope: 无挂载或没有有效 ID 的记录不进入统计请求；已清理但保留历史路径的记录仍进入采样。
 
+#### Scenario: 已清理但保留历史路径仍可采样
+
+- Test/check:
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::列表与分页先出现，异步只请求当前页有路径的正整数 ID；已清理但保留路径也请求
+  - [X] src/test/mountUsage.test.js::只派生当前页可测 ID，去重且不携带路径；已清理但有路径也包含
+- Assertion scope: 已清理但保留 `mount_path` 的记录仍进入当前页用量请求；按钮门禁由“用量派生不改变恢复与清理门禁”场景覆盖，本行不把采样结果当成授权。
+
 ### Requirement: DeletedContainers 如实展示逻辑大小与测量时间
 
 #### Scenario: 成功且确实为零
@@ -228,6 +235,12 @@ Spec: [spec.md](spec.md)
 - Assertion scope: 既有 locator 断言初始请求后每 5 秒重查、累计 120 次后停止，显示“测量未完成”且不再后台请求；该 locator 在预算耗尽后点击刷新，断言重新发起列表与统计请求并允许继续观察，不无限轮询或改用 WSS。
 - Coverage note: 既有 locator 覆盖预算停止；手动刷新恢复由该 locator 覆盖。
 
+#### Scenario: 暂时超时后恢复
+
+- Test/check:
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::Node 查询超时后低频重试，并展示后续成功用量
+- Assertion scope: 当前页查询返回 `node_timeout` 时显示稳定超时原因，页面按低频复查；后续成功样本到达后展示真实用量并停止该行快速轮询，不把超时改写成 0 B 或目录不存在。
+
 ### Requirement: DeletedContainers 保持旧接口兼容与原有流程
 
 #### Scenario: 旧 Ctrl 没有统计接口
@@ -286,7 +299,7 @@ Spec: [spec.md](spec.md)
 - Test/check:
   - [X] src/test/DeletedContainersDisplay.test.jsx::test_pagination_usage_polling_cleanup_and_restore_are_unchanged
   - [X] src/test/AnvilCreateDeleted.test.jsx::test_deleted_old_flow_late_response_does_not_overwrite_current_page
-- Assertion scope: 既有 locator 断言翻页、刷新、清理 Mount、恢复沿用既有生命周期；用量只请求当前页可测 ID，清理后重载显示已清理，恢复调用既有接口。该 locator 让旧页列表响应晚于当前页返回，断言当前页记录不被旧响应覆盖。
+- Assertion scope: 既有 locator 断言翻页、刷新、清理 Mount、恢复沿用既有生命周期；用量只请求当前页可测 ID，清理后重载显示已清理，恢复调用既有接口。该 locator 让旧页列表响应晚于当前页返回，断言当前页记录不被旧响应覆盖。稳定 `not_found` 与原容器已恢复的按钮禁用由门禁场景覆盖，不改变本行的生命周期断言。
 - Coverage note: 既有 locator 覆盖旧流程生命周期；旧页迟到列表响应不覆盖当前页由该 locator 覆盖。
 
 ### Requirement: DeletedContainers 移动端复用共享卡片布局
@@ -374,9 +387,10 @@ Spec: [spec.md](spec.md)
 
 - Test/check:
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_11_mobile_390_usage_states
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13c_mobile_original_validity_states_and_not_found_action_gate
   - [X] src/test/AnvilCreateDeleted.test.jsx::test_deleted_mobile_390_usage_success_values_and_non_success_reverse
-- Assertion scope: 既有 locator 断言 390px 下成功有上限行 `aria-valuenow=50`、成功 0 B 行显示“0 B”，并断言 pending/error/缺项/已清理/无挂载的既有文案；该 locator 断言成功行显示实际大小与“测量 {MM-DD HH:mm}”/`title`，无上限成功行显示无比例轨道与 `aria-valuetext`，并反向断言所有非成功行不出现进度条或 0 B。
-- Coverage note: 既有 locator 覆盖部分成功/非成功文案；成功大小/时间、无上限轨道与非成功反向断言由该 locator 覆盖。
+- Assertion scope: 既有 locator 断言 390px 下成功有上限行 `aria-valuenow=50`、成功 0 B 行显示“0 B”，并断言 pending/error/缺项/已清理/无挂载的既有文案；该 locator 断言成功行显示实际大小与“测量 {MM-DD HH:mm}”/`title`，无上限成功行显示无比例轨道与 `aria-valuetext`，并反向断言所有非成功行不出现进度条或 0 B。`tc_dc_13c` 另断言已清理成功行按原容器有效性显示“已恢复/可能存在残留/已清理”，`not_found` 行按钮禁用。
+- Coverage note: 既有 locator 覆盖部分成功/非成功文案；成功大小/时间、无上限轨道与非成功反向断言由该 locator 覆盖；三态由 `tc_dc_13c` 覆盖。
 
 #### Scenario: 390px 统计未返回时显示读取统计中
 
@@ -397,7 +411,8 @@ Spec: [spec.md](spec.md)
 
 - Test/check:
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13b_mobile_actual_state_does_not_mislabel_pending_or_node_failures
-- Assertion scope: 移动端已清理记录遇目录不存在或无权限时状态仍显示已清理，用量列分别显示采集错误；等待和节点不可用不误报残留。
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13c_mobile_original_validity_states_and_not_found_action_gate
+- Assertion scope: 移动端已清理记录遇目录不存在或无权限时状态仍显示已清理，用量列分别显示采集错误；等待和节点不可用不误报残留。`tc_dc_13c` 进一步断言已清理成功按 `original_container_is_valid` 三态显示，`not_found` 且原容器非有效时恢复/清理禁用并提示目录不存在。
 
 ### Requirement: DeletedContainers 按用量结果派生挂载实际状态
 
@@ -412,53 +427,114 @@ Spec: [spec.md](spec.md)
 
 - Test/check:
   - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
-  - [X] src/test/mountUsage.test.js::已清理且成功采集（含 0 B）显示可能存在残留
-- Assertion scope: 已清理记录采集成功时显示可能存在残留与实际用量。
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::已清理且成功采集按原容器有效性显示已恢复/可能存在残留/已清理
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13c_mobile_original_validity_states_and_not_found_action_gate
+  - [X] src/test/mountUsage.test.js::已清理且成功采集时，原容器有效显示已恢复
+  - [X] src/test/mountUsage.test.js::已清理且成功采集时，原容器仍无效才显示可能存在残留
+  - [X] src/test/mountUsage.test.js::已清理且成功采集但原容器有效性未知时保持已清理，不误判
+- Assertion scope: 已清理且成功采集时，严格 `original_container_is_valid=true` 显示“已恢复”，严格 `false` 显示“可能存在残留”，`null`/缺失/非布尔显示“已清理”；采集列仍显示实际大小、时间与成功进度；`true` 时恢复/清理禁用并提示“已恢复”/“已恢复，无法清理”，成功结果本身不解除既有门禁。
 
 #### Scenario: 已清理且成功采集为 0 B
 
 - Test/check:
   - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_zero_byte_sample_is_residual_not_cleaned
-- Assertion scope: 已清理记录成功采集 0 B 时显示残留和成功用量。
+  - [X] src/test/mountUsage.test.js::已清理且成功采集时，原容器有效显示已恢复
+  - [X] src/test/mountUsage.test.js::已清理且成功采集时，原容器仍无效才显示可能存在残留
+  - [X] src/test/mountUsage.test.js::已清理且成功采集但原容器有效性未知时保持已清理，不误判
+- Assertion scope: 0 B 成功样本仍按原容器有效性三态显示“已恢复/可能存在残留/已清理”；采集列显示 0 B、真实时间与成功进度，不把 0 B 解释为无残留或已占用；`true` 时按钮按已恢复门禁禁用。
 
 #### Scenario: 已清理且采集目录不存在
 
 - Test/check:
   - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13b_mobile_actual_state_does_not_mislabel_pending_or_node_failures
-- Assertion scope: 已清理优先于目录不存在，采集列保留错误说明，桌面及移动端一致。
+  - [X] src/test/mountUsage.test.js::用量明确目录不存在时同时禁用恢复与清理，并给出稳定原因
+- Assertion scope: 已清理且 `original_container_is_valid !== true` 时状态仍显示“已清理”，采集列显示“统计不可用（目录不存在）”；恢复/清理禁用并提示目录不存在；`true` 时按已恢复门禁优先，提示已恢复。
 
 #### Scenario: 已清理且采集无权限
 
 - Test/check:
   - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13b_mobile_actual_state_does_not_mislabel_pending_or_node_failures
-- Assertion scope: 已清理优先于无权限，采集列保留错误说明，桌面及移动端一致。
+  - [X] src/test/mountUsage.test.js::pending、成功、缺项与其他错误都不改变恢复与清理门禁
+- Assertion scope: 已清理优先于无权限，采集列保留错误说明，桌面及移动端一致；`permission_denied` 不改变恢复/清理门禁，`original_container_is_valid=true` 时已恢复门禁仍独立生效。
 
 #### Scenario: 未完成、其他失败或 Node 不可用
 
 - Test/check:
   - [X] src/test/mountUsage.test.js::已清理优先于 not_found、permission_denied、pending 与其他失败
+  - [X] src/test/mountUsage.test.js::pending、成功、缺项与其他错误都不改变恢复与清理门禁
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13b_mobile_actual_state_does_not_mislabel_pending_or_node_failures
-- Assertion scope: 已清理记录遇等待或节点不可用仍显示已清理，不伪称残留或不存在。
+- Assertion scope: 已清理记录遇等待或节点不可用仍显示已清理，不伪称残留或不存在；这些结果不改变恢复/清理门禁，`original_container_is_valid=true` 时已恢复门禁仍独立生效。
 
 #### Scenario: 目录不存在
 
 - Test/check:
   - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
-- Assertion scope: 未清理且目录不存在时展示相应状态与错误说明。
+  - [X] src/test/mountUsage.test.js::用量明确目录不存在时同时禁用恢复与清理，并给出稳定原因
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::只有用量目录不存在时额外禁用恢复与清理并给原因，其他用量与既有门禁不变
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13c_mobile_original_validity_states_and_not_found_action_gate
+- Assertion scope: 未清理且 `original_container_is_valid !== true` 时展示“目录不存在”与采集错误；恢复/清理均禁用，title 为“挂载目录不存在，无法恢复/无需清理”，确认框不打开且不调用写接口。
 
 #### Scenario: 无权限读取目录
 
 - Test/check:
   - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
-- Assertion scope: 未清理且无权限时展示相应状态与错误说明。
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::只有用量目录不存在时额外禁用恢复与清理并给原因，其他用量与既有门禁不变
+  - [X] src/test/mountUsage.test.js::pending、成功、缺项与其他错误都不改变恢复与清理门禁
+- Assertion scope: 未清理且无权限时展示相应状态与错误说明；`permission_denied` 不改变恢复/清理门禁，页面只按既有列表字段与 `original_container_is_valid=true` 的已恢复门禁决定按钮。
 
 #### Scenario: 未清理且未完成或其他失败
 
 - Test/check:
   - [X] src/test/mountUsage.test.js::成功采集只把已清理记录提升为残留，未清理仍回退列表事实
-- Assertion scope: 未清理记录等待或超时时保留列表状态，不误报残留。
+  - [X] src/test/mountUsage.test.js::pending、成功、缺项与其他错误都不改变恢复与清理门禁
+- Assertion scope: 未清理记录等待或超时时保留列表状态，不误报残留；这些结果不改变恢复/清理门禁，`original_container_is_valid=true` 时已恢复门禁仍独立生效。
+
+### Requirement: DeletedContainers 用量派生不改变恢复与清理门禁
+
+#### Scenario: 残留状态不解除清理禁用
+
+- Test/check:
+  - [X] src/test/mountUsage.test.js::原容器仍有效时禁用恢复与清理：目录可能是恢复后活容器的挂载
+  - [X] src/test/mountUsage.test.js::其他既有门禁保持不变：无快照/不可恢复/挂载清理记录/已清理
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::已清理且成功采集按原容器有效性显示已恢复/可能存在残留/已清理
+- Assertion scope: 成功采集显示“可能存在残留/已恢复”时不解除 `cleaned_at`/既有可恢复字段的禁用；`original_container_is_valid=true` 时恢复与清理均禁用，title 分别为“已恢复”/“已恢复，无法清理”。
+
+#### Scenario: 历史路径不改变提交参数
+
+- Test/check:
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::清理开始时旧统计失效；成功后重载按历史路径重采样，迟到响应不贴回旧值
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::恢复开始时旧统计失效；成功后迟到响应不贴回旧值且不再扫描
+- Assertion scope: 已清理记录保留 `mount_path` 仅用于用量采样；恢复/清理请求仍只携带既有 `deleted_id`/`mount_cleanup_id`，不携带路径或统计结果。
+
+#### Scenario: 目录不存在禁用恢复与清理并提示
+
+- Test/check:
+  - [X] src/test/mountUsage.test.js::用量明确目录不存在时同时禁用恢复与清理，并给出稳定原因
+  - [X] src/test/mountUsage.test.js::目录不存在的原因优先于既有灰按钮原因，但既有门禁仍保持禁用
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::只有用量目录不存在时额外禁用恢复与清理并给原因，其他用量与既有门禁不变
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::目录不存在样本被后续复查替换为非 not_found 后，按钮按原列表字段恢复
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::恢复确认框打开后样本变为 not_found，提交前复检且不发写请求
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::清理确认框打开后样本变为 not_found，提交前复检且不发写请求
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13c_mobile_original_validity_states_and_not_found_action_gate
+- Assertion scope: 当前页最新用量项稳定为 `not_found` 且 `original_container_is_valid !== true` 时，恢复/清理均禁用，title 为“挂载目录不存在，无法恢复”/“挂载目录不存在，无需清理”；确认框不打开、不调用写接口；样本换成非 `not_found` 后按原列表字段恢复。
+
+#### Scenario: 历史删除记录残留但原容器已恢复
+
+- Test/check:
+  - [X] src/test/mountUsage.test.js::原容器仍有效时禁用恢复与清理：目录可能是恢复后活容器的挂载
+  - [X] src/test/mountUsage.test.js::原容器有效的禁用优先于目录不存在提示，且严格 true 才生效
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::已清理且成功采集按原容器有效性显示已恢复/可能存在残留/已清理
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13c_mobile_original_validity_states_and_not_found_action_gate
+- Assertion scope: `original_container_is_valid === true` 时，即使历史删除记录仍在、用量为成功/pending/`not_found`/其他结果，恢复/清理均禁用；title 为“已恢复”/“已恢复，无法清理”；优先于目录不存在提示。按钮 disabled 阻止确认与写请求；true 的 action guard 由同一 `isActionBlockedNow` 复检路径保证，未另设独立 click 断言。
+
+#### Scenario: 原容器启用状态解除后恢复门禁
+
+- Test/check:
+  - [X] src/test/mountUsage.test.js::原容器有效的禁用优先于目录不存在提示，且严格 true 才生效
+  - [X] src/test/mountUsage.test.js::pending、成功、缺项与其他错误都不改变恢复与清理门禁
+- Assertion scope: 仅严格 `original_container_is_valid === true` 触发已恢复门禁；`false`/`null`/字符串/数字不触发。解除后按 `not_found` 与既有列表字段重新计算，不保留旧禁用。
 
 ### Requirement: DeletedContainers 移动端分页、确认流程与轮询语义不变
 
