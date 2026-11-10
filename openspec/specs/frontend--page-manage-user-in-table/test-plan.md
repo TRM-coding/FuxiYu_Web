@@ -108,3 +108,26 @@ Spec: [spec.md](spec.md)
   - [X] src/test/ManageUserInTable.test.jsx::test_q59_total_at_most_four_no_pagination
 - Assertion scope: 服务端 total 为 4（`total_number=4`、`total_page=1`）时子表不渲染分页入口，也不额外请求第二页；只有 total>4 才出现分页。
 - Coverage note: 真实展开 DOM 与请求次数均已断言。
+
+### Requirement: 容器丢失状态展示与操作保护
+
+#### Scenario: 展示容器丢失
+
+- Test/check:
+  - [X] src/test/ManageUserEligibility.test.jsx::容器丢失显示红色并禁用写操作
+- Assertion scope: 父级 ManageUser 卡片显示 `ant-tag-red`「容器丢失」，启动按钮禁用且 `title=容器丢失，待核实后操作`。
+- Coverage note: 没有独立的表格行 `node_vanished` 测试；`ManageUserInTable.test.jsx` 以 `renderContainerStatus` 桩渲染状态，因此表格行红色标签与删除资格未被直接断言。该页无容器删除入口。
+
+#### Scenario: 删除前状态重验
+
+- Test/check:
+  - [X] src/test/containerActions.test.js::node_vanished 仅放行删除；启停/解冻/长期仍按状态未知拒绝
+- Assertion scope: 共享 resolver 对 `node_vanished` 的删除返回 enabled，启停/解冻/长期仍禁用并给出 `container_node_vanished`。
+- Coverage note: 表格没有容器删除入口或删除提交路径，因此没有页面级状态重验测试；本行只证明共享资格。
+
+#### Scenario: 状态恢复
+
+- Test/check:
+  - [X] src/test/ManageUserEligibility.test.jsx::两个用户展开同一容器 progress 时两张卡片同步更新
+- Assertion scope: 父级 ing 看护的 `onProgress` 收到 `online` 后，两张真实用户卡片都由「重启中」更新为「运行中」。
+- Coverage note: 该用例走卡片视图而非表格视图，且未以 `node_vanished` 为初始状态；没有独立的表格行 `node_vanished` 恢复测试，本行只证明父级 `onProgress` 回写路径。

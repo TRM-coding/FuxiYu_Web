@@ -57,7 +57,7 @@ describe('跨上下文动作矩阵（五个页面共用同一 resolver）', () =
   });
 
   it('同一容器同上下文在 status 矩阵下删除/启停/解冻一致', () => {
-    const allowedDelete = ['online', 'offline', 'paused', 'failed'];
+    const allowedDelete = ['online', 'offline', 'paused', 'failed', 'node_vanished'];
     for (const status of allowedDelete) {
       const result = resolve(c({ effective_status: status }), ctx({ permissions: ['container:manage'], containerRole: null }));
       expect(result.actions.delete.enabled, status).toBe(true);

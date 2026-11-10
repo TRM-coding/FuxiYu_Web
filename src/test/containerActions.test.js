@@ -143,10 +143,26 @@ describe('normalizeContainerActionContext / 权限矩阵', () => {
 });
 
 describe('删除 / 启停 / 解冻状态矩阵', () => {
-  it.each(['online', 'offline', 'paused', 'failed'])('delete 允许 %s', (status) => {
+  it.each(['online', 'offline', 'paused', 'failed', 'node_vanished'])('delete 允许 %s', (status) => {
     const result = resolve({ effective_status: status });
     expect(result.actions.delete).toMatchObject({
       visible: true, enabled: true, disabled: false, reason: null,
+    });
+  });
+
+  it('node_vanished 仅放行删除；启停/解冻/长期仍按状态未知拒绝', () => {
+    const result = resolve({ effective_status: 'node_vanished', is_long_term: false });
+    expect(result.actions.delete).toMatchObject({ visible: true, enabled: true, reason: null });
+    for (const key of ['start', 'stop', 'restart']) {
+      expect(result.actions[key]).toMatchObject({
+        visible: true, enabled: false, reason: 'container_node_vanished',
+      });
+    }
+    expect(result.actions.unpause).toMatchObject({
+      visible: true, enabled: false, reason: 'container_node_vanished',
+    });
+    expect(result.longTerm).toMatchObject({
+      visible: true, enabled: false, reason: 'container_node_vanished',
     });
   });
 
@@ -281,6 +297,7 @@ describe('长期动作：既有字段与严格方向', () => {
       ['host_offline', 'container_host_offline'],
       ['host_maintenance', 'container_host_maintenance'],
       ['status_unknown', 'container_status_unknown'],
+      ['node_vanished', 'container_node_vanished'],
     ]) {
       expect(resolve({ is_long_term: false, effective_status: status }).longTerm).toMatchObject({
         enabled: false, reason,

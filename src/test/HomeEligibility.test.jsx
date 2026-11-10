@@ -115,6 +115,50 @@ beforeEach(() => {
 });
 
 describe('Home 共享动作资格与删除/解冻/长期', () => {
+  it('容器丢失在首页及详情弹窗显示红色且删除可用', async () => {
+    const lost = container({ effective_status: 'node_vanished' });
+    listAllContainerBrefInformation.mockResolvedValue({ containers_info: [lost] });
+    getContainerDetailInformation.mockResolvedValue({ container_info: lost });
+    const user = userEvent.setup();
+    renderHome();
+    const tag = await screen.findByText('容器丢失');
+    expect(tag).toHaveClass('ant-tag-red');
+    const card = tag.closest('.home-container-card');
+    const stopButton = within(card).getByRole('button', { name: /^停\s*止$/ });
+    expect(stopButton).toBeDisabled();
+    expect(stopButton).toHaveAttribute('title', '容器丢失，待核实后操作');
+    const dialog = await openDetail(user);
+    expect(within(dialog).getByText('容器丢失')).toHaveClass('ant-tag-red');
+    const button = within(dialog).getByRole('button', { name: /删除容器/ });
+    expect(button).toBeEnabled();
+    await user.click(button);
+    await user.click(await screen.findByRole('button', { name: /^删\s*除$/ }));
+    await waitFor(() => expect(deleteContainer).toHaveBeenCalledWith(1));
+  });
+
+  it('容器丢失删除提交前变为 status_unknown：重验后不调用删除 API', async () => {
+    const user = userEvent.setup();
+    const lost = container({ effective_status: 'node_vanished' });
+    listAllContainerBrefInformation.mockResolvedValue({ containers_info: [lost] });
+    getContainerDetailInformation.mockResolvedValue({ container_info: lost });
+    renderHome();
+    const dialog = await openDetail(user);
+    await user.click(within(dialog).getByRole('button', { name: /删除容器/ }));
+    expect(await screen.findByText('确认删除容器')).toBeInTheDocument();
+
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'status_unknown' })],
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(screen.getByText('状态未知')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /^删\s*除$/ }));
+    expect(deleteContainer).not.toHaveBeenCalled();
+    expect(message.warning).toHaveBeenCalled();
+  });
+
   it('ROOT 的 failed 容器可从详情弹窗删除；删除前重解析后发请求', async () => {
     const user = userEvent.setup();
     listAllContainerBrefInformation.mockResolvedValue({

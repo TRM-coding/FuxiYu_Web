@@ -741,8 +741,8 @@ const ManageMachine = () => {
 
   const renderContainerStatus = (status) => {
     const normalized = String(status || '').toLowerCase();
-    const color = normalized === 'online' ? 'green' : normalized === 'offline' ? 'volcano' : normalized === 'paused' ? 'volcano' : normalized === 'building' ? 'geekblue' : normalized === 'creating' ? 'blue' : normalized === 'starting' ? 'cyan' : normalized === 'restarting' ? 'purple' : normalized === 'stopping' ? 'orange' : normalized === 'failed' ? 'red' : 'default';
-    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', building: '构建中', creating: '创建中', starting: '启动中', restarting: '重启中', stopping: '停止中', pausing: '冻结中', unpausing: '解冻中', failed: '异常', unknown: '未知', status_unknown: '状态未知', host_offline: '宿主机离线', host_maintenance: '宿主机维护' };
+    const color = normalized === 'online' ? 'green' : normalized === 'offline' ? 'volcano' : normalized === 'paused' ? 'volcano' : normalized === 'building' ? 'geekblue' : normalized === 'creating' ? 'blue' : normalized === 'starting' ? 'cyan' : normalized === 'restarting' ? 'purple' : normalized === 'stopping' ? 'orange' : (normalized === 'failed' || normalized === 'node_vanished') ? 'red' : 'default';
+    const labelMap = { online: '运行中', offline: '已停止', paused: '磁盘已冻结', building: '构建中', creating: '创建中', starting: '启动中', restarting: '重启中', stopping: '停止中', pausing: '冻结中', unpausing: '解冻中', failed: '异常', node_vanished: '容器丢失', unknown: '未知', status_unknown: '状态未知', host_offline: '宿主机离线', host_maintenance: '宿主机维护' };
     return <Tag color={color}>{labelMap[normalized] || status}</Tag>;
   };
 

@@ -24,7 +24,7 @@ const BACKEND_ERROR_REASONS = [
   'machine_permission_denied', 'node_endpoint_not_found',
   // 容器
   'container_exists', 'container_not_found', 'container_offline',
-  'container_paused', 'container_failed', 'container_busy', 'container_status_unknown',
+  'container_paused', 'container_failed', 'container_busy', 'container_status_unknown', 'container_node_vanished',
   'container_permission_denied', 'long_term_limit_reached',
   'delete_failed', 'start_failed', 'stop_failed', 'restart_failed',
   'add_collaborator_failed', 'remove_collaborator_failed', 'update_role_failed',

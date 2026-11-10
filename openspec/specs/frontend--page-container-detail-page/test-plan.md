@@ -572,3 +572,27 @@ Spec: [spec.md](spec.md)
   - [X] ../../../src/test/DetailPagesLayout.test.js::tc_container_css_01_390_title_path
 - Assertion scope: 无 bind 路径时显示“未记录”且无复制控件；CSS 声明标题/复制块可任意断行；不生成猜测路径或额外请求。样式声明不等于真实 320px 布局。
 - Coverage note: `%s 显示未记录且没有复制候选` 行是 `it.each` 模板，参数为 `null`/空串/缺字段；真实 320px 下无空格长串的 `scrollWidth` 未在 jsdom 断言，仅 CSS 契约。
+
+### Requirement: 容器丢失状态展示与操作保护
+
+#### Scenario: 展示容器丢失
+
+- Test/check:
+  - [X] ../../../src/test/ContainerDetailEligibility.test.jsx::容器丢失的详情页使用红色标签
+  - [X] ../../../src/test/ContainerDetailEligibility.test.jsx::容器丢失删除确认后调用既有删除 API 并返回首页
+- Assertion scope: 详情页标签为 `ant-tag-red`「容器丢失」；删除按钮启用，确认后调用 `deleteContainer(12)` 并导航回首页。
+- Coverage note: 展示用例只断言标签颜色，删除可用由成功删除用例补足；启停、解冻、长期仍禁用由共享 resolver 覆盖。
+
+#### Scenario: 删除前状态重验
+
+- Test/check:
+  - [X] ../../../src/test/ContainerDetailEligibility.test.jsx::容器丢失删除提交前变为 status_unknown：重验后不调用删除 API
+- Assertion scope: 删除确认框打开后 5s 权威详情刷新为 `status_unknown`，确认删除时重解析阻止 `deleteContainer` 并给出 warning。
+- Coverage note: 仅覆盖状态变化路径；权限被收回未新增 `node_vanished` 专属用例，既有重验机制由共享 resolver 与页面用例覆盖。
+
+#### Scenario: 状态恢复
+
+- Test/check:
+  - [X] ../../../src/test/DetailPages.test.jsx::container detail initializes with detail API and polls full authoritative detail
+- Assertion scope: 详情页初始化后按 5s 间隔重新获取完整详情并写回页面权威状态。
+- Coverage note: 该用例未以 `node_vanished` 为初始状态，也未断言恢复后的标签/删除按钮；`node_vanished` 专属详情页恢复当前无独立测试。

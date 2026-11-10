@@ -208,3 +208,26 @@ Spec: [spec.md](spec.md)
   - [ ] 首页解冻失败测试已移除，等待 `remove-home-unpause` 同步主规格。
 - Assertion scope: 首页已移除解冻入口；原首页解冻请求失败场景的规格调整见 `remove-home-unpause`。
 - Coverage note: 独立详情页解冻失败由 `ContainerDetailEligibility.test.jsx` 覆盖。
+
+### Requirement: 容器丢失状态展示与操作保护
+
+#### Scenario: 展示容器丢失
+
+- Test/check:
+  - [X] src/test/HomeEligibility.test.jsx::容器丢失在首页及详情弹窗显示红色且删除可用
+- Assertion scope: 真实 Home 卡片与详情弹窗均显示 `ant-tag-red`「容器丢失」；卡片停止按钮禁用且 `title=容器丢失，待核实后操作`；详情删除按钮启用，确认后调用 `deleteContainer(1)`。
+- Coverage note: 该用例只直接断言 Home 的停止与删除入口；启停、解冻、长期仍受状态限制由共享 resolver 覆盖，见 `containerActions.test.js`，不把删除可用外推为所有写操作可用。
+
+#### Scenario: 删除前状态重验
+
+- Test/check:
+  - [X] src/test/HomeEligibility.test.jsx::容器丢失删除提交前变为 status_unknown：重验后不调用删除 API
+- Assertion scope: 打开删除确认后列表权威状态变为 `status_unknown`，点击确认时按最新快照重解析，`deleteContainer` 未调用并给出 warning。
+- Coverage note: 仅覆盖状态变为 `status_unknown` 的失效路径；权限被收回的重验由既有启动/停止重验用例覆盖，未新增 `node_vanished` 专属权限用例。
+
+#### Scenario: 状态恢复
+
+- Test/check:
+  - [X] src/test/heartbeat.test.js::reports each ing progress state and only fires onTerminal at terminal
+- Assertion scope: 共享 `watchIngContainerUntilTerminal` 对 ing 状态逐拍回调 `onProgress`，仅在非 ing 终态触发一次 `onTerminal`；Home 使用同一看护入口。
+- Coverage note: 现有用例未以 `node_vanished` 作为初始状态，也未断言 Home 页面从 `node_vanished` 恢复到 `online` 后的 DOM/动作恢复；本 Scenario 的 `node_vanished` 专属页面恢复当前无独立测试，只有共享轮询机制证据。

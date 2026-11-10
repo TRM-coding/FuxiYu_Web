@@ -133,3 +133,26 @@ Spec: [spec.md](spec.md)
   - [X] src/test/ManageMachineEligibility.test.jsx::解冻受理固定文案；失败清 pending/loading 并重读，无“已解冻”
 - Assertion scope: 第二页解冻接口失败后仍停留在「2 / 3」，保留当前页容器与筛选，卡片回到「磁盘已冻结」、无「解冻中」，不把列表重置为第一页。失败原因由 `ManageMachineEligibility` 断言：`showErrorModal` 收到 `message.message === 'unpause failed'`；`ManageMachineDetailRefresh` 只断言页码/卡片状态与错误弹窗被调用，不把“原因文案”归给它。
 - Coverage note: 页码、卡片状态与错误弹窗调用由 `test_q69_manage_machine_unpause_failure_keeps_page` 断言；失败原因参数由 `ManageMachineEligibility` 的同路由用例断言，两者合起来才覆盖本 Scenario。不写“均已断言”而不列原因 locator。
+
+### Requirement: 容器丢失状态展示与操作保护
+
+#### Scenario: 展示容器丢失
+
+- Test/check:
+  - [X] src/test/ManageMachineEligibility.test.jsx::容器丢失显示红色并禁用写操作
+- Assertion scope: 机器页容器卡片显示 `ant-tag-red`「容器丢失」，启动按钮禁用且 `title=容器丢失，待核实后操作`。
+- Coverage note: 该页没有容器删除入口，测试只直接断言启动按钮；其他写操作由共享 resolver 测试覆盖，页面不新增删除按钮。
+
+#### Scenario: 删除前状态重验
+
+- Test/check:
+  - [X] src/test/containerActions.test.js::node_vanished 仅放行删除；启停/解冻/长期仍按状态未知拒绝
+- Assertion scope: 共享 resolver 对 `node_vanished` 的删除返回 enabled，启停/解冻/长期仍禁用并给出 `container_node_vanished`。
+- Coverage note: ManageMachine 页面没有删除入口，因此不存在页面级删除提交/状态重验测试；本行只证明共享资格，不能外推为页面删除路径。
+
+#### Scenario: 状态恢复
+
+- Test/check:
+  - [X] src/test/heartbeat.test.js::reports each ing progress state and only fires onTerminal at terminal
+- Assertion scope: 共享看护对 ing 状态持续回调，只在非 ing 终态触发一次 `onTerminal`。
+- Coverage note: 现有测试未以 `node_vanished` 为初始状态，也没有 ManageMachine 页面从 `node_vanished` 恢复的独立断言；本 Scenario 当前只有共享轮询机制证据。

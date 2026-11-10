@@ -136,6 +136,7 @@ describe('ContainerDetailPage 共享资格矩阵', () => {
     ['host_offline', true],
     ['host_maintenance', true],
     ['status_unknown', true],
+    ['node_vanished', false],
     ['unknown', true],
     ['', true],
   ])('删除状态 %s disabled=%s', async (status, disabled) => {
@@ -145,6 +146,53 @@ describe('ContainerDetailPage 共享资格矩阵', () => {
     const button = within(card).getByRole('button', { name: /删\s*除/ });
     if (disabled) expect(button).toBeDisabled();
     else expect(button).toBeEnabled();
+  });
+
+  it('容器丢失的详情页使用红色标签', async () => {
+    getContainerDetailInformation.mockResolvedValue({ container_info: detail({ effective_status: 'node_vanished' }) });
+    renderDetail();
+    expect(await screen.findByText('容器丢失')).toHaveClass('ant-tag-red');
+  });
+
+  it('容器丢失删除确认后调用既有删除 API 并返回首页', async () => {
+    const user = userEvent.setup();
+    getContainerDetailInformation.mockResolvedValue({
+      container_info: detail({ effective_status: 'node_vanished' }),
+    });
+    renderDetail();
+    const card = await operationCard();
+    const deleteButton = within(card).getByRole('button', { name: /删\s*除/ });
+    expect(deleteButton).toBeEnabled();
+    await user.click(deleteButton);
+    const confirmDialog = (await screen.findAllByRole('dialog'))
+      .find(node => within(node).queryByText('确认删除容器'));
+    expect(confirmDialog).toBeTruthy();
+    await user.click(within(confirmDialog).getByRole('button', { name: /^删\s*除$/ }));
+
+    await waitFor(() => expect(deleteContainer).toHaveBeenCalledWith(12));
+    expect(await screen.findByText('home page')).toBeInTheDocument();
+  });
+
+  it('容器丢失删除提交前变为 status_unknown：重验后不调用删除 API', async () => {
+    const user = userEvent.setup();
+    getContainerDetailInformation
+      .mockResolvedValueOnce({ container_info: detail({ effective_status: 'node_vanished' }) })
+      .mockResolvedValueOnce({ container_info: detail({ effective_status: 'status_unknown' }) });
+    renderDetail();
+    const card = await operationCard();
+    await user.click(within(card).getByRole('button', { name: /删\s*除/ }));
+    const confirmDialog = (await screen.findAllByRole('dialog'))
+      .find(node => within(node).queryByText('确认删除容器'));
+    expect(confirmDialog).toBeTruthy();
+
+    await act(async () => {
+      await pollingCallback();
+    });
+    await waitFor(() => expect(screen.getAllByText('状态未知').length).toBeGreaterThan(0));
+
+    await user.click(within(confirmDialog).getByRole('button', { name: /^删\s*除$/ }));
+    expect(deleteContainer).not.toHaveBeenCalled();
+    expect(message.warning).toHaveBeenCalled();
   });
 
   it('COLLABORATOR 无资源角色不显示删除/启停，长期入口保留但禁用', async () => {

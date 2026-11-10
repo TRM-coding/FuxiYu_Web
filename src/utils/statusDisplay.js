@@ -12,6 +12,7 @@ export const CONTAINER_STATUS_DISPLAY = {
   failed: { label: '异常', color: 'red' },
   unknown: { label: '未知', color: 'default' },
   // 派生状态（展示层，DB 不落）：容器轴复核/机器轴采集异常 / 宿主机不可达与维护
+  node_vanished: { label: '容器丢失', color: 'red' },
   status_unknown: { label: '状态未知', color: 'gold' },
   host_offline: { label: '宿主机离线', color: 'default' },
   host_maintenance: { label: '宿主机维护', color: 'orange' },

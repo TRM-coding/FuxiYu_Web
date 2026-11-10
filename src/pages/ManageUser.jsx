@@ -610,7 +610,7 @@ const ManageUser = () => {
                 ? 'purple'
                 : normalized === 'stopping'
                   ? 'orange'
-                  : normalized === 'failed'
+                  : (normalized === 'failed' || normalized === 'node_vanished')
                     ? 'red'
                     : 'default';
     const labelMap = {
@@ -626,6 +626,7 @@ const ManageUser = () => {
       unpausing: '解冻中',
       failed: '异常',
       unknown: '未知',
+      node_vanished: '容器丢失',
       status_unknown: '状态未知',
       host_offline: '宿主机离线',
       host_maintenance: '宿主机维护',

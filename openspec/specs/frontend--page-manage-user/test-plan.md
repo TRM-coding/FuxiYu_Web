@@ -136,3 +136,26 @@ Spec: [spec.md](spec.md)
   - [X] src/test/ManageUserDetailLink.test.jsx::test_q35_manage_user_no_new_detail_entry
 - Assertion scope: 用户容器卡片只有现有容器标题按钮，没有新增「详情」按钮或弹窗入口；容器行操作区不含新增详情入口。
 - Coverage note: 真实 DOM 断言已确证；不新增入口是负向断言，不另造源码正则。
+
+### Requirement: 容器丢失状态展示与操作保护
+
+#### Scenario: 展示容器丢失
+
+- Test/check:
+  - [X] src/test/ManageUserEligibility.test.jsx::容器丢失显示红色并禁用写操作
+- Assertion scope: 用户页容器卡片显示 `ant-tag-red`「容器丢失」，启动按钮禁用且 `title=容器丢失，待核实后操作`。
+- Coverage note: 该页没有容器删除入口，测试只直接断言启动按钮；其他写操作与删除资格由共享 resolver 测试覆盖，且本用例不覆盖表格视图。
+
+#### Scenario: 删除前状态重验
+
+- Test/check:
+  - [X] src/test/containerActions.test.js::node_vanished 仅放行删除；启停/解冻/长期仍按状态未知拒绝
+- Assertion scope: 共享 resolver 对 `node_vanished` 的删除返回 enabled，启停/解冻/长期仍禁用并给出 `container_node_vanished`。
+- Coverage note: ManageUser 页面没有容器删除入口，因此不存在页面级删除提交/状态重验测试；本行只证明共享资格。
+
+#### Scenario: 状态恢复
+
+- Test/check:
+  - [X] src/test/ManageUserEligibility.test.jsx::两个用户展开同一容器 progress 时两张卡片同步更新
+- Assertion scope: 父级 ing 看护的 `onProgress` 收到 `online` 后，两张真实用户卡片都由「重启中」更新为「运行中」。
+- Coverage note: 该用例以 `restarting` 为初始状态，未以 `node_vanished` 为初始状态，也未断言 `node_vanished` 成员资格；ManageUser 的 `node_vanished` 专属页面恢复当前无独立测试，本行只证明同一 `onProgress` 回写路径。

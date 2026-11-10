@@ -155,6 +155,25 @@ Home 的 start、stop、restart、unpause、delete、long_term_enable 与 long_t
 - **WHEN** 解冻请求失败、被拒绝或超时
 - **THEN** 清除该容器的 loading/pending，显示具体错误并重读权威快照；不在 catch 中写 `paused`/`online`，后续权威 `online` 才结束 pending
 
+### Requirement: 容器丢失状态展示与操作保护
+
+页面 SHALL 将 Ctrl 返回的派生态 `node_vanished` 展示为红色「容器丢失」，并按既有权限放行该状态容器的删除：页面既有的删除入口（若有）对权限合格用户 SHALL 启用，且 MUST NOT 因本变更新增删除入口。其它写操作 MUST 保持与 `status_unknown` 相同的保守限制并给出中文原因；普通 `status_unknown` 仍 MUST 禁止删除。若页面提供删除入口，提交前 SHALL 按最新权威状态和权限重新解析。后续权威状态恢复时，页面 SHALL 按新状态恢复展示与操作资格，不改变现有权限规则。
+
+#### Scenario: 展示容器丢失
+
+- **WHEN** 容器的 `effective_status` 为 `node_vanished`，当前用户拥有既有删除权限（页面提供删除入口时）
+- **THEN** 状态标签显示红色「容器丢失」；既有删除入口启用，页面不新增删除入口；启停、解冻、长期等其它写操作保持禁用并说明原因
+
+#### Scenario: 删除前状态重验
+
+- **WHEN** 页面提供既有删除入口，合格用户确认删除一个 `node_vanished` 容器
+- **THEN** 提交前按最新权威状态、角色与权限重新解析；仍允许删除时调用一次既有删除 API，若已变为 `status_unknown` 或权限被收回则不调用 API，关闭确认并重读/提示中文原因
+
+#### Scenario: 状态恢复
+
+- **WHEN** 后续权威状态变为 `online`、`offline` 等其他状态
+- **THEN** 页面按照新状态恢复展示和操作资格，不保留旧的丢失显示
+
 ## Source references
 
 - [src/pages/Home.jsx](../../../src/pages/Home.jsx)；[src/routes/index.jsx](../../../src/routes/index.jsx)。

@@ -50,6 +50,7 @@ const collaboratorGuardMessages = (actionLabel) => ({
   container_failed: `容器状态异常，无法${actionLabel}`,
   container_busy: `容器正在处理中，暂时无法${actionLabel}`,
   container_status_unknown: `容器状态未知，暂时无法${actionLabel}`,
+  container_node_vanished: `容器丢失，待核实后才能${actionLabel}`,
 });
 
 // 这些原因是 Ctrl 有效状态机对容器写操作的既有拒绝，不是可自行绕过的前端状态。
@@ -60,6 +61,7 @@ const CONTAINER_GUARD_REASONS = new Set([
   'container_failed',
   'container_busy',
   'container_status_unknown',
+  'container_node_vanished',
   'container_host_offline',
   'container_host_maintenance',
 ]);
@@ -122,6 +124,7 @@ export const routeErrorMap = {
     },
     '/containers/delete_container': {
       ...MACHINE_SCOPE_MESSAGES,
+      container_node_vanished: '容器丢失，待核实后操作',
       delete_failed: '删除容器失败',
       not_found: '容器不存在',
     },
@@ -139,6 +142,7 @@ export const routeErrorMap = {
     },
     '/containers/unpause_container': {
       ...MACHINE_SCOPE_MESSAGES,
+      container_node_vanished: '容器丢失，待核实后操作',
       unpause_failed: '解冻容器失败',
     },
     '/containers/get_container_detail_information': { get_detail_failed: '获取容器详情失败' },
@@ -147,6 +151,7 @@ export const routeErrorMap = {
       container_not_found: '容器不存在',
       machine_permission_denied: '权限不足，无法操作该机器上的容器',
       container_permission_denied: '只有容器所有者可以设置长期容器',
+      container_node_vanished: '容器丢失，待核实后操作',
       long_term_limit_reached: '已达到长期容器上限',
       invalid_payload: '长期容器设置参数无效',
     },
@@ -265,6 +270,7 @@ export const routeErrorMap = {
       container_failed: '容器状态异常',
       container_busy: '容器正在处理中',
       container_status_unknown: '容器状态未知',
+      container_node_vanished: '容器丢失，待核实后操作',
       container_not_found: '容器不存在',
       invalid_payload: '请求参数无效',
       not_found: '资源不存在',

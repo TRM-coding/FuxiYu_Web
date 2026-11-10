@@ -124,7 +124,7 @@ const ContainerDetailModal = ({
               ? 'orange'
               : container.effective_status === 'paused'
                 ? 'volcano'
-                : container.effective_status === 'failed'
+                : (container.effective_status === 'failed' || container.effective_status === 'node_vanished')
                   ? 'red'
                   : 'default';
    const statusText = isHostOffline
@@ -147,6 +147,8 @@ const ContainerDetailModal = ({
               ? '磁盘已冻结'
               : container.effective_status === 'failed'
                 ? '异常'
+                : container.effective_status === 'node_vanished'
+                  ? '容器丢失'
                 : container.effective_status === 'status_unknown'
                   ? '状态未知'
                   : container.effective_status === 'host_maintenance'

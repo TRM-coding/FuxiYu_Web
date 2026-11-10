@@ -151,6 +151,18 @@ const waitForCard = async () => {
 };
 
 describe('ManageMachine 共享动作与提交前重解析', () => {
+  it('容器丢失显示红色并禁用写操作', async () => {
+    listAllContainerBrefInformation.mockResolvedValue({
+      containers_info: [container({ effective_status: 'node_vanished' })], total_number: 1, total_page: 1,
+    });
+    renderPage();
+    const card = await waitForCard();
+    expect(within(card).getByText('容器丢失')).toHaveClass('ant-tag-red');
+    const button = within(card).getByRole('button', { name: /^启\s*动$/ });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', '容器丢失，待核实后操作');
+  });
+
   it('online 卡片 stop/restart 可用、start 禁用；无新增详情/删除按钮', async () => {
     renderPage();
     const card = await waitForCard();

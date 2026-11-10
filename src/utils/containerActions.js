@@ -61,14 +61,14 @@ const ROLE_RANK = {
 };
 const ROLE_NONE = 0;
 
-const DELETE_ALLOWED_STATUSES = new Set(['online', 'offline', 'paused', 'failed']);
+const DELETE_ALLOWED_STATUSES = new Set(['online', 'offline', 'paused', 'failed', 'node_vanished']);
 const TRANSITION_UNCONFIRMED_STATUSES = new Set(['pausing', 'unpausing']);
 const BUSY_STATUSES = new Set(['building', 'creating', 'starting', 'stopping', 'restarting']);
 const KNOWN_STATUSES = new Set([
   'online', 'offline', 'paused', 'failed',
   'building', 'creating', 'starting', 'stopping', 'restarting',
   'pausing', 'unpausing',
-  'host_offline', 'host_maintenance', 'status_unknown',
+  'host_offline', 'host_maintenance', 'status_unknown', 'node_vanished',
 ]);
 
 const REASON_TEXT = {
@@ -78,6 +78,7 @@ const REASON_TEXT = {
   long_term_state_unknown: '长期标记未知，无法切换长期状态',
   container_transition_unconfirmed: '容器状态正在变化，已暂时禁用',
   container_status_unknown: '容器状态未知，已保守禁用',
+  container_node_vanished: '容器丢失，待核实后操作',
   container_no_longer_available: '容器已不在当前列表，请刷新后重试',
   container_busy: '容器正在处理中，暂不可操作',
   container_host_offline: '宿主机离线，暂不可操作',
@@ -213,6 +214,7 @@ const visibleEnabledAction = (pending = false) => (
 );
 
 const statusFailureReason = (status, actionKey) => {
+  if (status === 'node_vanished') return 'container_node_vanished';
   if (status === 'host_offline') return 'container_host_offline';
   if (status === 'host_maintenance') return 'container_host_maintenance';
   if (status === 'status_unknown' || status === 'unknown' || status === '') {
@@ -242,6 +244,7 @@ const deleteFailureReason = (status) => {
 };
 
 const longTermStatusReason = (status, direction) => {
+  if (status === 'node_vanished') return 'container_node_vanished';
   if (status === 'host_offline') return 'container_host_offline';
   if (status === 'host_maintenance') return 'container_host_maintenance';
   if (status === 'status_unknown' || status === 'unknown' || status === '') {

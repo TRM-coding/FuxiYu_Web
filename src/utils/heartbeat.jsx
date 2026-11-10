@@ -122,6 +122,9 @@ export const ING_CONTAINER_STATES = new Set([
   'building', 'creating', 'starting', 'stopping', 'restarting', 'pausing', 'unpausing',
   // 容器轴复核（node 重启后 cold_start_verify 波）：ing 语义，自动轮询至终态
   'status_unknown',
+  // 名称缺席待核实：Ctrl 在容器重新出现在快照并给出明确状态后会清除该标记，
+  // 因此按可恢复中间态继续轮询，不能当作永久终态停止看护。
+  'node_vanished',
 ]);
 
 export function watchIngContainerUntilTerminal({ machine_id, container_id, container_name, onTerminal, onProgress, timeout = 3600000, interval = 3000 }) {
