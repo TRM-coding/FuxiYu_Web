@@ -123,7 +123,7 @@ beforeEach(() => {
   resurrectDeletedContainer.mockReset();
   listDeletedContainers.mockResolvedValue(listResponse([record()]));
   getDeletedContainerMountUsage.mockResolvedValue({ success: 1, usages: [] });
-  cleanDeletedContainerMount.mockResolvedValue({ success: 1 });
+  cleanDeletedContainerMount.mockResolvedValue({ success: 1, accepted: true });
   resurrectDeletedContainer.mockResolvedValue({ success: 1, container_id: 19 });
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });

@@ -104,7 +104,7 @@ beforeEach(() => {
   showErrorModal.mockReset();
   listDeletedContainers.mockResolvedValue(listResponse([record()]));
   getDeletedContainerMountUsage.mockResolvedValue({ success: 1, usages: [] });
-  cleanDeletedContainerMount.mockResolvedValue({ success: 1 });
+  cleanDeletedContainerMount.mockResolvedValue({ success: 1, accepted: true });
   resurrectDeletedContainer.mockResolvedValue({ success: 1, container_id: 19 });
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -334,7 +334,7 @@ describe('DeletedContainers 首批统计与展示状态', () => {
       vi.clearAllMocks();
       listDeletedContainers.mockResolvedValue(listResponse([record()]));
       getDeletedContainerMountUsage.mockRejectedValue(failure);
-      cleanDeletedContainerMount.mockResolvedValue({ success: 1 });
+      cleanDeletedContainerMount.mockResolvedValue({ success: 1, accepted: true });
       resurrectDeletedContainer.mockResolvedValue({ success: 1, container_id: 19 });
 
       const { unmount } = renderPage();
@@ -746,7 +746,7 @@ describe('DeletedContainers 有界轮询与取消', () => {
     ]));
     cleanDeletedContainerMount.mockImplementation(async () => {
       cleaned = true;
-      return { success: 1 };
+      return { success: 1, accepted: true };
     });
 
     renderPage();

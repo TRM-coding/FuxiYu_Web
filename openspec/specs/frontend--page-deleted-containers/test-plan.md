@@ -496,45 +496,54 @@ Spec: [spec.md](spec.md)
 #### Scenario: 残留状态不解除清理禁用
 
 - Test/check:
-  - [X] src/test/mountUsage.test.js::原容器仍有效时禁用恢复与清理：目录可能是恢复后活容器的挂载
   - [X] src/test/mountUsage.test.js::其他既有门禁保持不变：无快照/不可恢复/挂载清理记录/已清理
   - [X] src/test/DeletedContainersMountUsage.test.jsx::已清理且成功采集按原容器有效性显示已恢复/可能存在残留/已清理
-- Assertion scope: 成功采集显示“可能存在残留/已恢复”时不解除 `cleaned_at`/既有可恢复字段的禁用；`original_container_is_valid=true` 时恢复与清理均禁用，title 分别为“已恢复”/“已恢复，无法清理”。
+- Assertion scope: 纯函数在 `cleaned_at` 非空时保持清理禁用并给出既有原因；页面按严格三态显示“已恢复/可能存在残留/已清理”，成功采集本身不解除已清理记录的原门禁。
+- Coverage note: 纯函数覆盖 `cleaned_at` 门禁，页面用例覆盖三态展示；未单独点击断言“残留 + cleaned_at”组合按钮。
 
 #### Scenario: 历史路径不改变提交参数
 
 - Test/check:
-  - [X] src/test/DeletedContainersMountUsage.test.jsx::清理开始时旧统计失效；成功后重载按历史路径重采样，迟到响应不贴回旧值
-  - [X] src/test/DeletedContainersMountUsage.test.jsx::恢复开始时旧统计失效；成功后迟到响应不贴回旧值且不再扫描
-- Assertion scope: 已清理记录保留 `mount_path` 仅用于用量采样；恢复/清理请求仍只携带既有 `deleted_id`/`mount_cleanup_id`，不携带路径或统计结果。
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_restore_and_cleanup_request_bodies_stay_unchanged
+- Assertion scope: 恢复仍只提交 `{ deleted_id, content_source }`，清理仍只提交 `{ mount_cleanup_id }`，列表刷新仍只提交当前页/页大小；任何请求体均不含 `mount_path`、`machine_id` 或清理状态。
 
 #### Scenario: 目录不存在禁用恢复与清理并提示
 
 - Test/check:
-  - [X] src/test/mountUsage.test.js::用量明确目录不存在时同时禁用恢复与清理，并给出稳定原因
-  - [X] src/test/mountUsage.test.js::目录不存在的原因优先于既有灰按钮原因，但既有门禁仍保持禁用
   - [X] src/test/DeletedContainersMountUsage.test.jsx::只有用量目录不存在时额外禁用恢复与清理并给原因，其他用量与既有门禁不变
   - [X] src/test/DeletedContainersMountUsage.test.jsx::目录不存在样本被后续复查替换为非 not_found 后，按钮按原列表字段恢复
-  - [X] src/test/DeletedContainersMountUsage.test.jsx::恢复确认框打开后样本变为 not_found，提交前复检且不发写请求
-  - [X] src/test/DeletedContainersMountUsage.test.jsx::清理确认框打开后样本变为 not_found，提交前复检且不发写请求
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13c_mobile_original_validity_states_and_not_found_action_gate
-- Assertion scope: 当前页最新用量项稳定为 `not_found` 且 `original_container_is_valid !== true` 时，恢复/清理均禁用，title 为“挂载目录不存在，无法恢复”/“挂载目录不存在，无需清理”；确认框不打开、不调用写接口；样本换成非 `not_found` 后按原列表字段恢复。
+- Assertion scope: 桌面 locator 断言用量 `not_found` 时恢复/清理均禁用，原因分别为“挂载目录不存在，无法恢复”/“挂载目录不存在，无需清理”，点击不打开确认、不发写请求；样本变为非 `not_found` 后按列表字段恢复。移动 locator 只断言 disabled 与 title，不点击。
+- Coverage note: 移动端 `tc_dc_13c` 只覆盖禁用与标题；点击负向断言由桌面 locator 覆盖。
 
 #### Scenario: 历史删除记录残留但原容器已恢复
 
 - Test/check:
-  - [X] src/test/mountUsage.test.js::原容器仍有效时禁用恢复与清理：目录可能是恢复后活容器的挂载
-  - [X] src/test/mountUsage.test.js::原容器有效的禁用优先于目录不存在提示，且严格 true 才生效
   - [X] src/test/DeletedContainersMountUsage.test.jsx::已清理且成功采集按原容器有效性显示已恢复/可能存在残留/已清理
   - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13c_mobile_original_validity_states_and_not_found_action_gate
-- Assertion scope: `original_container_is_valid === true` 时，即使历史删除记录仍在、用量为成功/pending/`not_found`/其他结果，恢复/清理均禁用；title 为“已恢复”/“已恢复，无法清理”；优先于目录不存在提示。按钮 disabled 阻止确认与写请求；true 的 action guard 由同一 `isActionBlockedNow` 复检路径保证，未另设独立 click 断言。
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_restored_gate_blocks_confirm_without_write
+- Assertion scope: `original_container_is_valid === true` 时桌面或移动端恢复/清理均禁用，原因分别为“已恢复”/“已恢复，无法清理”，且该门禁优先于用量与清理状态；新增页面用例真实点击并断言确认框不打开、`resurrectDeletedContainer`/`cleanDeletedContainerMount` 均未调用。
 
 #### Scenario: 原容器启用状态解除后恢复门禁
 
 - Test/check:
-  - [X] src/test/mountUsage.test.js::原容器有效的禁用优先于目录不存在提示，且严格 true 才生效
-  - [X] src/test/mountUsage.test.js::pending、成功、缺项与其他错误都不改变恢复与清理门禁
-- Assertion scope: 仅严格 `original_container_is_valid === true` 触发已恢复门禁；`false`/`null`/字符串/数字不触发。解除后按 `not_found` 与既有列表字段重新计算，不保留旧禁用。
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_original_validity_change_recomputes_gate
+- Assertion scope: 刷新后 `original_container_is_valid` 从严格 `true` 变为 `false`，旧“已恢复”禁用不再保留，恢复与清理按既有列表字段启用。
+- Coverage note: 该用例未覆盖变为 `null`/缺失、`not_found` 或 `cleaning` 同时存在的分支。
+
+#### Scenario: 清理中禁用清理与恢复并阻止确认
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_cleaning_blocks_both_actions_and_confirm
+- Assertion scope: 未清理记录 `mount_cleanup_state === "cleaning"` 时恢复与清理均 disabled，标题分别为“清理进行中，无法恢复”/“清理进行中”；点击不打开 Popconfirm/Modal，不调用恢复或清理写接口。
+
+#### Scenario: 清理失败或未知后重新计算门禁
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_failed_or_unknown_recomputes_existing_action_gates
+  - [X] src/test/mountUsage.test.js::其他既有门禁保持不变：无快照/不可恢复/挂载清理记录/已清理
+- Assertion scope: `failed`/`unknown`/`null` 不再按“清理中”锁定；`data_recoverable` 且用量未 `not_found` 时恢复与清理可用；`not_found`/已恢复仍按既有门禁优先禁用。纯函数 locator 证明原列表门禁未变。
+
 
 ### Requirement: DeletedContainers 移动端分页、确认流程与轮询语义不变
 
@@ -578,3 +587,114 @@ Spec: [spec.md](spec.md)
   - [X] src/test/AnvilCreateDeleted.test.jsx::test_deleted_poll_budget_exhausted_manual_refresh
 - Assertion scope: 既有 locator 断言单页 120 次预算耗尽后停止自动轮询、显示“测量未完成”；该 locator 在 390px 卡片上点击手动刷新，断言重新采样并继续遵守有界轮询，不无限轮询或改用周期 WSS。
 - Coverage note: 该该 locator 与“单页预算耗尽”共享同一测试；既有 locator 覆盖桌面提示，移动端手动刷新由该 locator 覆盖。
+
+### Requirement: DeletedContainers 异步清理受理与列表状态
+
+#### Scenario: 受理后显示清理中而不是成功
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_clean_acceptance_starts_list_refresh_without_success
+- Assertion scope: 清理请求精确调用一次、参数为现有 `mount_cleanup_id`；Ctrl 返回 `accepted: true` 后该行显示“清理中”，不出现 `message.success` 或“已清理”，列表记录不被本地改写；随即按当前页调用 `listDeletedContainers`，不等待 Node，不调用独立状态接口。
+
+#### Scenario: 列表刷新恢复进程内清理中
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_list_refresh_hydrates_cleaning_state
+- Assertion scope: 列表返回未清理记录的 `mount_cleanup_state: "cleaning"` 时，页面打开即显示“清理中”，恢复与清理按钮禁用；同一列表中历史 `cleaned_at` 记录仍显示“已清理”；不依赖 localStorage 或额外状态接口。
+
+#### Scenario: 列表轮询单飞并取消旧请求
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_cleanup_list_refresh_is_single_flight_and_cancelled
+- Assertion scope: 存在 `cleaning` 时 3 秒后发起列表刷新；首个请求未结算时不叠加下一请求；卸载时传出的 AbortSignal 被 abort，迟到响应不写入。
+- Coverage note: 该 locator 未覆盖 401/403 停止路径、网络失败后保留 cleaning 与继续重试；这些分支仅由实现代码与规格约束，页面测试尚未单独断言。
+
+#### Scenario: 只刷新当前页并保留列表事实
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_cleanup_refresh_merges_current_page_only
+- Assertion scope: 刷新请求使用当前页与页大小；合并后用量查询次数不增加，已展开详情仍在；不发送路径、机器 ID 或 Node 地址。
+
+### Requirement: DeletedContainers 清理结果与既有清理事实
+
+#### Scenario: 既有 cleaned_at 或 mount_cleaned 显示已清理
+
+- Test/check:
+  - [X] src/test/DeletedContainersDisplay.test.jsx::test_cleaned_priority_precedes_usage_errors_while_unclean_rows_keep_explicit_states
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_cleaned_fields_win_over_new_states
+- Assertion scope: 既有 locator 断言已清理状态优先于用量错误；新页面用例在 `cleaned_at`/`mount_cleaned` 与 `mount_cleanup_state` 的 `null`/`cleaning`/`failed`/`unknown` 同时存在时，仍显示“已清理”、两按钮禁用，不显示失败/未知/清理中，也不提前提示成功。
+
+#### Scenario: 失败或未知不冒充成功
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_failed_or_unknown_never_claims_success
+- Assertion scope: 未清理记录 `failed`/`unknown` 分别显示“清理失败”/“清理状态未知”，不显示“已清理”或成功提示，不回显原始 Node 文本；在 `data_recoverable` 且用量非 `not_found` 时恢复与清理按钮均启用。
+
+#### Scenario: 失败或未知回退既有门禁并开放恢复
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_partial_delete_failed_unknown_reopens_restore_and_clean
+- Assertion scope: `failed` 且 `data_recoverable`、用量成功时恢复与清理按钮均启用；点击恢复出现既有确认，确认后调用 `resurrectDeletedContainer(7, null)`；清理按钮未自动提交。
+- Coverage note: 清理按钮只断言可用，未点击其确认；用量为 `not_found` 时仍按路径门禁禁用两项。
+
+#### Scenario: 清理中与实时 not_found 并存时清理中优先
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_cleaning_overrides_live_not_found_until_task_ends
+- Assertion scope: 未清理记录同时返回 `mount_cleanup_state: "cleaning"` 与用量 `not_found` 时显示“清理中”而非“目录不存在”，恢复与清理均禁用；随后列表不再返回 `cleaning` 且用量仍为 `not_found` 时改显“目录不存在”，两项仍禁用，不显示“已清理”或成功提示。
+
+#### Scenario: 目录不存在沿用路径门禁正常显示
+
+- Test/check:
+  - [X] src/test/DeletedContainersMountUsage.test.jsx::只有用量目录不存在时额外禁用恢复与清理并给原因，其他用量与既有门禁不变
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_13c_mobile_original_validity_states_and_not_found_action_gate
+- Assertion scope: 非 `cleaning` 记录在用量 `not_found` 时显示“目录不存在”/“统计不可用（目录不存在）”；桌面 locator 断言两项禁用、title 正确，点击不打开确认、不发写请求；移动 locator 只断言 disabled 与 title。
+- Coverage note: 移动端未断言用量文案与点击负向；这两项由桌面 locator 覆盖。
+
+#### Scenario: 非法清理状态按未知处理
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_invalid_state_maps_to_unknown
+- Assertion scope: 未清理、用量非 `not_found` 时，非法 `mount_cleanup_state` 按 `unknown` 显示“清理状态未知”，不显示“已清理”或成功提示，不回显非法值；恢复与清理按既有列表/用量门禁启用。
+
+#### Scenario: Ctrl 重启丢失状态
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_ctrl_restart_missing_state_falls_back_without_stuck_cleaning
+- Assertion scope: 受理后列表返回 `mount_cleanup_state: null` 且既有清理字段为空时，不显示“已清理”或成功提示，不永久停留在“清理中”；恢复与清理按钮重新开放，不自动写操作。
+
+#### Scenario: 清理请求本身失败
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_cleanup_request_rejection_keeps_error_and_starts_no_poll
+- Assertion scope: 清理请求 reject 时不进入“清理中”，不显示成功，不启动新的列表轮询；调用既有 `showErrorModal`，初始列表仅请求一次。
+
+### Requirement: DeletedContainers 保留其他删除页功能
+
+#### Scenario: 单行清理不阻塞其他行与分页
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_cleaning_row_does_not_block_other_rows_or_pagination
+- Assertion scope: 当前页一行 `cleaning` 时整页刷新按钮可用，另一行恢复仍可提交；切换到第二页后只显示第二页记录，旧 `cleaning` 状态不继承。
+- Coverage note: 该用例未逐项断言其他行的用量轮询与详情展开；这些行为由既有页面测试和同一门禁逻辑覆盖。
+
+#### Scenario: 恢复二选一与凭据弹窗不变
+
+- Test/check:
+  - [X] src/test/DeletedContainers.test.jsx::asks which content to use when the restore response says a choice is needed
+  - [X] src/test/DeletedContainersRestorePassword.test.jsx::test_deleted_restore_root_credential shows root password, bypasses requires_choice, and keeps errors sanitized
+- Assertion scope: 既有 locator 断言 `requires_choice` 显示 snapshot/template 两份配方、默认选择与重新提交，以及恢复成功后的 root 凭据弹窗、`requires_choice` 绕过凭据解析和失败脱敏；恢复参数与选择流程不变。
+
+#### Scenario: 手动刷新与移动卡片可用
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_manual_refresh_and_mobile_cleaning_status
+  - [X] src/test/DeletedContainersMobile.test.jsx::tc_dc_01_mobile_390_seven_columns
+- Assertion scope: 390px 卡片显示七列、状态“清理中”、恢复/清理按钮禁用；刷新按钮可用并重新请求列表。既有 mobile locator 只证明七列卡片布局，不证明清理状态。
+- Coverage note: 该用例未断言其他卡片的复制、详情和恢复操作；这些既有交互未在本变更中修改。
+
+#### Scenario: 旧 Ctrl 或缺少新字段
+
+- Test/check:
+  - [X] src/test/DeletedContainersAsyncCleanup.test.jsx::test_legacy_success_without_new_fields_never_claims_success
+- Assertion scope: 清理返回旧式 `{ success: 1 }`、列表缺少新状态字段时，不显示“已清理”或成功提示，不把旧 `success` 当受理；历史 `cleaned_at`/`mount_cleaned` 仍显示已清理，其余按既有列表事实展示并恢复操作。

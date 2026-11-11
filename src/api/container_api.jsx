@@ -311,9 +311,22 @@ export const listAllContainerBrefInformation = async ({ machine_id = '', user_id
 	}
 };
 
-export const listDeletedContainers = async ({ page_number = 1, page_size = 20 } = {}, timeout = null) => {
-	const { controller, timer } = createTimeoutController(timeout);
+export const listDeletedContainers = async (
+	{ page_number = 1, page_size = 20 } = {},
+	{ signal = null, timeout = null } = {},
+) => {
+	const controller = createController();
+	let timedOut = false;
+	const timer = setTimeout(() => {
+		timedOut = true;
+		controller.abort();
+	}, timeout || REQUEST_TIMEOUT);
+	const handleExternalAbort = () => controller.abort();
 	try {
+		if (signal) {
+			signal.addEventListener('abort', handleExternalAbort, { once: true });
+			if (signal.aborted) controller.abort();
+		}
 		const url = new URL(API_ROUTES.CONTAINERS_LIST_DELETED, BACKEND_ORIGIN).toString();
 		const res = await fetch(url, {
 			method: 'POST',
@@ -322,15 +335,15 @@ export const listDeletedContainers = async ({ page_number = 1, page_size = 20 } 
 			signal: controller.signal,
 			credentials: CREDENTIALS,
 		});
-		clearTimeout(timer);
 		const result = await ensureOk(res, 'List deleted containers');
-		unregisterController(controller);
 		return result;
 	} catch (err) {
-		clearTimeout(timer);
-		unregisterController(controller);
-		if (err.name === 'AbortError') throw new Error('List deleted containers request timed out');
+		if (err.name === 'AbortError' && timedOut) throw new Error('List deleted containers request timed out');
 		throw err;
+	} finally {
+		clearTimeout(timer);
+		if (signal) signal.removeEventListener('abort', handleExternalAbort);
+		unregisterController(controller);
 	}
 };
 

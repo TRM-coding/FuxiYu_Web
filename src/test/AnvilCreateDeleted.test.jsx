@@ -338,7 +338,7 @@ beforeEach(() => {
   });
   getDeletedContainerMountUsage.mockResolvedValue({ success: 1, usages: [] });
   resurrectDeletedContainer.mockResolvedValue({ success: 1, container_id: 19 });
-  cleanDeletedContainerMount.mockResolvedValue({ success: 1 });
+  cleanDeletedContainerMount.mockResolvedValue({ success: 1, accepted: true });
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },

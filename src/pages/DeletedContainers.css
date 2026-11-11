@@ -18,6 +18,12 @@
   margin: 0 0 4px !important;
 }
 
+.deleted-cleanup-refresh-warning {
+  margin-top: 4px;
+  color: #cf1322;
+  font-size: 12px;
+}
+
 .deleted-container-cell {
   min-width: 0;
   display: flex;

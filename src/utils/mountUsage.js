@@ -2,6 +2,19 @@
 export const MOUNT_USAGE_POLL_INTERVAL_MS = 5000;
 export const MOUNT_USAGE_RECHECK_INTERVAL_MS = 60000;
 
+export const MOUNT_CLEANUP_POLL_INTERVAL_MS = 3000;
+
+const MOUNT_CLEANUP_STATES = new Set(['cleaning', 'failed', 'unknown']);
+
+/**
+ * Ctrl 列表新增的逐行清理状态。null/缺失表示没有已知状态；非法值按 unknown
+ * 处理，绝不把不认识的字符串解释成成功。
+ */
+export const normalizeMountCleanupState = (value) => {
+  if (value === null || value === undefined) return null;
+  return MOUNT_CLEANUP_STATES.has(value) ? value : 'unknown';
+};
+
 const isBlankTime = value => value === null || value === undefined || value === '';
 
 /**
@@ -10,6 +23,14 @@ const isBlankTime = value => value === null || value === undefined || value === 
  */
 export const isDeletedMountCleaned = record => (
   record?.mount_cleaned === true || !isBlankTime(record?.cleaned_at)
+);
+
+/**
+ * 只有“未清理且 Ctrl 明确要求 cleaning”才进入清理中门禁。历史 cleaned_at /
+ * mount_cleaned 仍优先，不因残留的 cleaning 字段改写已清理事实。
+ */
+export const isMountCleanupCleaning = (record, state = record?.mount_cleanup_state) => (
+  !isDeletedMountCleaned(record) && normalizeMountCleanupState(state) === 'cleaning'
 );
 
 /**
@@ -89,15 +110,16 @@ export const describeMountUsageError = error => (
 );
 
 /**
- * 仅凭列表事实与当前页已有的路径用量结果派生挂载实际状态。
- * 优先级：无挂载、已恢复、可能存在残留、已清理、目录不存在或无权限、其他列表事实。
- * 已清理记录仍采样；用量列独立显示采集结果。
+ * 仅凭列表事实、清理状态与当前页已有的路径用量结果派生挂载实际状态。
+ * 优先级：无挂载 > 历史已清理 > 未清理的 cleaning > 实时 not_found >
+ * failed > unknown > 无权限/其他列表事实。cleaning 在任务结束前优先于
+ * not_found；任务结束（状态不再 cleaning）后仍由既有路径门禁显示目录不存在。
  *
  * 已清理且成功采集只认 `original_container_is_valid` 的严格布尔值：
  * true 表示原容器行当前有效（已恢复），false 表示容器仍无效（目录可达，可能残留）。
  * null/undefined 或其他值都表示无法确认，继续显示“已清理”，不得猜测为已恢复或残留。
  */
-export const deriveDeletedMountState = (record, usage) => {
+export const deriveDeletedMountState = (record, usage, cleanupState = record?.mount_cleanup_state) => {
   if (!record?.mount_path) return { key: 'no_mount', label: '无挂载' };
   const cleaned = isDeletedMountCleaned(record);
   if (usage?.status === 'success' && cleaned) {
@@ -110,9 +132,13 @@ export const deriveDeletedMountState = (record, usage) => {
     return { key: 'cleaned', label: '已清理' };
   }
   if (cleaned) return { key: 'cleaned', label: '已清理' };
+  const cleanup = normalizeMountCleanupState(cleanupState);
+  if (cleanup === 'cleaning') return { key: 'cleaning', label: '清理中' };
   if (usage?.status === 'error' && usage.reason === 'not_found') {
     return { key: 'not_found', label: '目录不存在' };
   }
+  if (cleanup === 'failed') return { key: 'failed', label: '清理失败' };
+  if (cleanup === 'unknown') return { key: 'unknown', label: '清理状态未知' };
   if (usage?.status === 'error' && usage.reason === 'permission_denied') {
     return { key: 'permission_denied', label: '无权限' };
   }
@@ -136,33 +162,41 @@ export const isDeletedMountUsageNotFound = usage => (
  * 目录可能已是恢复后活容器的挂载：不允许再次恢复，也不允许清理这个目录。
  * 其余门禁保持原有列表字段规则：
  * - 恢复：data_recoverable、snapshot、非 mount- 占位 ID；
- * - 清理：mount_cleanup_id 存在且 cleaned_at 为空。
- * 目录不存在（not_found）也只追加禁用，已有门禁本身不被移除。
+ * - 清理：mount_cleanup_id 存在且未 cleaned_at/mount_cleaned。
+ * 未清理的 cleaning 优先禁用两项；failed/unknown/null 不新增禁用，
+ * 由既有字段与 not_found 门禁决定。目录不存在（not_found）只追加禁用，
+ * 已有门禁本身不被移除。
  */
-export const deriveDeletedContainerActionState = (record, usage) => {
+export const deriveDeletedContainerActionState = (record, usage, cleanupState = record?.mount_cleanup_state) => {
   const restored = record?.original_container_is_valid === true;
   const notFound = isDeletedMountUsageNotFound(usage);
+  const cleaning = isMountCleanupCleaning(record, cleanupState);
+  const cleaned = isDeletedMountCleaned(record);
   const restoreBlocked = !record?.data_recoverable
     || !record?.snapshot
     || String(record?.deleted_id ?? '').startsWith('mount-');
-  const cleanBlocked = !record?.mount_cleanup_id || Boolean(record?.cleaned_at);
+  const cleanBlocked = !record?.mount_cleanup_id || cleaned;
   const restoreReason = restored
     ? '已恢复'
-    : notFound
-      ? '挂载目录不存在，无法恢复'
-      : restoreBlocked
-        ? (record?.cleaned_at ? 'mount 已清理，数据不可恢复' : '无可用 mount/快照数据，无法恢复')
-        : undefined;
+    : cleaning
+      ? '清理进行中，无法恢复'
+      : notFound
+        ? '挂载目录不存在，无法恢复'
+        : restoreBlocked
+          ? (cleaned ? 'mount 已清理，数据不可恢复' : '无可用 mount/快照数据，无法恢复')
+          : undefined;
   const cleanReason = restored
     ? '已恢复，无法清理'
-    : notFound
-      ? '挂载目录不存在，无需清理'
-      : cleanBlocked
-        ? (record?.cleaned_at ? 'mount 已清理' : '该容器无 mount 清理记录')
-        : undefined;
+    : cleaning
+      ? '清理进行中'
+      : notFound
+        ? '挂载目录不存在，无需清理'
+        : cleanBlocked
+          ? (cleaned ? 'mount 已清理' : '该容器无 mount 清理记录')
+          : undefined;
   return {
-    restoreDisabled: restored || restoreBlocked || notFound,
-    cleanDisabled: restored || cleanBlocked || notFound,
+    restoreDisabled: restored || cleaning || restoreBlocked || notFound,
+    cleanDisabled: restored || cleaning || cleanBlocked || notFound,
     restoreReason,
     cleanReason,
   };

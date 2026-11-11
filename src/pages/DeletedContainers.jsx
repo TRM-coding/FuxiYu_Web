@@ -13,15 +13,19 @@ import CredentialModal from '../components/CredentialModal';
 import TableComponent from '../components/TableComponent';
 import '../components/NestedEntityGrid.css';
 import { usePermission } from '../contexts/PermissionContext';
+import { MOUNT_USAGE_TIMEOUT } from '../configs/backend_config';
 import { handleAuthError } from '../utils/authHelpers';
 import { dockerfileDiff } from '../utils/dockerfileDiff';
 import {
+  MOUNT_CLEANUP_POLL_INTERVAL_MS,
   deriveDeletedContainerActionState,
   deriveDeletedMountState,
   formatLogicalBytes,
   isDeletedMountCleaned,
   isDeletedMountUsageNotFound,
   isMeasurableDeletedRecord,
+  isMountCleanupCleaning,
+  normalizeMountCleanupState,
 } from '../utils/mountUsage';
 import { useDeletedMountUsage } from '../utils/useDeletedMountUsage';
 import showErrorModal from '../utils/showErrorModal';
@@ -61,13 +65,44 @@ const STATUS_TAG_COLORS = {
   escalation: 'orange',
   retained: 'green',
   restored: 'green',
+  cleaning: 'blue',
+  failed: 'red',
+  unknown: 'orange',
 };
 
 // 状态列使用列表事实 + 当前页已返回的路径用量派生；pending/其他失败回退列表事实，
-// 不把“尚未测量完成”误写成目录不存在或残留。
-const statusTag = (record, usage) => {
-  const state = deriveDeletedMountState(record, usage);
+// 不把“尚未测量完成”误写成目录不存在或残留。Ctrl 的 cleaning 优先于实时 not_found，
+// 任务结束后由既有路径门禁显示目录不存在。
+const statusTag = (record, usage, cleanupState) => {
+  const state = deriveDeletedMountState(record, usage, cleanupState);
   return <Tag color={STATUS_TAG_COLORS[state.key]}>{state.label}</Tag>;
+};
+
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key);
+
+const mergeCleanupRecordFields = (previous, next) => {
+  if (!next || typeof next !== 'object') return previous;
+  const merged = {
+    ...previous,
+    mount_cleanup_state: normalizeMountCleanupState(next.mount_cleanup_state),
+    mount_cleanup_error_reason: next.mount_cleanup_error_reason ?? null,
+  };
+  for (const field of ['cleaned_at', 'mount_cleaned', 'mount_cleanup_id', 'data_recoverable', 'original_container_is_valid']) {
+    if (hasOwn(next, field)) merged[field] = next[field];
+  }
+  return merged;
+};
+
+const mergeCleanupListFields = (records, nextRecords) => {
+  const byId = new Map();
+  for (const next of Array.isArray(nextRecords) ? nextRecords : []) {
+    if (!next || next.deleted_id === null || next.deleted_id === undefined) continue;
+    byId.set(String(next.deleted_id), next);
+  }
+  return records.map(previous => {
+    const next = byId.get(String(previous.deleted_id));
+    return next ? mergeCleanupRecordFields(previous, next) : previous;
+  });
 };
 
 // 翻译后端提供的恢复配方分段。
@@ -84,7 +119,8 @@ export default function DeletedContainers() {
   const [records, setRecords] = useState([]);
   const [expandedRowKeys, setExpandedRowKeys] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [cleaningId, setCleaningId] = useState(null);
+  const [cleanupRefreshFailed, setCleanupRefreshFailed] = useState(false);
+  const [cleanupPollEpoch, setCleanupPollEpoch] = useState(0);
   const [resurrectingId, setResurrectingId] = useState(null);
   // 二选一的内容（来自恢复接口的响应，不是另开的查询接口）。后端不设默认——默认属于
   // 界面，这样"替用户拿主意"这件事发生在用户看得见的地方。
@@ -99,6 +135,11 @@ export default function DeletedContainers() {
   const pageRef = useRef(1);
   const pageSizeRef = useRef(20);
   const requestSeqRef = useRef(0);
+  const recordsRef = useRef([]);
+  const listInFlightRef = useRef(0);
+  const cleanupPollGenerationRef = useRef(0);
+  const acceptedCleanupIdsRef = useRef(new Set());
+  const notifiedCleanupIdsRef = useRef(new Set());
   const {
     usageById,
     start: startMountUsage,
@@ -113,12 +154,32 @@ export default function DeletedContainers() {
     usageByIdRef.current = usageById;
   }, [usageById]);
 
-  const isActionBlockedNow = (record) => (
-    record?.original_container_is_valid === true
-    || isDeletedMountUsageNotFound(usageByIdRef.current[record?.deleted_id])
-  );
+  const notifyCleanupSuccesses = useCallback((list) => {
+    let succeeded = false;
+    for (const record of Array.isArray(list) ? list : []) {
+      const id = String(record?.deleted_id);
+      if (!acceptedCleanupIdsRef.current.has(id)) continue;
+      if (!isDeletedMountCleaned(record)) continue;
+      if (notifiedCleanupIdsRef.current.has(id)) continue;
+      notifiedCleanupIdsRef.current.add(id);
+      succeeded = true;
+    }
+    if (succeeded) message.success('mount 已清理');
+  }, []);
+
+  const isActionBlockedNow = (record) => {
+    const current = recordsRef.current.find(
+      item => String(item?.deleted_id) === String(record?.deleted_id),
+    ) || record;
+    return (
+      current?.original_container_is_valid === true
+      || isMountCleanupCleaning(current)
+      || isDeletedMountUsageNotFound(usageByIdRef.current[current?.deleted_id])
+    );
+  };
 
   const canManageContainers = hasPermission('container:manage');
+  const hasCleaningRows = records.some(record => isMountCleanupCleaning(record));
 
   const loadRecords = useCallback(async (options = {}) => {
     if (!canManageContainers) return;
@@ -127,6 +188,9 @@ export default function DeletedContainers() {
     const silent = options.silent === true;
     const seq = requestSeqRef.current + 1;
     requestSeqRef.current = seq;
+    cleanupPollGenerationRef.current += 1;
+    setCleanupPollEpoch(epoch => epoch + 1);
+    listInFlightRef.current += 1;
     // 新的列表请求一开始就让旧统计失效：abort 在途用量、清计时器、推进代次。
     // 统计只能消费“本次列表成功写入后”的当前页记录。
     resetMountUsage();
@@ -157,8 +221,11 @@ export default function DeletedContainers() {
       pageSizeRef.current = requestedSize;
       setPage(appliedPage);
       setPageSize(requestedSize);
+      recordsRef.current = current.list;
       setRecords(current.list);
       setTotal(current.total);
+      setCleanupRefreshFailed(false);
+      notifyCleanupSuccesses(current.list);
       // 列表先渲染；统计异步到达，失败/超时都不回写列表或分页。
       startMountUsage(current.list, `${appliedPage}:${requestedSize}`);
     } catch (err) {
@@ -174,9 +241,10 @@ export default function DeletedContainers() {
         route: err?.route,
       });
     } finally {
+      listInFlightRef.current = Math.max(0, listInFlightRef.current - 1);
       if (!silent && seq === requestSeqRef.current) setLoading(false);
     }
-  }, [canManageContainers, navigate, resetMountUsage, startMountUsage]);
+  }, [canManageContainers, navigate, notifyCleanupSuccesses, resetMountUsage, startMountUsage]);
 
   useEffect(() => {
     if (!loaded || !canManageContainers) {
@@ -184,11 +252,89 @@ export default function DeletedContainers() {
       // 同时推进列表请求序号，让旧 list 响应不能在权限变化后重新开启统计。
       resetMountUsage();
       requestSeqRef.current += 1;
+      cleanupPollGenerationRef.current += 1;
       if (!canManageContainers) setLoading(false);
       return;
     }
     loadRecords();
   }, [loaded, canManageContainers, loadRecords, resetMountUsage]);
+
+  useEffect(() => {
+    if (!canManageContainers || !hasCleaningRows) return undefined;
+    let disposed = false;
+    let stopped = false;
+    let timer = null;
+    let controller = null;
+    const generation = cleanupPollGenerationRef.current;
+
+    const schedule = () => {
+      if (disposed || stopped) return;
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(run, MOUNT_CLEANUP_POLL_INTERVAL_MS);
+    };
+
+    const run = async () => {
+      timer = null;
+      if (disposed || stopped || controller) return;
+      if (generation !== cleanupPollGenerationRef.current || listInFlightRef.current > 0) {
+        schedule();
+        return;
+      }
+      controller = new AbortController();
+      listInFlightRef.current += 1;
+      try {
+        const res = await listDeletedContainers(
+          { page_number: pageRef.current, page_size: pageSizeRef.current },
+          { signal: controller.signal, timeout: MOUNT_USAGE_TIMEOUT },
+        );
+        if (disposed || generation !== cleanupPollGenerationRef.current) return;
+        if (!Array.isArray(res?.records)) {
+          setCleanupRefreshFailed(true);
+          return;
+        }
+        const nextRecords = mergeCleanupListFields(recordsRef.current, res.records);
+        recordsRef.current = nextRecords;
+        setRecords(nextRecords);
+        setCleanupRefreshFailed(false);
+        notifyCleanupSuccesses(nextRecords);
+        const hasTerminalAccepted = nextRecords.some(record => (
+          acceptedCleanupIdsRef.current.has(String(record.deleted_id))
+          && !isMountCleanupCleaning(record)
+        ));
+        if (hasTerminalAccepted) resumeMountUsage();
+      } catch (err) {
+        if (disposed || err?.name === 'AbortError') return;
+        if (err?.status === 401) {
+          stopped = true;
+          handleAuthError(err.status, navigate);
+          return;
+        }
+        setCleanupRefreshFailed(true);
+        if (err?.status === 403) stopped = true;
+      } finally {
+        listInFlightRef.current = Math.max(0, listInFlightRef.current - 1);
+        controller = null;
+        if (!disposed && !stopped && generation === cleanupPollGenerationRef.current
+          && recordsRef.current.some(record => isMountCleanupCleaning(record))) {
+          schedule();
+        }
+      }
+    };
+
+    schedule();
+    return () => {
+      disposed = true;
+      if (timer !== null) clearTimeout(timer);
+      if (controller) controller.abort();
+    };
+  }, [
+    canManageContainers,
+    cleanupPollEpoch,
+    hasCleaningRows,
+    navigate,
+    notifyCleanupSuccesses,
+    resumeMountUsage,
+  ]);
 
   const handlePageChange = (nextPage, nextPageSize) => {
     const size = Number(nextPageSize) > 0 ? Number(nextPageSize) : pageSizeRef.current;
@@ -200,11 +346,23 @@ export default function DeletedContainers() {
     if (isActionBlockedNow(record)) return;
     // 清理一开始就丢弃该页旧统计与在途响应；失败后也不把旧 bytes 贴回来。
     invalidateMountUsage();
-    setCleaningId(record.mount_cleanup_id);
     try {
-      await cleanDeletedContainerMount(record.mount_cleanup_id);
-      message.success('mount 已清理');
-      await loadRecords();
+      const res = await cleanDeletedContainerMount(record.mount_cleanup_id);
+      if (res?.accepted === true) {
+        const id = String(record.deleted_id);
+        acceptedCleanupIdsRef.current.add(id);
+        notifiedCleanupIdsRef.current.delete(id);
+        const optimistic = recordsRef.current.map(item => (
+          String(item.deleted_id) === id
+            ? { ...item, mount_cleanup_state: 'cleaning' }
+            : item
+        ));
+        recordsRef.current = optimistic;
+        setRecords(optimistic);
+        setCleanupRefreshFailed(false);
+      }
+      // 无论是否明确受理，都立即用列表事实刷新一次；受理本身不表示清理完成。
+      await loadRecords({ silent: true });
     } catch (err) {
       if (err?.status === 401) {
         handleAuthError(err.status, navigate);
@@ -217,8 +375,6 @@ export default function DeletedContainers() {
         status: err?.status,
         route: err?.route,
       });
-    } finally {
-      setCleaningId(null);
     }
   };
 
@@ -393,7 +549,7 @@ export default function DeletedContainers() {
     {
       title: '状态',
       key: 'status',
-      render: (_, record) => statusTag(record, usageById[record.deleted_id]),
+      render: (_, record) => statusTag(record, usageById[record.deleted_id], record.mount_cleanup_state),
     },
     {
       title: '操作',
@@ -407,7 +563,7 @@ export default function DeletedContainers() {
           cleanDisabled,
           restoreReason: restoreTitle,
           cleanReason: cleanTitle,
-        } = deriveDeletedContainerActionState(record, usageById[record.deleted_id]);
+        } = deriveDeletedContainerActionState(record, usageById[record.deleted_id], record.mount_cleanup_state);
         return (
           <div className="deleted-container-actions">
             <Popconfirm
@@ -441,7 +597,6 @@ export default function DeletedContainers() {
                 size="small"
                 title={cleanTitle}
                 disabled={cleanDisabled}
-                loading={cleaningId != null && cleaningId === record.mount_cleanup_id}
               >
                 清理 mount
               </Button>
@@ -500,8 +655,11 @@ export default function DeletedContainers() {
             已删除容器
           </Typography.Title>
           <Typography.Text type="secondary">查看已删除容器的 mount 保留状态，并手动清理残留目录。</Typography.Text>
+          {cleanupRefreshFailed && (
+            <div className="deleted-cleanup-refresh-warning">清理状态刷新失败</div>
+          )}
         </div>
-        <Button icon={<ReloadOutlined />} onClick={() => loadRecords()} disabled={loading || cleaningId !== null || resurrectingId !== null}>
+        <Button icon={<ReloadOutlined />} onClick={() => loadRecords()} disabled={loading || resurrectingId !== null}>
           刷新
         </Button>
       </div>
