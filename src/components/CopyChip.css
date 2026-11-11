@@ -1,0 +1,54 @@
+.fuxi-copy-chip {
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fuxi-copy-chip:hover {
+  background: #e2e8f0;
+  color: #1f2937;
+}
+
+.fuxi-copy-chip-block {
+  display: block;
+  width: fit-content;
+}
+
+.fuxi-copy-chip-title {
+  padding: 2px 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  background: #eef4ff;
+}
+
+.fuxi-copy-chip-title:hover {
+  background: #dbeafe;
+  color: #0f172a;
+}
+
+.fuxi-copy-chip-meta {
+  font-size: 12px;
+}
+
+.fuxi-copy-chip-soft {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.fuxi-copy-chip-soft:hover {
+  background: #edf2f7;
+  color: #334155;
+}

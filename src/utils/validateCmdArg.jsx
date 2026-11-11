@@ -24,7 +24,7 @@ export function isValidName(value) {
 // examples: nginx:latest, registry.example.com/myorg/myimage:tag
 export function isValidImageName(value) {
   if (typeof value !== 'string') return false;
-  return /^[A-Za-z0-9]+(?:[A-Za-z0-9._\-\/]*)(?::[A-Za-z0-9._\-]+)?$/.test(value);
+  return /^[A-Za-z0-9]+(?:[A-Za-z0-9._/-]*)(?::[A-Za-z0-9._-]+)?$/.test(value);
 }
 
 export function anyUnsafe(...values) {

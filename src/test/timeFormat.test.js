@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSshTimeToDate, formatDuration } from '../utils/timeFormat';
+import { parseSshTimeToDate, formatDuration, formatLastSshTime, formatCleanupCountdown } from '../utils/timeFormat';
 
 describe('parseSshTimeToDate', () => {
   it('解析 ISO 时间字符串', () => {
@@ -57,5 +57,41 @@ describe('formatDuration', () => {
   it('非法输入返回 null', () => {
     expect(formatDuration(-1)).toBeNull();
     expect(formatDuration(NaN)).toBeNull();
+  });
+});
+
+describe('formatLastSshTime', () => {
+  it('空值显示「从未登录」', () => {
+    expect(formatLastSshTime(null)).toBe('从未登录');
+    expect(formatLastSshTime('')).toBe('从未登录');
+  });
+
+  it('合法 ISO 时间转为北京时间串', () => {
+    const text = formatLastSshTime('2026-08-16T08:00:00');
+    expect(text).toMatch(/\d{4}\/\d{1,2}\/\d{1,2}/);
+    expect(text).toContain('16:00');
+  });
+});
+
+describe('formatCleanupCountdown', () => {
+  it('长期容器显示「长期容器」', () => {
+    expect(formatCleanupCountdown('2026-08-16T08:00:00', { is_long_term: true })).toBe('长期容器');
+  });
+
+  it('无记录且无秒数显示「从未登录」', () => {
+    expect(formatCleanupCountdown(null, { cleanup_status: 'unknown', seconds_until_cleanup: null })).toBe('从未登录');
+  });
+
+  it('优先后端秒数', () => {
+    expect(formatCleanupCountdown('2026-08-16T08:00:00', { cleanup_status: 'countdown', seconds_until_cleanup: 90000 })).toBe('1天1小时');
+    expect(formatCleanupCountdown('2026-08-16T08:00:00', { cleanup_status: 'due', seconds_until_cleanup: 0 })).toBe('可清理');
+  });
+
+  it('冻结的长期容器显示升级倒计时', () => {
+    expect(formatCleanupCountdown('2026-08-16T08:00:00', {
+      is_long_term: true,
+      freeze_days_frozen: 3,
+      freeze_escalation_days: 7,
+    })).toBe('冻结第3天 (4天后清除)');
   });
 });

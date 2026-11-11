@@ -72,3 +72,52 @@ export const formatDuration = (seconds) => {
     if (days > 0) return `${days}天`;
     return `${Math.max(1, hours)}小时`;
   };
+
+// 上次 SSH 登录时间的兜底清理窗口（后端下发 cleanup_after_days 时优先用后端值）
+const SSH_CLEANUP_WINDOW_DAYS = 7;
+
+const formatBeijingDateTime = (date) => date.toLocaleString('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  hour12: false,
+});
+
+/** 上次 SSH 登录时间 → 中文可读串（从未登录 / 原始串 / 北京时间）。 */
+export const formatLastSshTime = (raw) => {
+  if (!raw) return '从未登录';
+  const d = parseSshTimeToDate(raw);
+  if (!d) return String(raw);
+  return formatBeijingDateTime(d);
+};
+
+/** 清理倒计时（优先后端秒数，回退前端推算）。长期容器显示冻结升级倒计时或「长期容器」。 */
+export const formatCleanupCountdown = (raw, record = null) => {
+  // 长期容器被冻结 → 显示升级倒计时
+  if (record?.is_long_term === true && record?.freeze_days_frozen != null) {
+    const daysFrozen = Number(record.freeze_days_frozen);
+    const escalationDays = Number(record.freeze_escalation_days) || 7;
+    const remaining = escalationDays - daysFrozen;
+    if (remaining <= 0) return '即将清除';
+    if (record.freeze_grace_until) return `宽限中 · 冻结第${daysFrozen}天`;
+    return `冻结第${daysFrozen}天 (${remaining}天后清除)`;
+  }
+  if (record?.is_long_term === true) return '长期容器';
+  if (!raw && (!record || record.cleanup_status === 'unknown' || record.seconds_until_cleanup == null)) {
+    return '从未登录';
+  }
+  // Prefer backend-calculated fields (authoritative and format-independent).
+  if (record && typeof record === 'object') {
+    const status = record.cleanup_status;
+    const seconds = Number(record.seconds_until_cleanup);
+    if (status === 'due') return '可清理';
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return formatDuration(seconds);
+    }
+  }
+
+  const d = parseSshTimeToDate(raw);
+  if (!d) return '从未登录';
+  const expireAt = d.getTime() + SSH_CLEANUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const diff = expireAt - Date.now();
+  if (diff <= 0) return '可清理';
+  return formatDuration(Math.floor(diff / 1000));
+};

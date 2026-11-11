@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Form, Button, Space, Typography, Row, Col, Select, Tag, Avatar, List, message } from 'antd';
 import showErrorModal from '../utils/showErrorModal';
+import { toErrorModalInput } from '../utils/errorModalInput';
 import { EditOutlined, PlusOutlined, TeamOutlined, DeleteOutlined } from '@ant-design/icons';
 import { addCollaborator, removeCollaborator, updateRole } from '../api/container_api';
+import { usePermission } from '../contexts/PermissionContext';
 import './EditUserModal.css';
 
 const { Option } = Select;
@@ -21,13 +23,42 @@ const ROLE_CONFIG = {
 
 const getAvatarUrl = (username) => `https://api.dicebear.com/7.x/miniavs/svg?seed=${username}`;
 
-const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], usersLoading = false, forceSystemAdmin = false }) => {
+const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], usersLoading = false, forceSystemAdmin = false, onCredentialAccepted = () => {} }) => {
   const [form] = Form.useForm();
+  const { userId: currentUserId } = usePermission();
   // editing state removed (no local save flow)
   const [accounts, setAccounts] = useState([]);
   const [adding, setAdding] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedRole, setSelectedRole] = useState(ROLE.COLLABORATOR);
+  const [roleSaving, setRoleSaving] = useState(false);
+  const roleSavingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const visibleRef = useRef(visible);
+  const containerKey = container?.key ?? container?.container_id ?? null;
+  const containerKeyRef = useRef(containerKey);
+  const requestEpochRef = useRef(0);
+  visibleRef.current = visible;
+  containerKeyRef.current = containerKey;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    // 关闭、换容器或重新打开时淘汰旧会话的异步回调，避免迟到的密码弹到新页面。
+    requestEpochRef.current += 1;
+  }, [visible, containerKey]);
+
+  const isCurrentModalRequest = (requestContainerId, requestEpoch) => (
+    mountedRef.current
+    && visibleRef.current
+    && requestEpoch === requestEpochRef.current
+    && String(containerKeyRef.current) === String(requestContainerId)
+  );
 
   useEffect(() => {
     if (container) {
@@ -57,30 +88,22 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       await showErrorModal({ message: '未能识别容器ID，无法添加用户' });
       return;
     }
+    const requestContainerId = String(cid);
+    const requestEpoch = requestEpochRef.current;
     setAdding(true);
-    addCollaborator({ user_id: selectedUser.id, container_id: cid, role: selectedRole }).then(() => {
-      const newAccount = {
-        username: selectedUser.username,
-        role: selectedRole,
-        ownerName: selectedUser.name,
-        user_id: selectedUser.id,
-        key: String(selectedUser.id)
-      };
-      if (selectedRole === ROLE.ROOT) {
-        const demoted = accounts.map(acc => acc.role === ROLE.ROOT ? { ...acc, role: ROLE.ADMIN } : acc);
-        setAccounts([...demoted, newAccount]);
-      } else {
-        setAccounts(prev => [...prev, newAccount]);
-      }
+    try {
+      const res = await addCollaborator({ user_id: selectedUser.id, container_id: cid, role: selectedRole });
+      if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
+      onCredentialAccepted(res?.credentials || []);
       setSelectedUser(null);
       setSelectedRole(ROLE.COLLABORATOR);
-      message.success('用户已添加');
-    }).catch(async err => {
-    console.error('addCollaborator failed', err);
-    const bodyMsg = err?.body?.message || err?.body || null;
-    const messageText = bodyMsg ? `添加用户失败: ${bodyMsg}` : '添加用户失败';
-    await showErrorModal({ message: err?.body || err || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
-    }).finally(() => setAdding(false));
+      message.success('新增协作者请求已受理');
+    } catch (err) {
+      if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
+      await showErrorModal(toErrorModalInput(err, '添加用户失败'));
+    } finally {
+      setAdding(false);
+    }
   };
 
   const handleDeleteUser = async (userId) => {
@@ -100,10 +123,8 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       setAccounts(prev => prev.filter(acc => String(acc.user_id) !== String(userId)));
       message.success('用户已移除');
     } catch (err) {
-      console.error('removeCollaborator failed', err);
-      const bodyMsg = err?.body?.message || err?.body || null;
-      const messageText = bodyMsg ? `移除用户失败: ${bodyMsg}` : '移除用户失败';
-      await showErrorModal({ message: err?.body || err || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
+      console.error('removeCollaborator failed', err?.status, err?.body?.error_reason);
+      await showErrorModal(toErrorModalInput(err, '移除用户失败'));
     }
   };
 
@@ -120,57 +141,42 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
       await showErrorModal({ message: '缺少后端ID信息，无法更新角色' });
       return;
     }
+    if (roleSavingRef.current) return;
+    const requestContainerId = String(cid);
+    const requestEpoch = requestEpochRef.current;
+    roleSavingRef.current = true;
+    setRoleSaving(true);
     try {
       if (newRole === ROLE.ROOT) {
-        const roots = accounts.filter(acc => acc.role === ROLE.ROOT && String(acc.user_id) !== String(resolvedUserId));
-        for (const r of roots) {
-          const rid = r.user_id;
-          if (rid) {
-            await updateRole({ container_id: cid, user_id: rid, updated_role: ROLE.ADMIN });
-          }
+        // 所有 Web 入口统一 ROOT 交接：不发送旧布尔标记，也不在 Web 侧拆成
+        // “先降旧 ROOT、再升目标”的两次请求；Ctrl 后台编排并返回全部凭据。
+        const res = await updateRole({
+          container_id: cid,
+          user_id: resolvedUserId,
+          updated_role: ROLE.ROOT,
+        });
+        if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
+        onCredentialAccepted(res?.credentials || []);
+        message.success('ROOT 交接请求已受理');
+        // Home 保留既有“目标非自己时关闭人员弹窗”的行为；凭据弹窗挂在 Home 页面级。
+        if (String(resolvedUserId) !== String(currentUserId) && !forceSystemAdmin) {
+          onClose();
         }
-        await updateRole({ container_id: cid, user_id: resolvedUserId, updated_role: ROLE.ROOT });
-        setAccounts(prev => prev.map(acc => {
-          if (String(acc.user_id) === String(resolvedUserId)) return { ...acc, role: ROLE.ROOT, username: 'root' };
-          if (acc.role === ROLE.ROOT) {
-            // demoted root -> restore username from usersList when possible
-            const restored = usersList.find(u => String(u.id) === String(acc.user_id));
-            return { ...acc, role: ROLE.ADMIN, username: restored ? restored.username : acc.username };
-          }
-          return acc;
-        }));
-          message.success('角色已更新');
-          // 转让后关闭编辑窗口
-          try {
-            const currentUid = localStorage.getItem('currentUserId');
-            if (String(resolvedUserId) !== String(currentUid) && !forceSystemAdmin) {
-              onClose();
-            }
-          } catch (e) {
-            // ignore
-          }
-          return;
+        return;
       }
       await updateRole({ container_id: cid, user_id: resolvedUserId, updated_role: newRole });
+      if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
       setAccounts(prev => prev.map(acc => {
         if (String(acc.user_id) !== String(resolvedUserId)) return acc;
-        // If demoting from ROOT, restore username from usersList if possible
-        if (newRole !== ROLE.ROOT && acc.role === ROLE.ROOT) {
-          const restored = usersList.find(u => String(u.id) === String(acc.user_id));
-          return { ...acc, role: newRole, username: restored ? restored.username : acc.username };
-        }
-        // If promoting to ROOT, set username to 'root'
-        if (newRole === ROLE.ROOT) {
-          return { ...acc, role: newRole, username: 'root' };
-        }
         return { ...acc, role: newRole };
       }));
       message.success('角色已更新');
     } catch (err) {
-      console.error('updateRole failed', err);
-      const bodyMsg = err?.body?.message || err?.body || null;
-      const messageText = bodyMsg ? `更新角色失败: ${bodyMsg}` : '更新角色失败';
-      await showErrorModal({ message: err?.body || err || messageText, status: err?.status || err?.response?.status || err?.status, route: err?.route || err?.response?.url });
+      if (!isCurrentModalRequest(requestContainerId, requestEpoch)) return;
+      await showErrorModal(toErrorModalInput(err, '更新角色失败'));
+    } finally {
+      roleSavingRef.current = false;
+      setRoleSaving(false);
     }
   };
 
@@ -242,7 +248,7 @@ const EditUserModal = ({ visible, container, onClose, onBack, usersList = [], us
             </Typography.Title>
             <List dataSource={accounts} renderItem={(account) => (
               <List.Item actions={[
-                <Select key="role" value={account.role} onChange={(value) => handleRoleChange(account.user_id, value)} className="eum-role-select" disabled={account.role === ROLE.ROOT}>
+                <Select key="role" value={account.role} onChange={(value) => handleRoleChange(account.user_id, value)} className="eum-role-select" disabled={account.role === ROLE.ROOT || roleSaving}>
                   <Option value={ROLE.COLLABORATOR}><Tag color="green">协作者</Tag></Option>
                   <Option value={ROLE.ADMIN}><Tag color="blue">管理员</Tag></Option>
                   <Option value={ROLE.ROOT}><Tag color="red">超级管理员</Tag></Option>

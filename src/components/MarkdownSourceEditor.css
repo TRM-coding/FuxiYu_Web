@@ -1,0 +1,87 @@
+.markdown-source-editor {
+  width: 100%;
+}
+
+.markdown-source-editor .cm-editor {
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2937;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.markdown-source-editor .cm-editor.cm-focused {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
+  outline: none;
+}
+
+.markdown-source-editor .cm-scroller {
+  min-height: calc(14 * 1.6em + 24px);
+  max-height: calc(35 * 1.6em + 24px);
+  overflow: auto;
+  padding: 8px 0;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.markdown-source-editor .cm-content {
+  min-height: 1.6em;
+  padding: 0 12px;
+  caret-color: #111827;
+}
+
+.markdown-source-editor .cm-line {
+  padding: 0;
+}
+
+.markdown-source-editor .cm-placeholder {
+  color: #999;
+  white-space: pre-wrap;
+}
+
+.markdown-source-editor .cm-md-heading {
+  color: #0958d9;
+  font-weight: 600;
+}
+
+.markdown-source-editor .cm-md-strong {
+  color: #531dab;
+  font-weight: 700;
+}
+
+.markdown-source-editor .cm-md-emphasis {
+  color: #ad6800;
+  font-style: italic;
+}
+
+.markdown-source-editor .cm-md-link {
+  color: #087f8c;
+  text-decoration: underline;
+  text-decoration-color: rgba(8, 127, 140, 0.45);
+}
+
+.markdown-source-editor .cm-md-code {
+  color: #c41d7f;
+  background: rgba(196, 29, 127, 0.07);
+  border-radius: 3px;
+}
+
+.markdown-source-editor .cm-md-mark {
+  color: #8c8c8c;
+}
+
+.markdown-source-editor .cm-md-quote {
+  color: #595959;
+  font-style: italic;
+}
+
+.markdown-source-editor .cm-md-separator {
+  color: #8c8c8c;
+}
+
+.markdown-source-editor .cm-md-code-info {
+  color: #d46b08;
+}
